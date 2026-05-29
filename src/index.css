@@ -1,0 +1,117 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: 'Roboto', 'Google Sans', system-ui, sans-serif;
+    background-color: #ffffff;
+    color: #202124;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #f1f3f4;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #bdc1c6;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #80868b;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-google-blue text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-google-blue-dark transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-google-blue focus:ring-offset-2;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-google-blue border border-google-border px-4 py-2 rounded-md text-sm font-medium hover:bg-google-blue-light transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-google-blue focus:ring-offset-2;
+  }
+
+  .card {
+    @apply bg-white border border-google-border rounded-lg shadow-google-sm;
+  }
+
+  .input-field {
+    @apply w-full border border-google-border rounded-md px-3 py-2 text-sm text-google-dark placeholder-google-gray focus:outline-none focus:border-google-blue focus:ring-1 focus:ring-google-blue transition-colors duration-150;
+  }
+
+  .table-header {
+    @apply text-xs font-medium text-google-gray uppercase tracking-wider px-4 py-3 text-left bg-google-bg border-b border-google-border;
+  }
+
+  .table-cell {
+    @apply px-4 py-3 text-sm text-google-dark border-b border-google-border;
+  }
+
+  .status-active {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800;
+  }
+
+  .status-pending {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800;
+  }
+}
+
+/* PIN input styling */
+.pin-input {
+  width: 48px;
+  height: 56px;
+  text-align: center;
+  font-size: 24px;
+  font-weight: 600;
+  border: 2px solid #dadce0;
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.15s ease;
+  background: #fff;
+  color: #202124;
+}
+
+.pin-input:focus {
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.15);
+}
+
+.pin-input.filled {
+  border-color: #1a73e8;
+  background: #e8f0fe;
+}
+
+/* Sidebar transitions */
+.sidebar-item {
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* Modal backdrop */
+.modal-backdrop {
+  backdrop-filter: blur(2px);
+}
+
+/* Shimmer animation for locked sections */
+@keyframes shimmer {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+.lock-pulse {
+  animation: shimmer 2s ease-in-out infinite;
+}
