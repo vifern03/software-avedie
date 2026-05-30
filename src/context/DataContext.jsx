@@ -248,12 +248,13 @@ export function DataProvider({ children }) {
     }
   };
 
-  const renovarContrato = (id, nuevaFechaRef, nuevaFechaVenc) => {
+  const renovarContrato = (id, nuevaFechaRef, nuevaFechaVenc, extraData = {}) => {
     const cliente = clientes.find(c => c.id === id);
     const updateObj = {
       fecha_formalizada: nuevaFechaRef,
       renovado:          true,
       fecha_renovacion:  nuevaFechaRef,
+      ...extraData,
     };
     setClientes(prev => prev.map(c => c.id === id ? { ...c, ...updateObj } : c));
     supabase.from('clientes').update(updateObj).eq('id', id)

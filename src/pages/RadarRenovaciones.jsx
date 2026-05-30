@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { AlertTriangle, Clock, Phone, RefreshCw, Calendar, Zap, CheckCircle, X } from 'lucide-react';
+import { AlertTriangle, Clock, Phone, RefreshCw, Calendar, Zap, CheckCircle, X, Pencil } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import Pagination from '../components/Pagination';
 
@@ -44,10 +44,20 @@ const calcVencimiento = (refDate) => {
 
 function RenovacionModal({ contrato, onClose, onConfirm }) {
   const hoy = todayStr();
-  const [nuevaRef,   setNuevaRef]   = useState(hoy);
-  const [nuevaVenc,  setNuevaVenc]  = useState(calcVencimiento(hoy));
-  const [confirmado, setConfirmado] = useState(false);
+  const [nuevaRef,      setNuevaRef]      = useState(hoy);
+  const [nuevaVenc,     setNuevaVenc]     = useState(calcVencimiento(hoy));
+  const [isEditingData, setIsEditingData] = useState(false);
+  const [confirmado,    setConfirmado]    = useState(false);
+  const [editFields,    setEditFields]    = useState({
+    telefono:        contrato.telefono        || '',
+    tarifa:          contrato.tarifa          || '',
+    mail:            contrato.mail            || '',
+    cuenta_bancaria: contrato.cuenta_bancaria || '',
+    descripcion:     contrato.descripcion     || '',
+  });
   const submittingRef = useRef(false);
+
+  const setField = (key, val) => setEditFields(prev => ({ ...prev, [key]: val }));
 
   const handleRefChange = (val) => {
     setNuevaRef(val);
@@ -59,19 +69,24 @@ function RenovacionModal({ contrato, onClose, onConfirm }) {
     submittingRef.current = true;
     setConfirmado(true);
     setTimeout(() => {
-      onConfirm(contrato.id, nuevaRef, nuevaVenc);
+      onConfirm(contrato.id, nuevaRef, nuevaVenc, isEditingData ? editFields : {});
       submittingRef.current = false;
       onClose();
     }, 900);
   };
 
-  const filasDatos = [
+  const camposFijos = [
     ['Cliente',   contrato.nombre],
-    ['CUPS',      contrato.cups       || '—'],
+    ['CUPS',      contrato.cups      || '—'],
     ['Tipo',      contrato.tipo],
-    ['Tarifa',    contrato.tarifa     || '—'],
-    ['Teléfono',  contrato.telefono   || '—'],
-    ['Comercial', contrato.comercial  || '—'],
+    ['Comercial', contrato.comercial || '—'],
+  ];
+
+  const camposLectura = [
+    ['Tarifa',   editFields.tarifa          || contrato.tarifa          || '—'],
+    ['Teléfono', editFields.telefono        || contrato.telefono        || '—'],
+    ['Mail',     editFields.mail            || contrato.mail            || '—'],
+    ['IBAN',     editFields.cuenta_bancaria || contrato.cuenta_bancaria || '—'],
   ];
 
   return (
@@ -97,17 +112,129 @@ function RenovacionModal({ contrato, onClose, onConfirm }) {
         {/* Body */}
         <div className="px-6 py-5 space-y-4 overflow-y-auto">
 
-          {/* Datos del contrato (solo lectura) */}
-          <div className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
-            <p className="text-xs font-semibold text-google-gray uppercase tracking-wide mb-3">Datos del contrato</p>
+          {/* Datos del contrato */}
+          <div className={`border rounded-xl px-4 py-3 transition-colors ${isEditingData ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'}`}>
+
+            {/* Sub-header con botón toggle */}
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-google-gray uppercase tracking-wide">Datos del contrato</p>
+              <button
+                type="button"
+                onClick={() => setIsEditingData(v => !v)}
+                className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-lg transition-colors ${
+                  isEditingData
+                    ? 'text-amber-700 bg-amber-100 hover:bg-amber-200'
+                    : 'text-google-gray hover:text-google-blue hover:bg-blue-50'
+                }`}
+              >
+                <Pencil size={11} />
+                {isEditingData ? 'Ocultar edición' : '¿Deseas modificar algún dato?'}
+              </button>
+            </div>
+
+            {/* Campos fijos (siempre solo lectura) */}
             <div className="space-y-1.5">
-              {filasDatos.map(([label, value]) => (
+              {camposFijos.map(([label, value]) => (
                 <div key={label} className="flex justify-between gap-3 text-xs">
                   <span className="text-google-gray flex-shrink-0">{label}</span>
                   <span className="font-medium text-google-dark text-right truncate">{value}</span>
                 </div>
               ))}
             </div>
+
+            {/* Divisor */}
+            <div className={`my-3 border-t ${isEditingData ? 'border-amber-200' : 'border-gray-200'}`} />
+
+            {/* Campos editables — vista de lectura */}
+            {!isEditingData && (
+              <div className="space-y-1.5">
+                {camposLectura.map(([label, value]) => (
+                  <div key={label} className="flex justify-between gap-3 text-xs">
+                    <span className="text-google-gray flex-shrink-0">{label}</span>
+                    <span className="font-medium text-google-dark text-right truncate">{value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Campos editables — vista de edición */}
+            {isEditingData && (
+              <div className="space-y-3">
+                <p className="text-xs text-amber-700 font-medium flex items-center gap-1.5">
+                  <Pencil size={11} /> Edita los campos que necesites actualizar
+                </p>
+
+                {/* Tarifa */}
+                <div>
+                  <label className="block text-xs font-medium text-google-gray mb-1">Tarifa</label>
+                  <select
+                    value={editFields.tarifa}
+                    onChange={(e) => setField('tarifa', e.target.value)}
+                    className="input-field text-xs"
+                  >
+                    <option value="">Seleccionar...</option>
+                    <optgroup label="Electricidad">
+                      {['2.0TD','3.0TD','3.1A','6.1TD','6.1A','6.2','6.3','6.4'].map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Gas">
+                      {['RL.1','RL.2','RL.3'].map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </optgroup>
+                  </select>
+                </div>
+
+                {/* Teléfono */}
+                <div>
+                  <label className="block text-xs font-medium text-google-gray mb-1">Teléfono</label>
+                  <input
+                    type="tel"
+                    value={editFields.telefono}
+                    onChange={(e) => setField('telefono', e.target.value)}
+                    placeholder="Ej: 612 345 678"
+                    className="input-field text-xs"
+                  />
+                </div>
+
+                {/* Mail */}
+                <div>
+                  <label className="block text-xs font-medium text-google-gray mb-1">Correo electrónico</label>
+                  <input
+                    type="email"
+                    value={editFields.mail}
+                    onChange={(e) => setField('mail', e.target.value)}
+                    placeholder="Ej: cliente@email.com"
+                    className="input-field text-xs"
+                  />
+                </div>
+
+                {/* IBAN */}
+                <div>
+                  <label className="block text-xs font-medium text-google-gray mb-1">Cuenta Bancaria (IBAN)</label>
+                  <input
+                    type="text"
+                    value={editFields.cuenta_bancaria}
+                    onChange={(e) => setField('cuenta_bancaria', e.target.value)}
+                    placeholder="Ej: ES91 2100 0418..."
+                    className="input-field text-xs"
+                  />
+                </div>
+
+                {/* Observaciones */}
+                <div>
+                  <label className="block text-xs font-medium text-google-gray mb-1">Observaciones</label>
+                  <textarea
+                    value={editFields.descripcion}
+                    onChange={(e) => setField('descripcion', e.target.value)}
+                    placeholder="Notas adicionales sobre la renovación..."
+                    rows={2}
+                    className="input-field text-xs resize-none"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Nueva fecha de referencia */}
@@ -230,8 +357,8 @@ export default function RadarRenovaciones() {
     },
   ];
 
-  const handleRenovar = (id, nuevaRef, nuevaVenc) => {
-    renovarContrato(id, nuevaRef, nuevaVenc);
+  const handleRenovar = (id, nuevaRef, nuevaVenc, extraData) => {
+    renovarContrato(id, nuevaRef, nuevaVenc, extraData);
   };
 
   const getInitials = (nombre = '') =>
