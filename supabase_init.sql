@@ -46,9 +46,15 @@ CREATE TABLE IF NOT EXISTS clientes (
   fecha_formalizada TEXT,
   dni_escaneado     TEXT,
   ultima_factura    TEXT,
+  renovado          BOOLEAN     DEFAULT FALSE,
+  fecha_renovacion  TEXT,
   created_at        TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE clientes DISABLE ROW LEVEL SECURITY;
+
+-- MIGRACIÓN para bases de datos existentes (ejecutar si la tabla ya existe):
+-- ALTER TABLE clientes ADD COLUMN IF NOT EXISTS renovado         BOOLEAN DEFAULT FALSE;
+-- ALTER TABLE clientes ADD COLUMN IF NOT EXISTS fecha_renovacion TEXT;
 
 -- ── Tabla de historial de actividades ────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS actividades (

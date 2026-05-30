@@ -248,6 +248,25 @@ export function DataProvider({ children }) {
     }
   };
 
+  const renovarContrato = (id, nuevaFechaRef, nuevaFechaVenc) => {
+    const cliente = clientes.find(c => c.id === id);
+    const updateObj = {
+      fecha_formalizada: nuevaFechaRef,
+      renovado:          true,
+      fecha_renovacion:  nuevaFechaRef,
+    };
+    setClientes(prev => prev.map(c => c.id === id ? { ...c, ...updateObj } : c));
+    supabase.from('clientes').update(updateObj).eq('id', id)
+      .then(({ error }) => { if (error) console.error('renovarContrato:', error); });
+    if (cliente) {
+      addActivity(
+        'Renovación',
+        `${currentUser?.username} ha renovado el contrato de ${cliente.nombre} (Nueva ref.: ${nuevaFechaRef} · Vence: ${nuevaFechaVenc})`,
+        currentUser?.username
+      );
+    }
+  };
+
   const deleteCliente = (id) => {
     const cliente = clientes.find(c => c.id === id);
     setClientes(prev => prev.filter(c => c.id !== id));
@@ -294,6 +313,7 @@ export function DataProvider({ children }) {
       updateCliente,
       firmarContrato,
       formalizarContrato,
+      renovarContrato,
       deleteCliente,
       addActivity,
       clearActividades,
