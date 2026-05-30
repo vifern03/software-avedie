@@ -78,6 +78,21 @@ CREATE TABLE IF NOT EXISTS visitas (
 );
 ALTER TABLE visitas DISABLE ROW LEVEL SECURITY;
 
+-- ── Tabla de reportes de software ───────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS reportes (
+  id              BIGINT      PRIMARY KEY,
+  creado_por      TEXT        NOT NULL,
+  titulo          TEXT        NOT NULL,
+  descripcion     TEXT        NOT NULL,
+  estado                TEXT        DEFAULT 'Pendiente',
+  respuesta_admin       TEXT        DEFAULT '',
+  confirmacion_usuario  TEXT        DEFAULT '',
+  fecha                 TEXT        NOT NULL,
+  hora                  TEXT        NOT NULL DEFAULT '',
+  created_at            TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE reportes DISABLE ROW LEVEL SECURITY;
+
 -- =============================================================================
 --  FIN DEL SCRIPT
 --  El propio CRM sembrará los usuarios y la configuración inicial

@@ -11,6 +11,7 @@ import RadarRenovaciones from './pages/RadarRenovaciones';
 import HistorialActividades from './pages/HistorialActividades';
 import GestionUsuarios from './pages/GestionUsuarios';
 import RegistroVisitas from './pages/RegistroVisitas';
+import ReportesSoftware from './pages/ReportesSoftware';
 
 function LoadingScreen() {
   return (
@@ -78,7 +79,7 @@ export default function App() {
 
   useEffect(() => {
     if (!currentUser) return;
-    const SECTIONS = ['dashboard', 'historica', 'radar', 'b2c', 'b2b', 'historial', 'visitas', 'gestion'];
+    const SECTIONS = ['dashboard', 'historica', 'radar', 'b2c', 'b2b', 'historial', 'visitas', 'reportes', 'gestion'];
     const first = SECTIONS.find(s => hasAccess(s));
     if (first) setActiveSection(first);
   }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -100,6 +101,7 @@ export default function App() {
       case 'b2b':       return <AltaClientes tipo="B2B" />;
       case 'historial': return <HistorialActividades />;
       case 'visitas':   return <RegistroVisitas />;
+      case 'reportes':  return <ReportesSoftware />;
       case 'gestion':   return <GestionUsuarios />;
       default:          return <AltaClientes tipo="B2C" />;
     }

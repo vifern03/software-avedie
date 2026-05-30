@@ -5,9 +5,9 @@ import { initializeDB } from '../lib/initDB';
 const AuthContext = createContext(null);
 
 export const DEFAULT_PERMISSIONS = {
-  admin:     { dashboard: true,  historica: true,  radar: true,  b2c: true, b2b: true, historial: true,  visitas: true  },
-  manager:   { dashboard: false, historica: false, radar: true,  b2c: true, b2b: true, historial: false, visitas: true  },
-  comercial: { dashboard: false, historica: false, radar: false, b2c: true, b2b: true, historial: false, visitas: false },
+  admin:     { dashboard: true,  historica: true,  radar: true,  b2c: true, b2b: true, historial: true,  visitas: true,  reportes: true  },
+  manager:   { dashboard: false, historica: false, radar: true,  b2c: true, b2b: true, historial: false, visitas: true,  reportes: true  },
+  comercial: { dashboard: false, historica: false, radar: false, b2c: true, b2b: true, historial: false, visitas: false, reportes: true  },
 };
 
 const SESSION_KEY = 'crm_avedie_user';

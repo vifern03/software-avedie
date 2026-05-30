@@ -1,4 +1,4 @@
-import { LayoutDashboard, Database, RefreshCw, UserPlus, Building2, History, LogOut, Settings, User, Store } from 'lucide-react';
+import { LayoutDashboard, Database, RefreshCw, UserPlus, Building2, History, LogOut, Settings, User, Store, ClipboardList } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const ALL_ITEMS = [
@@ -8,6 +8,7 @@ const ALL_ITEMS = [
   { id: 'b2c',       label: 'Alta B2C (Particular)',    icon: UserPlus        },
   { id: 'b2b',       label: 'Alta B2B (Empresa)',       icon: Building2       },
   { id: 'visitas',   label: 'Registro Visitas Tienda',  icon: Store           },
+  { id: 'reportes',  label: 'Reportes de Software',     icon: ClipboardList   },
   { id: 'historial', label: 'Historial de Actividades', icon: History         },
   { id: 'gestion',   label: 'Gestión de Usuarios',      icon: Settings        },
 ];

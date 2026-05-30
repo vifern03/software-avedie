@@ -3,15 +3,17 @@ import {
   Shield, Briefcase, UserCheck, Users, CheckCircle,
   Eye, EyeOff, Pencil, Trash2, Plus, X, Save, Lock, RotateCcw, User, ShieldAlert,
 } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, DEFAULT_PERMISSIONS } from '../context/AuthContext';
 import PinModal from '../components/PinModal';
 
 const PAGES = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'historica', label: 'Histórica' },
-  { id: 'radar',     label: 'Radar' },
-  { id: 'b2c',       label: 'Alta B2C' },
-  { id: 'b2b',       label: 'Alta B2B' },
+  { id: 'dashboard', label: 'Dashboard'  },
+  { id: 'historica', label: 'Histórica'  },
+  { id: 'radar',     label: 'Radar'      },
+  { id: 'b2c',       label: 'Alta B2C'  },
+  { id: 'b2b',       label: 'Alta B2B'  },
+  { id: 'visitas',   label: 'Visitas'   },
+  { id: 'reportes',  label: 'Reportes'  },
   { id: 'historial', label: 'Historial' },
 ];
 
@@ -530,13 +532,17 @@ export default function GestionUsuarios() {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-google-border">
+              <div className="grid grid-cols-4 lg:grid-cols-8 divide-x divide-google-border">
                 {PAGES.map((page) => {
-                  const active = isAdmin ? true : !!permissions[roleId]?.[page.id];
+                  // Usa DEFAULT_PERMISSIONS como fallback para claves añadidas
+                  // después de que se grabara la configuración en Supabase
+                  const active = isAdmin
+                    ? true
+                    : !!(permissions[roleId]?.[page.id] ?? DEFAULT_PERMISSIONS[roleId]?.[page.id]);
                   return (
                     <div
                       key={page.id}
-                      className="flex flex-col items-center gap-2.5 px-4 py-4 hover:bg-google-bg transition-colors"
+                      className="flex flex-col items-center gap-2 px-2 py-4 hover:bg-google-bg transition-colors"
                     >
                       <p className="text-xs font-medium text-google-dark text-center leading-tight">
                         {page.label}
@@ -607,12 +613,12 @@ export default function GestionUsuarios() {
                   </div>
 
                   {/* Page toggles */}
-                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                  <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
                     {PAGES.map((page) => {
                       const isOverridden = userOverrides[page.id] !== undefined;
                       const effective    = isOverridden
                         ? userOverrides[page.id]
-                        : !!permissions[user.role]?.[page.id];
+                        : !!(permissions[user.role]?.[page.id] ?? DEFAULT_PERMISSIONS[user.role]?.[page.id]);
 
                       return (
                         <div
