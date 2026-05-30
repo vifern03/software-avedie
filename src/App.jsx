@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { ShieldOff } from 'lucide-react';
+import { ShieldOff, Database, Loader2 } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
+import { useData } from './context/DataContext';
 import Sidebar from './components/Sidebar';
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
@@ -10,6 +11,51 @@ import RadarRenovaciones from './pages/RadarRenovaciones';
 import HistorialActividades from './pages/HistorialActividades';
 import GestionUsuarios from './pages/GestionUsuarios';
 import RegistroVisitas from './pages/RegistroVisitas';
+
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen bg-google-bg flex flex-col items-center justify-center gap-4">
+      <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-google overflow-hidden">
+        <img
+          src="https://multimedia-logos.infojobs.net/image/upload/w_155,h_155/9b/9b38ef65-853a-4c46-a58e-5e56bbceb467"
+          alt="Grupo Avedie"
+          className="w-12 h-12 object-contain"
+        />
+      </div>
+      <Loader2 size={28} className="text-google-blue animate-spin" />
+      <p className="text-sm text-google-gray">Conectando con la base de datos…</p>
+    </div>
+  );
+}
+
+function DBErrorScreen({ error }) {
+  return (
+    <div className="min-h-screen bg-google-bg flex items-center justify-center p-6">
+      <div className="bg-white rounded-2xl shadow-google w-full max-w-lg p-8 text-center space-y-4">
+        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto">
+          <Database size={28} className="text-red-500" />
+        </div>
+        <h2 className="text-xl font-semibold text-google-dark">Base de datos no inicializada</h2>
+        <p className="text-sm text-google-gray whitespace-pre-line">{error}</p>
+        <div className="bg-gray-50 rounded-xl p-4 text-left">
+          <p className="text-xs font-semibold text-google-dark mb-2">Instrucciones:</p>
+          <ol className="text-xs text-google-gray space-y-1 list-decimal list-inside">
+            <li>Abre el <strong>Editor SQL</strong> de tu proyecto Supabase</li>
+            <li>Copia y ejecuta el contenido de <code className="bg-gray-200 px-1 rounded">supabase_init.sql</code></li>
+            <li>Recarga esta página</li>
+          </ol>
+        </div>
+        <button
+          onClick={() => window.location.reload()}
+          className="btn-primary text-sm px-6 py-2"
+        >
+          Recargar página
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AccessDenied() {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center p-8 select-none">
@@ -26,7 +72,8 @@ function AccessDenied() {
 }
 
 export default function App() {
-  const { currentUser, hasAccess } = useAuth();
+  const { currentUser, hasAccess, isLoading: authLoading, dbError } = useAuth();
+  const { isLoading: dataLoading } = useData();
   const [activeSection, setActiveSection] = useState('b2c');
 
   useEffect(() => {
@@ -36,15 +83,15 @@ export default function App() {
     if (first) setActiveSection(first);
   }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  if (authLoading) return <LoadingScreen />;
+  if (dbError)     return <DBErrorScreen error={dbError} />;
   if (!currentUser) return <LoginPage />;
+  if (dataLoading)  return <LoadingScreen />;
 
-  const handleNavigate = (section) => {
-    setActiveSection(section);
-  };
+  const handleNavigate = (section) => setActiveSection(section);
 
   const renderPage = () => {
     if (!hasAccess(activeSection)) return <AccessDenied />;
-
     switch (activeSection) {
       case 'dashboard': return <Dashboard onNavigate={handleNavigate} />;
       case 'historica': return <HistoricaDB />;

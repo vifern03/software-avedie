@@ -1,22 +1,8 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
+import { initializeDB } from '../lib/initDB';
 
-const VICTOR_USER = {
-  username:      'Victor',
-  password:      'pedrito88',
-  role:          'admin',
-  displayName:   'Victor',
-  isUndeletable: true,
-  securityPin:   '300133',
-};
-
-const INITIAL_USERS = [
-  { username: 'Adolfo',     password: 'Avedie2000', role: 'admin',     displayName: 'Adolfo' },
-  { username: 'manager1',   password: 'Avedie2000', role: 'manager',   displayName: 'Manager 1' },
-  { username: 'comercial1', password: 'Avedie2000', role: 'comercial', displayName: 'Comercial 1' },
-];
-
-const ensureVictor = (arr) =>
-  arr.some((u) => u.username === 'Victor') ? arr : [...arr, VICTOR_USER];
+const AuthContext = createContext(null);
 
 export const DEFAULT_PERMISSIONS = {
   admin:     { dashboard: true,  historica: true,  radar: true,  b2c: true, b2b: true, historial: true,  visitas: true  },
@@ -24,69 +10,115 @@ export const DEFAULT_PERMISSIONS = {
   comercial: { dashboard: false, historica: false, radar: false, b2c: true, b2b: true, historial: false, visitas: false },
 };
 
-const STORAGE_USER       = 'crm_avedie_user';
-const STORAGE_PERMS      = 'crm_avedie_permissions';
-const STORAGE_USERS      = 'crm_avedie_users';
-const STORAGE_PIN        = 'crm_avedie_pin';
-const STORAGE_USER_PERMS = 'crm_avedie_user_permissions'; // individual overrides
+const SESSION_KEY = 'crm_avedie_user';
 
-function loadFromStorage(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch {
-    return fallback;
-  }
+function dbToUser(row) {
+  return {
+    username:      row.username,
+    password:      row.password,
+    role:          row.role,
+    displayName:   row.display_name   || row.username,
+    isUndeletable: row.is_undeletable || false,
+    securityPin:   row.security_pin   || null,
+  };
 }
 
-const AuthContext = createContext(null);
-
 export function AuthProvider({ children }) {
-  const [currentUser,     setCurrentUser]     = useState(() => loadFromStorage(STORAGE_USER,       null));
-  const [permissions,     setPermissions]     = useState(() => loadFromStorage(STORAGE_PERMS,      DEFAULT_PERMISSIONS));
-  const [users,           setUsers]           = useState(() => ensureVictor(loadFromStorage(STORAGE_USERS, INITIAL_USERS)));
-  const [pin,             setPin]             = useState(() => localStorage.getItem(STORAGE_PIN)  || '1234');
-  // Per-user permission overrides: { username: { dashboard: true, b2c: false, ... } }
-  const [userPermissions, setUserPermissions] = useState(() => loadFromStorage(STORAGE_USER_PERMS, {}));
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const raw = localStorage.getItem(SESSION_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
+  const [permissions,     setPermissions]     = useState(DEFAULT_PERMISSIONS);
+  const [users,           setUsers]           = useState([]);
+  const [pin,             setPin]             = useState('1234');
+  const [userPermissions, setUserPermissions] = useState({});
+  const [isLoading,       setIsLoading]       = useState(true);
+  const [dbError,         setDbError]         = useState(null);
 
-  const saveUsers = (updated) => {
-    const safe = ensureVictor(updated);
-    setUsers(safe);
-    localStorage.setItem(STORAGE_USERS, JSON.stringify(safe));
-  };
+  useEffect(() => {
+    async function boot() {
+      const result = await initializeDB();
+
+      if (result.needsSetup) {
+        setDbError(
+          'Las tablas de Supabase no existen todavía.\n' +
+          'Ejecuta el archivo SQL de inicialización en el Editor SQL de tu proyecto Supabase y recarga la página.'
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      const [{ data: usersData, error: uErr }, { data: configData }] = await Promise.all([
+        supabase.from('usuarios').select('*'),
+        supabase.from('configuracion').select('*'),
+      ]);
+
+      if (uErr) {
+        setDbError('Error al conectar con la base de datos: ' + uErr.message);
+        setIsLoading(false);
+        return;
+      }
+
+      setUsers((usersData || []).map(dbToUser));
+
+      for (const row of (configData || [])) {
+        if (row.clave === 'permissions')      setPermissions(row.valor);
+        if (row.clave === 'pin')              setPin(String(row.valor));
+        if (row.clave === 'user_permissions') setUserPermissions(row.valor || {});
+      }
+
+      setIsLoading(false);
+    }
+    boot();
+  }, []);
+
+  // ── Sesión ──────────────────────────────────────────────────────────────────
 
   const login = useCallback((username, password) => {
     const found = users.find(u => u.username === username && u.password === password);
     if (!found) return false;
     const { password: _pw, ...safeUser } = found;
     setCurrentUser(safeUser);
-    localStorage.setItem(STORAGE_USER, JSON.stringify(safeUser));
+    localStorage.setItem(SESSION_KEY, JSON.stringify(safeUser));
     return true;
   }, [users]);
 
   const logout = useCallback(() => {
     setCurrentUser(null);
-    localStorage.removeItem(STORAGE_USER);
+    localStorage.removeItem(SESSION_KEY);
   }, []);
+
+  const hasAccess = useCallback((section) => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'admin') return true;
+    const userPerms = userPermissions[currentUser.username];
+    if (userPerms && userPerms[section] !== undefined) return !!userPerms[section];
+    const stored = permissions[currentUser.role]?.[section];
+    if (stored !== undefined) return !!stored;
+    return !!(DEFAULT_PERMISSIONS[currentUser.role]?.[section]);
+  }, [currentUser, permissions, userPermissions]);
+
+  // ── Permisos de rol ─────────────────────────────────────────────────────────
 
   const updatePermissions = useCallback((newPerms) => {
     setPermissions(newPerms);
-    localStorage.setItem(STORAGE_PERMS, JSON.stringify(newPerms));
+    supabase.from('configuracion')
+      .upsert([{ clave: 'permissions', valor: newPerms }])
+      .then(({ error }) => { if (error) console.error('updatePermissions:', error); });
   }, []);
 
-  // Set a single permission for a specific user (overrides role default)
   const updateUserPermission = useCallback((username, pageId, value) => {
     setUserPermissions((prev) => {
-      const updated = {
-        ...prev,
-        [username]: { ...(prev[username] || {}), [pageId]: value },
-      };
-      localStorage.setItem(STORAGE_USER_PERMS, JSON.stringify(updated));
+      const updated = { ...prev, [username]: { ...(prev[username] || {}), [pageId]: value } };
+      supabase.from('configuracion')
+        .upsert([{ clave: 'user_permissions', valor: updated }])
+        .then(({ error }) => { if (error) console.error('updateUserPermission:', error); });
       return updated;
     });
   }, []);
 
-  // Remove a single page override for a user (key deleted, falls back to role default)
   const removeUserPermission = useCallback((username, pageId) => {
     setUserPermissions((prev) => {
       const userPerms = { ...(prev[username] || {}) };
@@ -94,70 +126,94 @@ export function AuthProvider({ children }) {
       const updated = Object.keys(userPerms).length > 0
         ? { ...prev, [username]: userPerms }
         : (({ [username]: _dropped, ...rest }) => rest)(prev);
-      localStorage.setItem(STORAGE_USER_PERMS, JSON.stringify(updated));
+      supabase.from('configuracion')
+        .upsert([{ clave: 'user_permissions', valor: updated }])
+        .then(({ error }) => { if (error) console.error('removeUserPermission:', error); });
       return updated;
     });
   }, []);
 
-  // Remove ALL individual overrides for a user (reset to role defaults)
   const resetUserPermissions = useCallback((username) => {
     setUserPermissions((prev) => {
       const updated = { ...prev };
       delete updated[username];
-      localStorage.setItem(STORAGE_USER_PERMS, JSON.stringify(updated));
+      supabase.from('configuracion')
+        .upsert([{ clave: 'user_permissions', valor: updated }])
+        .then(({ error }) => { if (error) console.error('resetUserPermissions:', error); });
       return updated;
     });
   }, []);
 
-  const hasAccess = useCallback((section) => {
-    if (!currentUser) return false;
-    if (currentUser.role === 'admin') return true;
-    // Individual override takes priority over role
-    const userPerms = userPermissions[currentUser.username];
-    if (userPerms && userPerms[section] !== undefined) return !!userPerms[section];
-    // Stored role permission, falling back to DEFAULT_PERMISSIONS for new sections
-    const stored = permissions[currentUser.role]?.[section];
-    if (stored !== undefined) return !!stored;
-    return !!(DEFAULT_PERMISSIONS[currentUser.role]?.[section]);
-  }, [currentUser, permissions, userPermissions]);
+  // ── Gestión de usuarios ─────────────────────────────────────────────────────
 
   const addUser = useCallback((username, password, role, displayName) => {
-    const already = users.find(u => u.username === username);
-    if (already) return false;
-    saveUsers([...users, { username, password, role, displayName: displayName || username }]);
+    if (users.some(u => u.username === username)) return false;
+    const newUser = {
+      username,
+      password,
+      role,
+      displayName:   displayName || username,
+      isUndeletable: false,
+      securityPin:   null,
+    };
+    setUsers(prev => [...prev, newUser]);
+    supabase.from('usuarios')
+      .insert([{ username, password, role, display_name: displayName || username, is_undeletable: false, security_pin: null }])
+      .then(({ error }) => {
+        if (error) {
+          console.error('addUser:', error);
+          setUsers(prev => prev.filter(u => u.username !== username));
+        }
+      });
     return true;
   }, [users]);
 
   const editUser = useCallback((username, updates) => {
     if (updates.username && updates.username !== username) {
-      if (users.find(u => u.username === updates.username)) return false;
+      if (users.some(u => u.username === updates.username)) return false;
     }
     const updated = users.map(u => u.username === username ? { ...u, ...updates } : u);
-    saveUsers(updated);
+    setUsers(updated);
+
+    const newUsername = updates.username || username;
+    supabase.from('usuarios')
+      .update({
+        username:     newUsername,
+        password:     updates.password,
+        role:         updates.role,
+        display_name: updates.displayName || newUsername,
+      })
+      .eq('username', username)
+      .then(({ error }) => { if (error) console.error('editUser:', error); });
+
     if (currentUser?.username === username) {
       const merged = { ...currentUser, ...updates };
       const { password: _pw, ...safeUpdated } = merged;
       setCurrentUser(safeUpdated);
-      localStorage.setItem(STORAGE_USER, JSON.stringify(safeUpdated));
+      localStorage.setItem(SESSION_KEY, JSON.stringify(safeUpdated));
     }
     return true;
   }, [users, currentUser]);
 
-  const changePin = useCallback((newPin) => {
-    setPin(newPin);
-    localStorage.setItem(STORAGE_PIN, newPin);
-  }, []);
-
   const deleteUser = useCallback((username) => {
     if (username === 'Adolfo') return;
-    const target = users.find((u) => u.username === username);
+    const target = users.find(u => u.username === username);
     if (target?.isUndeletable) return;
-    saveUsers(users.filter((u) => u.username !== username));
+    setUsers(prev => prev.filter(u => u.username !== username));
+    supabase.from('usuarios').delete().eq('username', username)
+      .then(({ error }) => { if (error) console.error('deleteUser:', error); });
   }, [users]);
+
+  const changePin = useCallback((newPin) => {
+    setPin(newPin);
+    supabase.from('configuracion')
+      .upsert([{ clave: 'pin', valor: newPin }])
+      .then(({ error }) => { if (error) console.error('changePin:', error); });
+  }, []);
 
   return (
     <AuthContext.Provider value={{
-      currentUser, permissions, users, pin, userPermissions,
+      currentUser, permissions, users, pin, userPermissions, isLoading, dbError,
       login, logout, updatePermissions, hasAccess,
       addUser, editUser, deleteUser, changePin,
       updateUserPermission, removeUserPermission, resetUserPermissions,
