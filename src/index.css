@@ -115,3 +115,13 @@
 .lock-pulse {
   animation: shimmer 2s ease-in-out infinite;
 }
+
+/* AI Assistant — gentle floating tooltip */
+@keyframes ai-float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-5px); }
+}
+
+.ai-float {
+  animation: ai-float 3s ease-in-out infinite;
+}

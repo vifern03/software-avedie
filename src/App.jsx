@@ -3,6 +3,7 @@ import { ShieldOff, Database, Loader2 } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import { useData } from './context/DataContext';
 import Sidebar from './components/Sidebar';
+import AIAssistant from './components/AIAssistant';
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
 import AltaClientes from './pages/AltaClientes';
@@ -76,6 +77,7 @@ export default function App() {
   const { currentUser, hasAccess, isLoading: authLoading, dbError } = useAuth();
   const { isLoading: dataLoading } = useData();
   const [activeSection, setActiveSection] = useState('b2c');
+  const [isAIOpen, setIsAIOpen] = useState(false);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -109,10 +111,15 @@ export default function App() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-google-bg">
-      <Sidebar activeSection={activeSection} onNavigate={handleNavigate} />
+      <Sidebar
+        activeSection={activeSection}
+        onNavigate={handleNavigate}
+        onOpenAI={() => setIsAIOpen(true)}
+      />
       <main className="flex-1 overflow-y-auto bg-white">
         {renderPage()}
       </main>
+      <AIAssistant isOpen={isAIOpen} onOpenChange={setIsAIOpen} />
     </div>
   );
 }

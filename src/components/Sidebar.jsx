@@ -1,4 +1,4 @@
-import { LayoutDashboard, Database, RefreshCw, UserPlus, Building2, History, LogOut, Settings, User, Store, ClipboardList } from 'lucide-react';
+import { LayoutDashboard, Database, RefreshCw, UserPlus, Building2, History, LogOut, Settings, User, Store, ClipboardList, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const ALL_ITEMS = [
@@ -16,7 +16,7 @@ const ALL_ITEMS = [
 const ROLE_LABEL = { admin: 'Administrador', manager: 'Manager', comercial: 'Comercial' };
 const ROLE_DOT   = { admin: 'bg-google-blue', manager: 'bg-purple-500', comercial: 'bg-green-500' };
 
-export default function Sidebar({ activeSection, onNavigate }) {
+export default function Sidebar({ activeSection, onNavigate, onOpenAI }) {
   const { currentUser, hasAccess, logout } = useAuth();
 
   const visibleItems = ALL_ITEMS.filter(item => hasAccess(item.id));
@@ -53,10 +53,11 @@ export default function Sidebar({ activeSection, onNavigate }) {
       )}
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5">
+      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
         <p className="px-3 mb-2 text-xs font-medium text-google-gray uppercase tracking-wider">
           Menú principal
         </p>
+
         {visibleItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeSection === item.id;
@@ -77,6 +78,18 @@ export default function Sidebar({ activeSection, onNavigate }) {
             </button>
           );
         })}
+
+        {/* Asistente IA — visible para todos los roles, sin filtro de permisos */}
+        <button
+          onClick={onOpenAI}
+          className="sidebar-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm font-medium text-google-gray hover:bg-google-bg hover:text-google-dark"
+        >
+          <Sparkles size={18} />
+          <span className="flex-1 leading-tight">Asistente Personal</span>
+          <span className="text-[10px] font-bold bg-google-blue text-white rounded-full px-1.5 py-0.5 leading-none">
+            IA
+          </span>
+        </button>
       </nav>
 
       {/* Footer */}
