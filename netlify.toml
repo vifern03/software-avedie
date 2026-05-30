@@ -1,9 +1,9 @@
 [build]
   command   = "npm run build"
   publish   = "dist"
+  functions = "netlify/functions"
 
-# SPA fallback — redirige cualquier ruta al index.html
-[[redirects]]
-  from   = "/*"
-  to     = "/index.html"
-  status = 200
+[dev]
+  command    = "npm run dev"
+  targetPort = 5173
+  port       = 8888

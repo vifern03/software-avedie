@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function LoginPage() {
@@ -7,17 +7,23 @@ export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
-  const [error, setError]     = useState(false);
-  const [shake, setShake]     = useState(false);
+  const [error,    setError]    = useState(false);
+  const [shake,    setShake]    = useState(false);
+  const [loading,  setLoading]  = useState(false);
 
-  const handleSubmit = (e) => {
+  // login es async (hashea la contraseña antes de comparar), por lo que handleSubmit también
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    const ok = login(username.trim(), password);
+    if (loading) return;
+    setLoading(true);
+    setError(false);
+    const ok = await login(username.trim(), password);
     if (!ok) {
       setError(true);
       setShake(true);
       setTimeout(() => setShake(false), 500);
     }
+    setLoading(false);
   };
 
   return (
@@ -51,6 +57,7 @@ export default function LoginPage() {
               placeholder="Introduce tu usuario"
               autoComplete="username"
               autoFocus
+              disabled={loading}
             />
           </div>
 
@@ -64,6 +71,7 @@ export default function LoginPage() {
                 className={`input-field w-full pr-10 ${error ? '!border-red-400' : ''}`}
                 placeholder="Introduce tu contraseña"
                 autoComplete="current-password"
+                disabled={loading}
               />
               <button
                 type="button"
@@ -83,8 +91,12 @@ export default function LoginPage() {
             </div>
           )}
 
-          <button type="submit" className="btn-primary w-full mt-2">
-            Iniciar Sesión
+          <button
+            type="submit"
+            disabled={loading}
+            className="btn-primary w-full mt-2 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+          >
+            {loading ? <><Loader2 size={15} className="animate-spin" /><span>Verificando...</span></> : 'Iniciar Sesión'}
           </button>
         </form>
 

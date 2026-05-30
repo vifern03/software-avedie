@@ -1,12 +1,16 @@
 import { useState, useRef, useEffect } from 'react';
 import { Sparkles, X, Send, Paperclip } from 'lucide-react';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const SYSTEM_PROMPT =
-  'Eres el asistente de IA de Grupo Avedie, empresa española líder en el sector asegurador y financiero. ' +
-  'Ayudas a los comerciales y gestores del CRM interno con tareas profesionales: redacción de correos formales, ' +
-  'análisis de documentos, traducciones corporativas, revisión de facturas y consultas generales de negocio. ' +
-  'Responde siempre en español con tono profesional, conciso y orientado al cliente empresarial.';
+// La llamada a Gemini se realiza a través de la Netlify Function /gemini-proxy.
+// La API key NUNCA sale al bundle del cliente — vive en process.env.GEMINI_API_KEY
+// en el servidor de Netlify. Para desarrollo local usa `netlify dev` (puerto 8888).
+const PROXY_URL = '/.netlify/functions/gemini-proxy';
+
+// Máximo de adjuntos: 4 MB → base64 ~5.3 MB, dentro del límite de 6 MB de Netlify Functions
+const MAX_FILE_MB = 4;
+
+// Turnos de conversación que se envían al modelo (evita payloads infinitos)
+const MAX_HISTORY_TURNS = 20;
 
 const QUICK_ACTIONS = [
   {
@@ -27,7 +31,7 @@ function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onload  = () => resolve(reader.result.split(',')[1]);
     reader.onerror = reject;
   });
 }
@@ -48,16 +52,17 @@ function TypingIndicator() {
   );
 }
 
-// Props: isOpen (bool), onOpenChange (fn(bool)) — estado controlado desde App.jsx
+// Props: isOpen (bool), onOpenChange (fn) — estado controlado desde App.jsx
 export default function AIAssistant({ isOpen, onOpenChange }) {
-  const [messages, setMessages] = useState([]);
-  const [inputText, setInputText] = useState('');
+  const [messages,     setMessages]     = useState([]);
+  const [inputText,    setInputText]    = useState('');
   const [attachedFile, setAttachedFile] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading,    setIsLoading]    = useState(false);
+  const [fileError,    setFileError]    = useState('');
 
   const messagesEndRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const textareaRef = useRef(null);
+  const fileInputRef   = useRef(null);
+  const textareaRef    = useRef(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -70,10 +75,19 @@ export default function AIAssistant({ isOpen, onOpenChange }) {
     ta.style.height = Math.min(ta.scrollHeight, 128) + 'px';
   };
 
+  // M-2: Validación de tamaño antes de FileReader
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
-    if (file) setAttachedFile(file);
     e.target.value = '';
+    if (!file) return;
+
+    if (file.size > MAX_FILE_MB * 1024 * 1024) {
+      setFileError(`El archivo supera el límite de ${MAX_FILE_MB} MB. Adjunta un archivo más pequeño.`);
+      setTimeout(() => setFileError(''), 4000);
+      return;
+    }
+    setFileError('');
+    setAttachedFile(file);
   };
 
   const applyQuickAction = (template) => {
@@ -88,56 +102,52 @@ export default function AIAssistant({ isOpen, onOpenChange }) {
     const text = inputText.trim();
     if ((!text && !attachedFile) || isLoading) return;
 
-    const userMsg = {
-      role: 'user',
-      content: text,
-      fileName: attachedFile?.name ?? null,
-    };
-
+    const userMsg    = { role: 'user', content: text, fileName: attachedFile?.name ?? null };
     const currentFile = attachedFile;
 
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages(prev => [...prev, userMsg]);
     setInputText('');
     setAttachedFile(null);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
     setIsLoading(true);
 
     try {
-      const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      // R-4: Limitar historial a los últimos MAX_HISTORY_TURNS turnos
+      const recentMessages = messages.slice(-MAX_HISTORY_TURNS);
+      const history = recentMessages.map(m => ({
+        role:  m.role,
+        parts: [{ text: m.content || ' ' }],
+      }));
 
-      const history = [
-        { role: 'user',  parts: [{ text: SYSTEM_PROMPT }] },
-        { role: 'model', parts: [{ text: 'Entendido. Estoy listo para asistirte como asistente de Grupo Avedie.' }] },
-        ...messages.map((m) => ({
-          role: m.role,
-          parts: [{ text: m.content || ' ' }],
-        })),
-      ];
+      // Construir payload para el proxy
+      const payload = { text, history };
 
-      const chat = model.startChat({ history });
-
-      const parts = [];
-      if (text) parts.push({ text });
       if (currentFile) {
         const base64 = await fileToBase64(currentFile);
-        parts.push({ inlineData: { mimeType: currentFile.type, data: base64 } });
+        payload.file = { mimeType: currentFile.type, data: base64 };
       }
 
-      const result = await chat.sendMessage(parts);
-      const responseText = result.response.text();
+      // C-3: La llamada va al proxy — la API key nunca está en el cliente
+      const res = await fetch(PROXY_URL, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
+      });
 
-      setMessages((prev) => [...prev, { role: 'model', content: responseText }]);
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+
+      setMessages(prev => [...prev, { role: 'model', content: data.response }]);
     } catch (err) {
-      console.error('Gemini error:', err);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'model',
-          content: 'Lo siento, ha ocurrido un error al contactar con el asistente. Comprueba la conexión o la clave API e inténtalo de nuevo.',
-          isError: true,
-        },
-      ]);
+      console.error('AI proxy error:', err.message || err);
+      setMessages(prev => [...prev, {
+        role:    'model',
+        content: 'Lo siento, ha ocurrido un error al contactar con el asistente. Comprueba la conexión e inténtalo de nuevo.',
+        isError: true,
+      }]);
     } finally {
       setIsLoading(false);
     }
@@ -154,14 +164,12 @@ export default function AIAssistant({ isOpen, onOpenChange }) {
 
   return (
     <>
-      {/* Botón flotante + tooltip (se ocultan cuando el panel está abierto) */}
+      {/* Botón flotante + tooltip — ocultos cuando el panel está abierto */}
       {!isOpen && (
         <div className="fixed bottom-6 right-6 z-50 flex flex-col items-center gap-2 pointer-events-none">
-          {/* Tooltip animado */}
           <div className="ai-float bg-slate-900/90 text-white text-xs font-medium rounded-lg py-1.5 px-3 shadow-lg whitespace-nowrap select-none">
             ✨ ¿Te ayudo con una gestión?
           </div>
-          {/* Botón trigger */}
           <button
             onClick={() => onOpenChange(true)}
             className="pointer-events-auto w-14 h-14 bg-google-blue hover:bg-google-blue-dark text-white rounded-full shadow-google flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95"
@@ -174,10 +182,7 @@ export default function AIAssistant({ isOpen, onOpenChange }) {
 
       {/* Backdrop */}
       {isOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/10"
-          onClick={() => onOpenChange(false)}
-        />
+        <div className="fixed inset-0 z-40 bg-black/10" onClick={() => onOpenChange(false)} />
       )}
 
       {/* Panel lateral deslizante */}
@@ -259,16 +264,22 @@ export default function AIAssistant({ isOpen, onOpenChange }) {
           ))}
         </div>
 
+        {/* Alerta de tamaño de archivo */}
+        {fileError && (
+          <div className="mx-4 mb-1.5 flex-shrink-0">
+            <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-1.5">
+              {fileError}
+            </p>
+          </div>
+        )}
+
         {/* Vista previa del adjunto */}
         {attachedFile && (
           <div className="px-4 pb-1.5 flex-shrink-0">
             <div className="flex items-center gap-2 bg-google-blue-light border border-google-blue/30 text-google-blue rounded-lg px-3 py-1.5 text-xs font-medium">
               <Paperclip size={12} className="flex-shrink-0" />
               <span className="flex-1 truncate">{attachedFile.name}</span>
-              <button
-                onClick={() => setAttachedFile(null)}
-                className="hover:text-red-600 transition-colors flex-shrink-0"
-              >
+              <button onClick={() => setAttachedFile(null)} className="hover:text-red-600 transition-colors flex-shrink-0">
                 <X size={12} />
               </button>
             </div>
@@ -287,7 +298,7 @@ export default function AIAssistant({ isOpen, onOpenChange }) {
           <button
             onClick={() => fileInputRef.current?.click()}
             className="flex-shrink-0 text-google-gray hover:text-google-blue transition-colors p-2 rounded-lg hover:bg-google-blue-light mb-0.5"
-            title="Adjuntar imagen o PDF"
+            title={`Adjuntar imagen o PDF (máx. ${MAX_FILE_MB} MB)`}
           >
             <Paperclip size={18} />
           </button>

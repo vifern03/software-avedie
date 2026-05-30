@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { initializeDB } from '../lib/initDB';
+import { hashPassword } from '../lib/crypto';
 
 const AuthContext = createContext(null);
 
@@ -69,6 +70,25 @@ export function AuthProvider({ children }) {
         if (row.clave === 'user_permissions') setUserPermissions(row.valor || {});
       }
 
+      // ── C-2: Verificación de integridad de sesión ─────────────────────────
+      // Compara el rol almacenado en localStorage con el registro real de Supabase.
+      // Si hay desajuste (p.ej., el usuario editó su localStorage manualmente),
+      // se fuerza logout inmediato.
+      const storedRaw = localStorage.getItem(SESSION_KEY);
+      if (storedRaw) {
+        try {
+          const stored = JSON.parse(storedRaw);
+          const dbUser = (usersData || []).find(u => u.username === stored.username);
+          if (!dbUser || dbUser.role !== stored.role) {
+            localStorage.removeItem(SESSION_KEY);
+            setCurrentUser(null);
+          }
+        } catch {
+          localStorage.removeItem(SESSION_KEY);
+          setCurrentUser(null);
+        }
+      }
+
       setIsLoading(false);
     }
     boot();
@@ -76,9 +96,30 @@ export function AuthProvider({ children }) {
 
   // ── Sesión ──────────────────────────────────────────────────────────────────
 
-  const login = useCallback((username, password) => {
-    const found = users.find(u => u.username === username && u.password === password);
+  // login es async: hashea la contraseña introducida y la compara con el hash en BD.
+  // Migración silenciosa: si el usuario aún tiene contraseña en plain text,
+  // la actualiza a SHA-256 en Supabase sin interrumpir el flujo.
+  const login = useCallback(async (username, password) => {
+    const hashedAttempt = await hashPassword(password);
+
+    // 1. Intentar con contraseña ya hasheada (caso normal)
+    let found = users.find(u => u.username === username && u.password === hashedAttempt);
+
+    // 2. Migración: intentar con contraseña en plain text (instalaciones previas)
+    if (!found) {
+      const legacy = users.find(u => u.username === username && u.password === password);
+      if (legacy) {
+        // Actualizar a SHA-256 en Supabase y en estado local de forma silenciosa
+        await supabase.from('usuarios').update({ password: hashedAttempt }).eq('username', username);
+        setUsers(prev => prev.map(u =>
+          u.username === username ? { ...u, password: hashedAttempt } : u
+        ));
+        found = { ...legacy, password: hashedAttempt };
+      }
+    }
+
     if (!found) return false;
+
     const { password: _pw, ...safeUser } = found;
     setCurrentUser(safeUser);
     localStorage.setItem(SESSION_KEY, JSON.stringify(safeUser));
@@ -146,11 +187,11 @@ export function AuthProvider({ children }) {
 
   // ── Gestión de usuarios ─────────────────────────────────────────────────────
 
-  const addUser = useCallback((username, password, role, displayName) => {
+  const addUser = useCallback((username, hashedPassword, role, displayName) => {
     if (users.some(u => u.username === username)) return false;
     const newUser = {
       username,
-      password,
+      password:      hashedPassword,
       role,
       displayName:   displayName || username,
       isUndeletable: false,
@@ -158,7 +199,7 @@ export function AuthProvider({ children }) {
     };
     setUsers(prev => [...prev, newUser]);
     supabase.from('usuarios')
-      .insert([{ username, password, role, display_name: displayName || username, is_undeletable: false, security_pin: null }])
+      .insert([{ username, password: hashedPassword, role, display_name: displayName || username, is_undeletable: false, security_pin: null }])
       .then(({ error }) => {
         if (error) {
           console.error('addUser:', error);
@@ -176,14 +217,18 @@ export function AuthProvider({ children }) {
     setUsers(updated);
 
     const newUsername = updates.username || username;
-    supabase.from('usuarios')
-      .update({
-        username:     newUsername,
-        password:     updates.password,
-        role:         updates.role,
-        display_name: updates.displayName || newUsername,
-      })
-      .eq('username', username)
+
+    // Solo incluir password en el PATCH si se ha proporcionado explícitamente
+    const dbUpdate = {
+      username:     newUsername,
+      role:         updates.role,
+      display_name: updates.displayName || newUsername,
+    };
+    if (updates.password !== undefined) {
+      dbUpdate.password = updates.password;
+    }
+
+    supabase.from('usuarios').update(dbUpdate).eq('username', username)
       .then(({ error }) => { if (error) console.error('editUser:', error); });
 
     if (currentUser?.username === username) {

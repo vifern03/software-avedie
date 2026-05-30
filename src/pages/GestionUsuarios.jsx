@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import {
   Shield, Briefcase, UserCheck, Users, CheckCircle,
-  Eye, EyeOff, Pencil, Trash2, Plus, X, Save, Lock, RotateCcw, User, ShieldAlert,
+  Pencil, Trash2, Plus, X, Save, Lock, RotateCcw, User, ShieldAlert, KeyRound,
 } from 'lucide-react';
 import { useAuth, DEFAULT_PERMISSIONS } from '../context/AuthContext';
+import { hashPassword } from '../lib/crypto';
 import PinModal from '../components/PinModal';
 
 const PAGES = [
@@ -57,16 +58,20 @@ function Toggle({ checked, onChange, disabled }) {
   );
 }
 
+// isEdit determina si es creación (contraseña obligatoria) o edición (opcional para restablecerla)
 function UserFormModal({ title, initialData, onSave, onClose }) {
+  const isEdit = !!initialData;
   const [form, setForm] = useState(
-    initialData || { username: '', password: '', role: 'comercial', displayName: '' }
+    initialData
+      ? { ...initialData, password: '' }  // edit: contraseña vacía por defecto
+      : { username: '', password: '', role: 'comercial', displayName: '' }
   );
   const [errors, setErrors] = useState({});
 
   const validate = () => {
     const e = {};
     if (!form.username.trim()) e.username = 'El nombre de usuario es obligatorio';
-    if (!form.password.trim()) e.password = 'La contraseña es obligatoria';
+    if (!isEdit && !form.password.trim()) e.password = 'La contraseña es obligatoria para nuevos usuarios';
     return e;
   };
 
@@ -88,9 +93,7 @@ function UserFormModal({ title, initialData, onSave, onClose }) {
 
         <div className="px-6 py-5 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-google-dark mb-1.5">
-              Nombre de usuario
-            </label>
+            <label className="block text-xs font-medium text-google-dark mb-1.5">Nombre de usuario</label>
             <input
               type="text"
               value={form.username}
@@ -100,9 +103,7 @@ function UserFormModal({ title, initialData, onSave, onClose }) {
               }`}
               placeholder="ej. comercial2"
             />
-            {errors.username && (
-              <p className="text-xs text-red-500 mt-1">{errors.username}</p>
-            )}
+            {errors.username && <p className="text-xs text-red-500 mt-1">{errors.username}</p>}
           </div>
 
           <div>
@@ -123,19 +124,26 @@ function UserFormModal({ title, initialData, onSave, onClose }) {
 
           <div>
             <label className="block text-xs font-medium text-google-dark mb-1.5">
-              Contraseña
+              {isEdit ? 'Nueva contraseña' : 'Contraseña'}
             </label>
-            <input
-              type="text"
-              value={form.password}
-              onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-              className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 ${
-                errors.password ? 'border-red-400' : 'border-google-border'
-              }`}
-              placeholder="contraseña"
-            />
-            {errors.password && (
-              <p className="text-xs text-red-500 mt-1">{errors.password}</p>
+            <div className="relative">
+              <KeyRound size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray" />
+              <input
+                type="password"
+                value={form.password}
+                onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                className={`w-full pl-9 pr-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 ${
+                  errors.password ? 'border-red-400' : 'border-google-border'
+                }`}
+                placeholder={isEdit ? 'Dejar vacío para no cambiar' : 'Contraseña de acceso'}
+                autoComplete="new-password"
+              />
+            </div>
+            {errors.password && <p className="text-xs text-red-500 mt-1">{errors.password}</p>}
+            {isEdit && (
+              <p className="text-xs text-google-gray mt-1">
+                Las contraseñas se almacenan cifradas con SHA-256.
+              </p>
             )}
           </div>
 
@@ -154,9 +162,7 @@ function UserFormModal({ title, initialData, onSave, onClose }) {
         </div>
 
         <div className="px-6 pb-5 flex justify-end gap-3">
-          <button onClick={onClose} className="btn-secondary text-sm px-4 py-2">
-            Cancelar
-          </button>
+          <button onClick={onClose} className="btn-secondary text-sm px-4 py-2">Cancelar</button>
           <button
             onClick={handleSubmit}
             className="flex items-center gap-2 bg-google-blue text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors font-medium"
@@ -286,7 +292,7 @@ function SecurityPinModal({ expectedPin, onSuccess, onClose }) {
             onChange={(e) => { setInput(e.target.value); setError(''); }}
             onKeyDown={(e) => e.key === 'Enter' && handleConfirm()}
             className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-300 ${error ? 'border-red-400' : 'border-google-border'}`}
-            placeholder="Introduce el PIN de 6 dígitos"
+            placeholder="Introduce el PIN"
             inputMode="numeric"
             maxLength={6}
             autoFocus
@@ -328,7 +334,6 @@ export default function GestionUsuarios() {
   const [showPin, setShowPin]                       = useState(false);
   const [securityPinChallenge, setSecurityPinChallenge] = useState(null);
   const [pendingAction, setPendingAction]       = useState(null);
-  const [visiblePasswords, setVisiblePasswords] = useState(new Set());
   const [userFormState, setUserFormState]       = useState(null);
   const [dupError, setDupError]                 = useState(false);
   const [showChangePinModal, setShowChangePinModal] = useState(false);
@@ -372,19 +377,15 @@ export default function GestionUsuarios() {
       resetUserPermissions(pendingAction.username);
       showFlash('saved');
 
-    } else if (type === 'showPassword') {
-      setVisiblePasswords(prev => new Set([...prev, pendingAction.username]));
-
     } else if (type === 'editUser') {
       const user = users.find(u => u.username === pendingAction.username);
       setUserFormState({
         mode: 'edit',
-        data: { username: user.username, password: user.password, role: user.role, displayName: user.displayName || '' },
+        data: { username: user.username, password: '', role: user.role, displayName: user.displayName || '' },
       });
 
     } else if (type === 'deleteUser') {
       deleteUser(pendingAction.username);
-      setVisiblePasswords(prev => { const s = new Set(prev); s.delete(pendingAction.username); return s; });
       showFlash('deleted');
 
     } else if (type === 'newUser') {
@@ -394,19 +395,25 @@ export default function GestionUsuarios() {
     setPendingAction(null);
   };
 
-  const handleSaveUser = (formData) => {
+  // handleSaveUser es async: hashea la contraseña antes de persistir
+  const handleSaveUser = async (formData) => {
     if (userFormState.mode === 'new') {
-      const ok = addUser(formData.username, formData.password, formData.role, formData.displayName || formData.username);
+      const hashedPw = await hashPassword(formData.password);
+      const ok = addUser(formData.username, hashedPw, formData.role, formData.displayName || formData.username);
       if (!ok) { setDupError(true); return; }
       showFlash('created');
     } else {
       const originalUsername = userFormState.data.username;
-      const ok = editUser(originalUsername, {
+      const updates = {
         username:    formData.username,
-        password:    formData.password,
         role:        formData.role,
         displayName: formData.displayName || formData.username,
-      });
+      };
+      // Solo actualizar contraseña si el admin introdujo una nueva
+      if (formData.password.trim()) {
+        updates.password = await hashPassword(formData.password);
+      }
+      const ok = editUser(originalUsername, updates);
       if (ok === false) { setDupError(true); return; }
       showFlash('saved');
     }
@@ -428,7 +435,6 @@ export default function GestionUsuarios() {
     return acc;
   }, {});
 
-  // Non-admin users eligible for individual permission overrides
   const nonAdminUsers = sortedUsers.filter(u => u.role !== 'admin');
 
   return (
@@ -534,8 +540,6 @@ export default function GestionUsuarios() {
 
               <div className="grid grid-cols-4 lg:grid-cols-8 divide-x divide-google-border">
                 {PAGES.map((page) => {
-                  // Usa DEFAULT_PERMISSIONS como fallback para claves añadidas
-                  // después de que se grabara la configuración en Supabase
                   const active = isAdmin
                     ? true
                     : !!(permissions[roleId]?.[page.id] ?? DEFAULT_PERMISSIONS[roleId]?.[page.id]);
@@ -586,7 +590,6 @@ export default function GestionUsuarios() {
 
               return (
                 <div key={user.username} className="px-5 py-4">
-                  {/* User header row */}
                   <div className="flex items-center gap-3 mb-3">
                     <div className={`w-8 h-8 rounded-lg ${meta.bg} border ${meta.border} flex items-center justify-center flex-shrink-0`}>
                       <Icon size={14} className={meta.iconColor} />
@@ -612,7 +615,6 @@ export default function GestionUsuarios() {
                     )}
                   </div>
 
-                  {/* Page toggles */}
                   <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
                     {PAGES.map((page) => {
                       const isOverridden = userOverrides[page.id] !== undefined;
@@ -662,14 +664,14 @@ export default function GestionUsuarios() {
         </div>
       )}
 
-      {/* Credentials table */}
+      {/* Tabla de usuarios — contraseñas siempre ocultas (no recuperables) */}
       <div className="card overflow-hidden">
         <div className="px-5 py-4 border-b border-google-border bg-amber-50 flex items-center gap-3">
           <Users size={18} className="text-amber-600 flex-shrink-0" />
           <div>
-            <p className="text-sm font-semibold text-amber-800">Credenciales del sistema</p>
+            <p className="text-sm font-semibold text-amber-800">Usuarios del sistema</p>
             <p className="text-xs text-amber-600">
-              Las contraseñas están ocultas por defecto. Usa el ojo para revelarlas (requiere PIN).
+              Las contraseñas están cifradas con SHA-256 y no son recuperables. Para cambiarla, usa el botón Editar.
             </p>
           </div>
         </div>
@@ -678,7 +680,6 @@ export default function GestionUsuarios() {
           {sortedUsers.map((user) => {
             const meta        = ROLE_META[user.role] || ROLE_META.comercial;
             const Icon        = meta.icon;
-            const isVisible   = visiblePasswords.has(user.username);
             const isProtected = user.username === 'Adolfo' || !!user.isUndeletable;
 
             return (
@@ -686,13 +687,13 @@ export default function GestionUsuarios() {
                 key={user.username}
                 className="flex items-center gap-4 px-5 py-3.5 hover:bg-google-bg transition-colors"
               >
-                {/* Identity */}
+                {/* Identidad */}
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <div className={`w-8 h-8 rounded-lg ${meta.bg} border ${meta.border} flex items-center justify-center flex-shrink-0`}>
                     <Icon size={14} className={meta.iconColor} />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-google-dark truncate flex items-center gap-1.5">
+                    <p className="text-sm font-medium text-google-dark truncate">
                       {user.displayName || user.username}
                     </p>
                     <p className="text-xs text-google-gray">
@@ -701,34 +702,17 @@ export default function GestionUsuarios() {
                   </div>
                 </div>
 
-                {/* Password reveal */}
+                {/* Contraseña — nunca visible, cifrada en BD */}
                 <div className="flex items-center gap-2">
-                  <code className="text-sm text-google-dark bg-gray-100 px-2.5 py-1 rounded font-mono min-w-[90px] text-center">
-                    {isVisible ? user.password : '••••••••'}
+                  <code className="text-sm text-google-gray bg-gray-100 px-2.5 py-1 rounded font-mono min-w-[90px] text-center select-none">
+                    ••••••••
                   </code>
-                  <button
-                    onClick={() => {
-                      if (isVisible) {
-                        setVisiblePasswords(prev => {
-                          const s = new Set(prev); s.delete(user.username); return s;
-                        });
-                      } else if (user.securityPin) {
-                        setSecurityPinChallenge({
-                          expectedPin: user.securityPin,
-                          onSuccess: () => setVisiblePasswords(prev => new Set([...prev, user.username])),
-                        });
-                      } else {
-                        requestAction({ type: 'showPassword', username: user.username });
-                      }
-                    }}
-                    className="p-1.5 text-google-gray hover:text-google-dark transition-colors rounded-md hover:bg-gray-100"
-                    title={isVisible ? 'Ocultar contraseña' : 'Revelar contraseña'}
-                  >
-                    {isVisible ? <EyeOff size={15} /> : <Eye size={15} />}
-                  </button>
+                  <span className="text-xs text-google-gray bg-gray-50 border border-google-border px-2 py-1 rounded">
+                    SHA-256
+                  </span>
                 </div>
 
-                {/* Action buttons */}
+                {/* Botones de acción */}
                 <div className="flex items-center gap-1">
                   <button
                     onClick={() => {
@@ -736,10 +720,9 @@ export default function GestionUsuarios() {
                         setSecurityPinChallenge({
                           expectedPin: user.securityPin,
                           onSuccess: () => {
-                            const u = users.find((x) => x.username === user.username);
                             setUserFormState({
                               mode: 'edit',
-                              data: { username: u.username, password: u.password, role: u.role, displayName: u.displayName || '' },
+                              data: { username: user.username, password: '', role: user.role, displayName: user.displayName || '' },
                             });
                           },
                         });
@@ -748,7 +731,7 @@ export default function GestionUsuarios() {
                       }
                     }}
                     className="p-1.5 text-google-blue hover:bg-blue-50 rounded-md transition-colors"
-                    title="Editar usuario"
+                    title="Editar usuario / Restablecer contraseña"
                   >
                     <Pencil size={14} />
                   </button>

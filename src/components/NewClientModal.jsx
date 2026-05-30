@@ -54,6 +54,8 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData }) {
 
   const dniInputRef     = useRef(null);
   const facturaInputRef = useRef(null);
+  // M-1: bandera de control para bloquear doble envío antes del re-render
+  const submittingRef   = useRef(false);
 
   const set = (field, value) => {
     setForm((f) => {
@@ -71,9 +73,17 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData }) {
     setErrors((e) => ({ ...e, [field]: false }));
   };
 
+  // M-2: validar tamaño antes de FileReader (máx. 5 MB para adjuntos de contrato)
   const handleFileChange = (e, setFileName, setBase64) => {
     const file = e.target.files[0];
     if (!file) { setFileName(''); setBase64(''); return; }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('El archivo supera el límite de 5 MB. Adjunta un documento más pequeño.');
+      e.target.value = '';
+      setFileName('');
+      setBase64('');
+      return;
+    }
     setFileName(file.name);
     const reader = new FileReader();
     reader.onload = (ev) => setBase64(ev.target.result);
@@ -93,12 +103,15 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData }) {
     return Object.keys(e).length === 0;
   };
 
+  // M-1: submittingRef bloquea el segundo disparo antes de que React deshabilite el botón
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!validate()) return;
+    if (submittingRef.current || !validate()) return;
+    submittingRef.current = true;
     setSaved(true);
     setTimeout(() => {
       onSave({ ...form, tipo, dni_escaneado: dniBase64, ultima_factura: facturaBase64 });
+      submittingRef.current = false;
       onClose();
     }, 900);
   };

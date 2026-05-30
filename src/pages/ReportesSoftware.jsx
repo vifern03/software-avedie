@@ -507,7 +507,7 @@ function ConfirmacionCell({ valor }) {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ReportesSoftware() {
   const { currentUser } = useAuth();
-  const isVictor = currentUser?.username === 'Victor';
+  const isAdmin = currentUser?.role === 'admin';
 
   const [reportes,        setReportes]        = useState([]);
   const [loading,         setLoading]         = useState(true);
@@ -594,12 +594,12 @@ export default function ReportesSoftware() {
     if (error) { console.error('[reportes] DELETE:', error.message); await loadReportes(); }
   };
 
-  const visibles = isVictor
+  const visibles = isAdmin
     ? reportes
     : reportes.filter(r => r.creado_por === currentUser?.username);
 
   // Victor: 8 cols | Comercial: 6 cols
-  const colSpan = isVictor ? 8 : 6;
+  const colSpan = isAdmin ? 8 : 6;
 
   return (
     <div className="p-6 space-y-6 max-w-7xl">
@@ -612,7 +612,7 @@ export default function ReportesSoftware() {
             Buzón de Incidencias
           </h1>
           <p className="text-sm text-google-gray mt-1">
-            {isVictor
+            {isAdmin
               ? 'Gestión de todos los reportes de software enviados por el equipo'
               : 'Envía reportes de errores o mejoras al equipo técnico'}
           </p>
@@ -634,7 +634,7 @@ export default function ReportesSoftware() {
       <div className="card overflow-hidden">
         <div className="px-5 py-4 border-b border-google-border flex items-center justify-between">
           <h2 className="text-sm font-semibold text-google-dark">
-            {isVictor ? 'Todos los reportes del equipo' : 'Mis Reportes'}
+            {isAdmin ? 'Todos los reportes del equipo' : 'Mis Reportes'}
           </h2>
           <span className="text-xs text-google-gray">
             {visibles.length} {visibles.length === 1 ? 'reporte' : 'reportes'}
@@ -649,12 +649,12 @@ export default function ReportesSoftware() {
               <thead>
                 <tr>
                   <th className="table-header">Fecha</th>
-                  {isVictor && <th className="table-header">Comercial</th>}
+                  {isAdmin && <th className="table-header">Comercial</th>}
                   <th className="table-header">Título</th>
                   <th className="table-header">Descripción</th>
                   <th className="table-header">Estado</th>
                   <th className="table-header">Respuesta</th>
-                  {isVictor && <th className="table-header">Confirmación</th>}
+                  {isAdmin && <th className="table-header">Confirmación</th>}
                   <th className="table-header">Acciones</th>
                 </tr>
               </thead>
@@ -662,7 +662,7 @@ export default function ReportesSoftware() {
                 {visibles.length === 0 ? (
                   <tr>
                     <td colSpan={colSpan} className="text-center py-12 text-google-gray text-sm">
-                      {isVictor
+                      {isAdmin
                         ? 'No hay reportes enviados todavía.'
                         : 'Aún no has enviado ningún reporte. Pulsa "Nuevo Reporte" para empezar.'}
                     </td>
@@ -675,7 +675,7 @@ export default function ReportesSoftware() {
                       <td className="table-cell tabular-nums text-xs text-google-gray whitespace-nowrap">{r.fecha}</td>
 
                       {/* Comercial (solo Victor) */}
-                      {isVictor && (
+                      {isAdmin && (
                         <td className="table-cell font-medium text-google-dark whitespace-nowrap">{r.creado_por}</td>
                       )}
 
@@ -700,7 +700,7 @@ export default function ReportesSoftware() {
                       </td>
 
                       {/* Confirmación (solo Victor) */}
-                      {isVictor && (
+                      {isAdmin && (
                         <td className="table-cell">
                           <ConfirmacionCell valor={r.confirmacion_usuario} />
                         </td>
@@ -708,7 +708,7 @@ export default function ReportesSoftware() {
 
                       {/* Acciones */}
                       <td className="table-cell">
-                        {isVictor ? (
+                        {isAdmin ? (
                           // ── Acciones de Victor ─────────────────────────────
                           <div className="flex items-center gap-1.5">
                             {r.estado === 'Pendiente' && (
