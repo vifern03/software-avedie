@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { History, UserPlus, Building2, RefreshCw, Edit, AlertTriangle, Trash2, CheckCircle } from 'lucide-react';
+import { History, UserPlus, Building2, RefreshCw, Edit, AlertTriangle, Trash2, CheckCircle, Store } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 
@@ -11,6 +11,7 @@ const typeConfig = {
   'Renovación':    { icon: RefreshCw,     color: 'bg-teal-100 text-teal-700',     dot: 'bg-teal-500'    },
   'Alerta':        { icon: AlertTriangle, color: 'bg-orange-100 text-orange-700', dot: 'bg-orange-500'  },
   'Eliminación':   { icon: Trash2,        color: 'bg-red-100 text-red-700',       dot: 'bg-red-500'     },
+  'Visita':        { icon: Store,         color: 'bg-cyan-100 text-cyan-700',     dot: 'bg-cyan-500'    },
 };
 
 const renderDesc = (text) => {
@@ -140,6 +141,7 @@ export default function HistorialActividades() {
             <option value="Actualización">Actualización</option>
             <option value="Activación">Activación</option>
             <option value="Eliminación">Eliminación</option>
+            <option value="Visita">Visita</option>
           </select>
           <button
             onClick={() => clearActividades()}

@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { Store, Plus, CalendarDays, Users, Briefcase, Search, Trash2, Pencil, CheckCircle, X } from 'lucide-react';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
+import { Store, Plus, CalendarDays, Users, Briefcase, Search, Trash2, Pencil, CheckCircle, X, FileSpreadsheet } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
@@ -14,8 +16,18 @@ const TIPOS_GESTION = [
   'Otro',
 ];
 
-const todayStr  = () => new Date().toISOString().split('T')[0];
-const nowTime   = () => {
+const PUNTOS_VENTA = ['Valladolid', 'Palencia'];
+
+const _d    = new Date();
+const _YEAR = _d.getFullYear();
+const _MON  = _d.getMonth();
+const monthName = (offset) => {
+  const m = new Date(_YEAR, _MON + offset, 1).toLocaleString('es-ES', { month: 'long' });
+  return m.charAt(0).toUpperCase() + m.slice(1);
+};
+
+const todayStr = () => new Date().toISOString().split('T')[0];
+const nowTime  = () => {
   const n = new Date();
   return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
 };
@@ -23,14 +35,15 @@ const nowTime   = () => {
 function VisitaModal({ onClose, onSave, initialData }) {
   const isEdit = !!initialData;
   const [form, setForm] = useState({
-    fecha:     initialData?.fecha     || todayStr(),
-    hora:      initialData?.hora      || nowTime(),
-    dni:       initialData?.dni       || '',
-    nombre:    initialData?.nombre    || '',
-    telefono:  initialData?.telefono  || '',
-    mail:      initialData?.mail      || '',
-    tipo:      initialData?.tipo      || '',
-    tipo_otro: initialData?.tipo_otro || '',
+    fecha:       initialData?.fecha       || todayStr(),
+    hora:        initialData?.hora        || nowTime(),
+    dni:         initialData?.dni         || '',
+    nombre:      initialData?.nombre      || '',
+    punto_venta: initialData?.punto_venta || '',
+    telefono:    initialData?.telefono    || '',
+    mail:        initialData?.mail        || '',
+    tipo:        initialData?.tipo        || '',
+    tipo_otro:   initialData?.tipo_otro   || '',
   });
   const [errors, setErrors] = useState({});
   const [saved,  setSaved]  = useState(false);
@@ -42,12 +55,12 @@ function VisitaModal({ onClose, onSave, initialData }) {
 
   const validate = () => {
     const e = {};
-    if (!form.fecha.trim())    e.fecha    = true;
-    if (!form.hora.trim())     e.hora     = true;
-    if (!form.dni.trim())      e.dni      = true;
-    if (!form.nombre.trim())   e.nombre   = true;
-    if (!form.telefono.trim()) e.telefono = true;
-    if (!form.tipo)            e.tipo     = true;
+    if (!form.fecha.trim())       e.fecha       = true;
+    if (!form.hora.trim())        e.hora        = true;
+    if (!form.dni.trim())         e.dni         = true;
+    if (!form.nombre.trim())      e.nombre      = true;
+    if (!form.punto_venta)        e.punto_venta = true;
+    if (!form.tipo)               e.tipo        = true;
     if (form.tipo === 'Otro' && !form.tipo_otro.trim()) e.tipo_otro = true;
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -117,12 +130,21 @@ function VisitaModal({ onClose, onSave, initialData }) {
             {errors.nombre && <p className="text-red-500 text-xs mt-1">Obligatorio</p>}
           </div>
 
+          {/* Ubicación */}
+          <div>
+            <label className="block text-xs font-medium text-google-gray mb-1.5">Ubicación (Punto de Venta) *</label>
+            <select value={form.punto_venta} onChange={e => set('punto_venta', e.target.value)} className={ic('punto_venta')}>
+              <option value="">Seleccionar ubicación...</option>
+              {PUNTOS_VENTA.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+            {errors.punto_venta && <p className="text-red-500 text-xs mt-1">Obligatorio</p>}
+          </div>
+
           {/* Teléfono */}
           <div>
-            <label className="block text-xs font-medium text-google-gray mb-1.5">Teléfono *</label>
+            <label className="block text-xs font-medium text-google-gray mb-1.5">Teléfono</label>
             <input type="tel" placeholder="Ej: 612 345 678" value={form.telefono}
-              onChange={e => set('telefono', e.target.value)} className={ic('telefono')} />
-            {errors.telefono && <p className="text-red-500 text-xs mt-1">Obligatorio</p>}
+              onChange={e => set('telefono', e.target.value)} className="input-field" />
           </div>
 
           {/* Mail */}
@@ -201,10 +223,12 @@ export default function RegistroVisitas() {
     if (tableScrollRef.current) tableScrollRef.current.scrollLeft = 0;
   };
 
-  const now         = new Date();
-  const todayISO    = now.toISOString().split('T')[0];
-  const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const mesNombre   = now.toLocaleString('es-ES', { month: 'long' }).replace(/^\w/, c => c.toUpperCase());
+  const now             = new Date();
+  const todayISO        = now.toISOString().split('T')[0];
+  const monthPrefix     = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const prevMonthDate   = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevMonthPrefix = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
+  const mesNombre       = now.toLocaleString('es-ES', { month: 'long' }).replace(/^\w/, c => c.toUpperCase());
 
   const visitasHoy = visitas.filter(v => v.fecha === todayISO).length;
   const visitasMes = visitas.filter(v => v.fecha.startsWith(monthPrefix)).length;
@@ -217,14 +241,15 @@ export default function RegistroVisitas() {
 
   const filtered = visitas
     .filter(v => {
-      const q = search.toLowerCase();
-      const matchSearch     = !search      || v.dni.toLowerCase().includes(q) || v.nombre.toLowerCase().includes(q);
-      const matchTime       = timeFilter === 'hoy' ? v.fecha === todayISO
-                            : timeFilter === 'mes' ? v.fecha.startsWith(monthPrefix)
-                            : true;
-      const matchTipo       = !filterTipo  || v.tipo === filterTipo;
-      const matchFechaDesde = !fechaDesde  || v.fecha >= fechaDesde;
-      const matchFechaHasta = !fechaHasta  || v.fecha <= fechaHasta;
+      const q           = search.toLowerCase();
+      const matchSearch = !search || v.dni.toLowerCase().includes(q) || v.nombre.toLowerCase().includes(q);
+      const matchTime   = timeFilter === 'hoy'          ? v.fecha === todayISO
+                        : timeFilter === 'mes_actual'   ? v.fecha.startsWith(monthPrefix)
+                        : timeFilter === 'mes_anterior' ? v.fecha.startsWith(prevMonthPrefix)
+                        : true;
+      const matchTipo       = !filterTipo || v.tipo === filterTipo;
+      const matchFechaDesde = !fechaDesde || v.fecha >= fechaDesde;
+      const matchFechaHasta = !fechaHasta || v.fecha <= fechaHasta;
       return matchSearch && matchTime && matchTipo && matchFechaDesde && matchFechaHasta;
     })
     .sort((a, b) => {
@@ -244,6 +269,70 @@ export default function RegistroVisitas() {
 
   const tipoDisplay = (v) => v.tipo === 'Otro' ? (v.tipo_otro || 'Otro') : v.tipo;
 
+  const exportVisitasToXLSX = async (data, suffix = '') => {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'CRM Grupo Avedie';
+    workbook.created = new Date();
+
+    const sheet = workbook.addWorksheet('Visitas');
+    sheet.columns = [
+      { header: 'Fecha',           key: 'fecha',          width: 14 },
+      { header: 'Hora',            key: 'hora',           width: 10 },
+      { header: 'DNI / CIF',       key: 'dni',            width: 16, style: { numFmt: '@' } },
+      { header: 'Nombre',          key: 'nombre',         width: 28 },
+      { header: 'Teléfono',        key: 'telefono',       width: 16, style: { numFmt: '@' } },
+      { header: 'Mail',            key: 'mail',           width: 28 },
+      { header: 'Tipo de Gestión', key: 'tipo_display',   width: 22 },
+      { header: 'Punto de Venta',  key: 'punto_venta',    width: 18 },
+      { header: 'Registrado por',  key: 'registrado_por', width: 20 },
+    ];
+
+    const hBorder = { style: 'thin', color: { argb: 'FFBDBDBD' } };
+    sheet.getRow(1).eachCell((cell) => {
+      cell.font      = { bold: true, color: { argb: 'FF1A237E' }, size: 11 };
+      cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8EAF6' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border    = { top: hBorder, left: hBorder, bottom: hBorder, right: hBorder };
+    });
+    sheet.getRow(1).height = 22;
+
+    const dBorder  = { style: 'thin', color: { argb: 'FFE0E0E0' } };
+    const textCols = new Set([3, 5]);
+
+    data.forEach((v) => {
+      const row = sheet.addRow({
+        fecha:          v.fecha           || '',
+        hora:           v.hora            || '',
+        dni:            String(v.dni      || ''),
+        nombre:         v.nombre          || '',
+        telefono:       String(v.telefono || ''),
+        mail:           v.mail            || '',
+        tipo_display:   v.tipo === 'Otro' ? (v.tipo_otro || 'Otro') : (v.tipo || ''),
+        punto_venta:    v.punto_venta     || '',
+        registrado_por: v.registrado_por  || '',
+      });
+      row.eachCell({ includeEmpty: true }, (cell, colNum) => {
+        cell.border    = { top: dBorder, left: dBorder, bottom: dBorder, right: dBorder };
+        cell.alignment = { vertical: 'middle' };
+        if (textCols.has(colNum)) {
+          cell.numFmt = '@';
+          if (typeof cell.value !== 'string') cell.value = String(cell.value ?? '');
+        }
+      });
+    });
+
+    const d   = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const datePart = `${d.getFullYear()}_${pad(d.getMonth() + 1)}_${pad(d.getDate())}`;
+    const filename = `Visitas_Tienda${suffix ? '_' + suffix : ''}_${datePart}.xlsx`;
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    saveAs(
+      new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+      filename
+    );
+  };
+
   return (
     <div className="p-3 md:p-6 space-y-4 md:space-y-6 max-w-7xl">
 
@@ -256,10 +345,22 @@ export default function RegistroVisitas() {
           </h1>
           <p className="text-sm text-google-gray mt-1">Control de visitas y atención presencial en tienda</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-2">
-          <Plus size={16} />
-          <span>Nueva Visita</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => exportVisitasToXLSX(visitas, 'Completo')}
+            className="btn-secondary flex items-center gap-2">
+            <FileSpreadsheet size={15} />
+            <span>Exportar Todo</span>
+          </button>
+          <button onClick={() => exportVisitasToXLSX(filtered, 'Vista')}
+            className="btn-secondary flex items-center gap-2">
+            <FileSpreadsheet size={15} />
+            <span>Exportar Vista Actual</span>
+          </button>
+          <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-2">
+            <Plus size={16} />
+            <span>Nueva Visita</span>
+          </button>
+        </div>
       </div>
 
       {/* Counter cards */}
@@ -310,18 +411,24 @@ export default function RegistroVisitas() {
               </button>
             )}
           </div>
-          <select
-            value={filterTipo}
-            onChange={e => setFilterTipo(e.target.value)}
-            className="input-field h-9 text-xs w-48"
-          >
+          <select value={filterTipo} onChange={e => setFilterTipo(e.target.value)}
+            className="input-field h-9 text-xs w-48">
             <option value="">Todos los tipos</option>
             {TIPOS_GESTION.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
           <div className="flex items-center gap-2">
-            <FilterPill label="Todo"      active={timeFilter === ''}    onClick={() => setTimeFilter('')}                                          />
-            <FilterPill label="Hoy"       active={timeFilter === 'hoy'} onClick={() => { setTimeFilter('hoy'); setFechaDesde(''); setFechaHasta(''); }} />
-            <FilterPill label={mesNombre} active={timeFilter === 'mes'} onClick={() => { setTimeFilter('mes'); setFechaDesde(''); setFechaHasta(''); }} />
+            <FilterPill label="Todo"
+              active={timeFilter === ''}
+              onClick={() => setTimeFilter('')} />
+            <FilterPill label="Hoy"
+              active={timeFilter === 'hoy'}
+              onClick={() => { setTimeFilter('hoy'); setFechaDesde(''); setFechaHasta(''); }} />
+            <FilterPill label={`Este Mes (${monthName(0)})`}
+              active={timeFilter === 'mes_actual'}
+              onClick={() => { setTimeFilter('mes_actual'); setFechaDesde(''); setFechaHasta(''); }} />
+            <FilterPill label={`Mes Anterior (${monthName(-1)})`}
+              active={timeFilter === 'mes_anterior'}
+              onClick={() => { setTimeFilter('mes_anterior'); setFechaDesde(''); setFechaHasta(''); }} />
           </div>
         </div>
         {/* Fila 2: rango de fechas */}
@@ -365,6 +472,7 @@ export default function RegistroVisitas() {
                 <th className="table-header">Teléfono</th>
                 <th className="table-header">Mail</th>
                 <th className="table-header">Tipo de Gestión</th>
+                <th className="table-header">Punto de Venta</th>
                 <th className="table-header">Registrado por</th>
                 <th className="table-header">Acciones</th>
               </tr>
@@ -372,7 +480,7 @@ export default function RegistroVisitas() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-10 text-google-gray text-sm">
+                  <td colSpan={10} className="text-center py-10 text-google-gray text-sm">
                     {visitas.length === 0
                       ? 'No hay visitas registradas. Pulsa "+ Nueva Visita" para empezar.'
                       : 'No se encontraron resultados con los filtros aplicados'}
@@ -385,12 +493,17 @@ export default function RegistroVisitas() {
                     <td className="table-cell tabular-nums text-xs text-google-gray">{v.hora}</td>
                     <td className="table-cell font-mono text-xs text-google-gray">{v.dni}</td>
                     <td className="table-cell font-medium text-google-dark whitespace-nowrap">{v.nombre}</td>
-                    <td className="table-cell text-google-gray">{v.telefono}</td>
+                    <td className="table-cell text-google-gray">{v.telefono || '—'}</td>
                     <td className="table-cell text-google-gray text-xs">{v.mail || '—'}</td>
                     <td className="table-cell">
                       <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-50 text-google-blue whitespace-nowrap">
                         {tipoDisplay(v)}
                       </span>
+                    </td>
+                    <td className="table-cell">
+                      {v.punto_venta
+                        ? <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 whitespace-nowrap">{v.punto_venta}</span>
+                        : <span className="text-google-gray">—</span>}
                     </td>
                     <td className="table-cell text-google-gray text-xs">{v.registrado_por}</td>
                     <td className="table-cell text-center">

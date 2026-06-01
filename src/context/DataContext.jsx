@@ -78,10 +78,11 @@ export function DataProvider({ children }) {
       hora:           data.hora,
       dni:            data.dni,
       nombre:         data.nombre,
-      telefono:       data.telefono,
-      mail:           data.mail      || '',
+      telefono:       data.telefono   || '',
+      mail:           data.mail       || '',
       tipo:           data.tipo,
-      tipo_otro:      data.tipo_otro || '',
+      tipo_otro:      data.tipo_otro  || '',
+      punto_venta:    data.punto_venta || '',
       registrado_por: currentUser?.username || 'Sistema',
     };
     setVisitas(prev => [newVisita, ...prev]);
@@ -90,6 +91,12 @@ export function DataProvider({ children }) {
         if (error) {
           console.error('addVisita:', error);
           setVisitas(prev => prev.filter(v => v.id !== newVisita.id));
+        } else {
+          addActivity(
+            'Visita',
+            `${currentUser?.username || 'Sistema'} ha registrado una visita de ${newVisita.nombre} en el punto de venta ${newVisita.punto_venta}`,
+            currentUser?.username
+          );
         }
       });
   };
