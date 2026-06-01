@@ -227,7 +227,7 @@ export default function AIAssistant({ isOpen, onOpenChange }) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-white leading-tight">Asistente IA</p>
-            <p className="text-xs text-blue-100">Gemini 1.5 Flash · Grupo Avedie</p>
+            <p className="text-xs text-blue-100">Gemini 2.5 Flash · Grupo Avedie</p>
           </div>
           <button
             onClick={() => onOpenChange(false)}
