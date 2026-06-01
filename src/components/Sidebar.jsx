@@ -35,14 +35,21 @@ export default function Sidebar({ activeSection, onNavigate, onOpenAI }) {
 
   return (
     <>
-      {/* Botón hamburguesa — solo visible en móvil */}
-      <button
-        onClick={() => setIsMobileMenuOpen(true)}
-        className="fixed top-4 left-4 z-40 md:hidden bg-white p-2 rounded-md shadow-md"
-        aria-label="Abrir menú"
-      >
-        <Menu size={20} className="text-google-dark" />
-      </button>
+      {/* Cabecera móvil: hamburguesa + logo — solo visible en móvil */}
+      <div className="fixed top-0 left-0 z-40 md:hidden flex items-center gap-3 px-4 pt-4">
+        <button
+          onClick={() => setIsMobileMenuOpen(true)}
+          className="bg-white p-2 rounded-md shadow-md"
+          aria-label="Abrir menú"
+        >
+          <Menu size={20} className="text-google-dark" />
+        </button>
+        <img
+          src="https://multimedia-logos.infojobs.net/image/upload/w_155,h_155/9b/9b38ef65-853a-4c46-a58e-5e56bbceb467"
+          alt="Grupo Avedie"
+          className="h-9 w-9 rounded-lg object-cover shadow-md bg-white"
+        />
+      </div>
 
       {/* Fondo oscuro semitransparente — móvil, cierra el menú al pulsarlo */}
       {isMobileMenuOpen && (

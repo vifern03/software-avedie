@@ -166,7 +166,7 @@ export default function AIAssistant({ isOpen, onOpenChange }) {
     <>
       {/* Botón flotante + tooltip — ocultos cuando el panel está abierto */}
       {!isOpen && (
-        <div className="fixed bottom-6 right-6 z-50 flex flex-col items-center gap-2 pointer-events-none">
+        <div className="fixed bottom-6 right-6 z-50 hidden md:flex flex-col items-center gap-2 pointer-events-none">
           <div className="ai-float bg-slate-900/90 text-white text-xs font-medium rounded-lg py-1.5 px-3 shadow-lg whitespace-nowrap select-none">
             ✨ ¿Te ayudo con una gestión?
           </div>
