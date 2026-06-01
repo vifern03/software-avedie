@@ -145,7 +145,7 @@ export default function AIAssistant({ isOpen, onOpenChange }) {
       console.error('AI proxy error:', err.message || err);
       setMessages(prev => [...prev, {
         role:    'model',
-        content: 'Lo siento, ha ocurrido un error al contactar con el asistente. Comprueba la conexión e inténtalo de nuevo.',
+        content: err.message || 'Lo siento, ha ocurrido un error al contactar con el asistente. Comprueba la conexión e inténtalo de nuevo.',
         isError: true,
       }]);
     } finally {
