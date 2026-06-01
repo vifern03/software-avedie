@@ -3,7 +3,7 @@
 // La clave API vive exclusivamente en process.env.GEMINI_API_KEY en Netlify.
 
 const GEMINI_ENDPOINT =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 const SYSTEM_PROMPT =
   process.env.SYSTEM_PROMPT ||
