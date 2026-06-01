@@ -1,23 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
 import { Sparkles, X, Send, Paperclip, Copy, Check } from 'lucide-react';
 
-// La llamada a Gemini se realiza a través de la Netlify Function /gemini-proxy.
-// La API key NUNCA sale al bundle del cliente — vive en process.env.GEMINI_API_KEY
-// en el servidor de Netlify. Para desarrollo local usa `netlify dev` (puerto 8888).
-const PROXY_URL = '/.netlify/functions/gemini-proxy';
+// Todas las llamadas a Gemini pasan por /api/gemini (Vercel Function en producción,
+// middleware de Vite en desarrollo local). La API key nunca llega al bundle del cliente.
+const PROXY_URL = '/api/gemini';
 
 // Máximo de adjuntos: 4 MB → base64 ~5.3 MB, dentro del límite de 6 MB de Netlify Functions
 const MAX_FILE_MB = 4;
 
 // Turnos de conversación que se envían al modelo (evita payloads infinitos)
 const MAX_HISTORY_TURNS = 20;
-
-const SYSTEM_PROMPT =
-  'Eres el asistente de IA de Grupo Avedie, empresa española líder en el sector asegurador ' +
-  'y financiero. Ayudas a los comerciales y gestores del CRM interno con tareas profesionales: ' +
-  'redacción de correos formales, análisis de documentos, traducciones corporativas, revisión ' +
-  'de facturas y consultas generales de negocio. Responde siempre en español con tono ' +
-  'profesional, conciso y orientado al cliente empresarial.';
 
 const QUICK_ACTIONS = [
   {
@@ -121,56 +113,26 @@ export default function AIAssistant({ isOpen, onOpenChange }) {
 
     try {
       const recentMessages = messages.slice(-MAX_HISTORY_TURNS);
-      let responseText;
 
-      if (import.meta.env.DEV) {
-        // ── DESARROLLO LOCAL: llamada directa al SDK (la clave nunca llega a producción) ──
-        const { GoogleGenerativeAI } = await import('@google/generative-ai');
-        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-        if (!apiKey) throw new Error('Falta VITE_GEMINI_API_KEY en .env.local');
-
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-
-        const fullHistory = [
-          { role: 'user',  parts: [{ text: SYSTEM_PROMPT }] },
-          { role: 'model', parts: [{ text: 'Entendido. Estoy listo para asistirte como asistente de Grupo Avedie.' }] },
-          ...recentMessages.map(m => ({ role: m.role, parts: [{ text: m.content || ' ' }] })),
-        ];
-
-        const chat  = model.startChat({ history: fullHistory });
-        const parts = [];
-        if (text) parts.push({ text });
-        if (currentFile) {
-          const base64 = await fileToBase64(currentFile);
-          parts.push({ inlineData: { mimeType: currentFile.type, data: base64 } });
-        }
-
-        const result = await chat.sendMessage(parts);
-        responseText = result.response.text();
-      } else {
-        // ── PRODUCCIÓN: proxy seguro de Netlify (la clave vive solo en el servidor) ──
-        const history = recentMessages.map(m => ({
-          role:  m.role,
-          parts: [{ text: m.content || ' ' }],
-        }));
-        const payload = { text, history };
-        if (currentFile) {
-          const base64 = await fileToBase64(currentFile);
-          payload.file = { mimeType: currentFile.type, data: base64 };
-        }
-
-        const res  = await fetch(PROXY_URL, {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify(payload),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-        responseText = data.response;
+      const history = recentMessages.map(m => ({
+        role:  m.role,
+        parts: [{ text: m.content || ' ' }],
+      }));
+      const payload = { text, history };
+      if (currentFile) {
+        const base64 = await fileToBase64(currentFile);
+        payload.file = { mimeType: currentFile.type, data: base64 };
       }
 
-      setMessages(prev => [...prev, { role: 'model', content: responseText }]);
+      const res  = await fetch(PROXY_URL, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+      setMessages(prev => [...prev, { role: 'model', content: data.response }]);
     } catch (err) {
       console.error('AI error:', err.message || err);
       setMessages(prev => [...prev, {
