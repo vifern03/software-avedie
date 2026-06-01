@@ -4,6 +4,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const SYSTEM_PROMPT =
+  process.env.SYSTEM_PROMPT ||
   'Eres el asistente de IA de Grupo Avedie, empresa española líder en el sector asegurador ' +
   'y financiero. Ayudas a los comerciales y gestores del CRM interno con tareas profesionales: ' +
   'redacción de correos formales, análisis de documentos, traducciones corporativas, revisión ' +
@@ -26,9 +27,9 @@ export const handler = async (event) => {
     return { statusCode: 405, headers: CORS_HEADERS, body: JSON.stringify({ error: 'Method Not Allowed' }) };
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
   if (!apiKey) {
-    console.error('GEMINI_API_KEY no está configurada en las variables de entorno de Netlify.');
+    console.error('Ninguna variable GEMINI_API_KEY / VITE_GEMINI_API_KEY está configurada en Netlify.');
     return {
       statusCode: 500,
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
