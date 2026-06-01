@@ -12,6 +12,13 @@ const MAX_FILE_MB = 4;
 // Turnos de conversación que se envían al modelo (evita payloads infinitos)
 const MAX_HISTORY_TURNS = 20;
 
+const SYSTEM_PROMPT =
+  'Eres el asistente de IA de Grupo Avedie, empresa española líder en el sector asegurador ' +
+  'y financiero. Ayudas a los comerciales y gestores del CRM interno con tareas profesionales: ' +
+  'redacción de correos formales, análisis de documentos, traducciones corporativas, revisión ' +
+  'de facturas y consultas generales de negocio. Responde siempre en español con tono ' +
+  'profesional, conciso y orientado al cliente empresarial.';
+
 const QUICK_ACTIONS = [
   {
     label: '📝 Correo Formal',
@@ -102,7 +109,7 @@ export default function AIAssistant({ isOpen, onOpenChange }) {
     const text = inputText.trim();
     if ((!text && !attachedFile) || isLoading) return;
 
-    const userMsg    = { role: 'user', content: text, fileName: attachedFile?.name ?? null };
+    const userMsg     = { role: 'user', content: text, fileName: attachedFile?.name ?? null };
     const currentFile = attachedFile;
 
     setMessages(prev => [...prev, userMsg]);
@@ -112,37 +119,59 @@ export default function AIAssistant({ isOpen, onOpenChange }) {
     setIsLoading(true);
 
     try {
-      // R-4: Limitar historial a los últimos MAX_HISTORY_TURNS turnos
       const recentMessages = messages.slice(-MAX_HISTORY_TURNS);
-      const history = recentMessages.map(m => ({
-        role:  m.role,
-        parts: [{ text: m.content || ' ' }],
-      }));
+      let responseText;
 
-      // Construir payload para el proxy
-      const payload = { text, history };
+      if (import.meta.env.DEV) {
+        // ── DESARROLLO LOCAL: llamada directa al SDK (la clave nunca llega a producción) ──
+        const { GoogleGenerativeAI } = await import('@google/generative-ai');
+        const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+        if (!apiKey) throw new Error('Falta VITE_GEMINI_API_KEY en .env.local');
 
-      if (currentFile) {
-        const base64 = await fileToBase64(currentFile);
-        payload.file = { mimeType: currentFile.type, data: base64 };
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+        const fullHistory = [
+          { role: 'user',  parts: [{ text: SYSTEM_PROMPT }] },
+          { role: 'model', parts: [{ text: 'Entendido. Estoy listo para asistirte como asistente de Grupo Avedie.' }] },
+          ...recentMessages.map(m => ({ role: m.role, parts: [{ text: m.content || ' ' }] })),
+        ];
+
+        const chat  = model.startChat({ history: fullHistory });
+        const parts = [];
+        if (text) parts.push({ text });
+        if (currentFile) {
+          const base64 = await fileToBase64(currentFile);
+          parts.push({ inlineData: { mimeType: currentFile.type, data: base64 } });
+        }
+
+        const result = await chat.sendMessage(parts);
+        responseText = result.response.text();
+      } else {
+        // ── PRODUCCIÓN: proxy seguro de Netlify (la clave vive solo en el servidor) ──
+        const history = recentMessages.map(m => ({
+          role:  m.role,
+          parts: [{ text: m.content || ' ' }],
+        }));
+        const payload = { text, history };
+        if (currentFile) {
+          const base64 = await fileToBase64(currentFile);
+          payload.file = { mimeType: currentFile.type, data: base64 };
+        }
+
+        const res  = await fetch(PROXY_URL, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        responseText = data.response;
       }
 
-      // C-3: La llamada va al proxy — la API key nunca está en el cliente
-      const res = await fetch(PROXY_URL, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || `HTTP ${res.status}`);
-      }
-
-      setMessages(prev => [...prev, { role: 'model', content: data.response }]);
+      setMessages(prev => [...prev, { role: 'model', content: responseText }]);
     } catch (err) {
-      console.error('AI proxy error:', err.message || err);
+      console.error('AI error:', err.message || err);
       setMessages(prev => [...prev, {
         role:    'model',
         content: err.message || 'Lo siento, ha ocurrido un error al contactar con el asistente. Comprueba la conexión e inténtalo de nuevo.',
