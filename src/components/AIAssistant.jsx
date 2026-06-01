@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Sparkles, X, Send, Paperclip } from 'lucide-react';
+import { Sparkles, X, Send, Paperclip, Copy, Check } from 'lucide-react';
 
 // La llamada a Gemini se realiza a través de la Netlify Function /gemini-proxy.
 // La API key NUNCA sale al bundle del cliente — vive en process.env.GEMINI_API_KEY
@@ -66,6 +66,7 @@ export default function AIAssistant({ isOpen, onOpenChange }) {
   const [attachedFile, setAttachedFile] = useState(null);
   const [isLoading,    setIsLoading]    = useState(false);
   const [fileError,    setFileError]    = useState('');
+  const [copiedIdx,    setCopiedIdx]    = useState(null);
 
   const messagesEndRef = useRef(null);
   const fileInputRef   = useRef(null);
@@ -272,6 +273,29 @@ export default function AIAssistant({ isOpen, onOpenChange }) {
                   </p>
                 )}
                 <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                {msg.role === 'model' && (
+                  <div className="flex justify-end mt-2">
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(msg.content).then(() => {
+                          setCopiedIdx(idx);
+                          setTimeout(() => setCopiedIdx(null), 2000);
+                        });
+                      }}
+                      className="flex items-center gap-1 text-xs text-google-gray hover:text-google-blue transition-colors py-0.5 px-1 rounded"
+                      title="Copiar mensaje"
+                    >
+                      {copiedIdx === idx ? (
+                        <>
+                          <Check size={12} className="text-green-500" />
+                          <span className="text-green-500 font-medium">¡Copiado!</span>
+                        </>
+                      ) : (
+                        <Copy size={12} />
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
