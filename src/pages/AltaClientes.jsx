@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Plus, FileCheck, Clock, AlertCircle, Trophy, Search, ChevronUp, ChevronDown, Trash2, Pencil, PenTool, X, Eye, FileText } from 'lucide-react';
 import NewClientModal from '../components/NewClientModal';
 import DeleteConfirmModal from '../components/DeleteConfirmModal';
@@ -6,8 +6,16 @@ import ConfirmActionModal from '../components/ConfirmActionModal';
 import Pagination from '../components/Pagination';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
+import DateInput from '../components/DateInput';
 
 const MEDAL_COLORS = ['bg-yellow-400', 'bg-gray-300', 'bg-amber-600'];
+
+const formatDate = (dateStr) => {
+  if (!dateStr) return '—';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+};
 
 const now   = new Date();
 const YEAR  = now.getFullYear();
@@ -82,7 +90,12 @@ function FileCell({ value, clientName }) {
 
 export default function AltaClientes({ tipo }) {
   const isB2B = tipo === 'B2B';
-  const { clientesB2C, clientesB2B, addCliente, updateCliente, firmarContrato, formalizarContrato, deleteCliente, rankingComerciales } = useData();
+  const { clientes: allClientes, clientesB2C, clientesB2B, addCliente, updateCliente, firmarContrato, formalizarContrato, deleteCliente, rankingComerciales } = useData();
+
+  const allCups = useMemo(
+    () => new Set(allClientes.map(c => (c.cups || '').toUpperCase().trim()).filter(Boolean)),
+    [allClientes]
+  );
   const { currentUser } = useAuth();
   const clientes = isB2B ? clientesB2B : clientesB2C;
 
@@ -114,6 +127,7 @@ export default function AltaClientes({ tipo }) {
   cutoff.setHours(0, 0, 0, 0);
 
   const isComercial = currentUser?.role === 'comercial';
+  const isAdmin     = currentUser?.role === 'admin';
 
   const baseClientes = clientes.filter((c) => {
     const d = new Date(c.fecha_tramitacion || '');
@@ -126,9 +140,12 @@ export default function AltaClientes({ tipo }) {
   const totalTramitados     = baseClientes.filter((c) => c.estado === 'Tramitado').length;
   const totalFormalizados   = baseClientes.filter((c) => c.estado === 'Formalizado').length;
 
-  const handleModalSave = (data) => {
-    if (editClient) updateCliente(editClient.id, data);
-    else            addCliente(data, tipo);
+  const handleModalSave = async (data) => {
+    if (editClient) {
+      updateCliente(editClient.id, data);
+      return { error: null };
+    }
+    return await addCliente(data, tipo);
   };
 
   const toggleSort = (field) => {
@@ -163,7 +180,7 @@ export default function AltaClientes({ tipo }) {
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const TOTAL_COLS = 20;
+  const TOTAL_COLS = 21;
 
   const subtipo = (c) => c.subtipo === 'Otro' ? (c.subtipo_otro || 'Otro') : (c.subtipo || '—');
 
@@ -214,8 +231,8 @@ export default function AltaClientes({ tipo }) {
         </div>
       </div>
 
-      {/* Ranking Ventas — solo admin y manager */}
-      {!isComercial && (
+      {/* Ranking Ventas — solo administrador */}
+      {isAdmin && (
         <div className="card overflow-hidden">
           <div className="px-5 py-4 border-b border-google-border flex items-center gap-2">
             <Trophy size={16} className="text-yellow-500" />
@@ -260,7 +277,7 @@ export default function AltaClientes({ tipo }) {
           <FilterPill label={`Este Mes (${monthName(0)})`}      active={timeFilter === 'mes_actual'}   onClick={() => setTimeFilter('mes_actual')}  />
           <FilterPill label={`Mes Anterior (${monthName(-1)})`} active={timeFilter === 'mes_anterior'} onClick={() => setTimeFilter('mes_anterior')} />
           <div className="flex items-center gap-1 ml-2">
-            <input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}
+            <DateInput value={dateFilter} onChange={(iso) => setDateFilter(iso)}
               className="input-field h-7 text-xs px-2 w-36" title="Fecha exacta de tramitación" />
             {dateFilter && (
               <button onClick={() => setDateFilter('')} className="p-1 rounded text-google-gray hover:text-red-500 hover:bg-red-50 transition-colors">
@@ -301,6 +318,7 @@ export default function AltaClientes({ tipo }) {
                 <th className="table-header">Estado</th>
                 <th className="table-header">DNI/CIF Esc.</th>
                 <th className="table-header">Últ. Factura</th>
+                <th className="table-header">Descripción</th>
                 <th className="table-header">Acciones</th>
               </tr>
             </thead>
@@ -333,16 +351,17 @@ export default function AltaClientes({ tipo }) {
                     <td className="table-cell text-google-gray text-xs">{c.id_producto || '—'}</td>
                     <td className="table-cell text-google-gray text-xs">{c.creado_por || '—'}</td>
                     <td className="table-cell text-google-gray text-xs">{c.comercial}</td>
-                    <td className="table-cell tabular-nums text-xs text-google-gray">{c.fecha_firma || '—'}</td>
-                    <td className="table-cell tabular-nums text-xs text-google-gray">{c.fecha_tramitacion || '—'}</td>
+                    <td className="table-cell tabular-nums text-xs text-google-gray">{formatDate(c.fecha_firma)}</td>
+                    <td className="table-cell tabular-nums text-xs text-google-gray">{formatDate(c.fecha_tramitacion)}</td>
                     <td className="table-cell tabular-nums text-xs">
                       {c.fecha_formalizada
-                        ? <span className="text-green-700 font-medium">{c.fecha_formalizada}</span>
+                        ? <span className="text-green-700 font-medium">{formatDate(c.fecha_formalizada)}</span>
                         : <span className="text-google-gray italic">—</span>}
                     </td>
                     <td className="table-cell"><StatusBadge estado={c.estado} /></td>
                     <td className="table-cell text-center"><FileCell value={c.dni_escaneado} clientName={`DNI_${c.nombre}`} /></td>
                     <td className="table-cell text-center"><FileCell value={c.ultima_factura} clientName={`Factura_${c.nombre}`} /></td>
+                    <td className="table-cell text-google-gray text-xs max-w-[180px] truncate" title={c.descripcion || ''}>{c.descripcion || '—'}</td>
                     <td className="table-cell text-center">
                       <div className="flex items-center justify-center gap-1">
                         {c.estado === 'Pendiente Firma' && (
@@ -417,6 +436,8 @@ export default function AltaClientes({ tipo }) {
           tipo={tipo}
           onClose={() => { setShowModal(false); setEditClient(null); }}
           onSave={handleModalSave}
+          existingCups={allCups}
+          editId={editClient?.id}
           initialData={editClient ? {
             nombre:            editClient.nombre,
             identificacion:    editClient.cif_dni          || '',

@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS clientes (
   telefono          TEXT,
   mail              TEXT,
   cuenta_bancaria   TEXT,
-  cups              TEXT,
+  cups              TEXT        UNIQUE,
   tarifa            TEXT,
   linea_negocio     TEXT,
   subtipo           TEXT,
@@ -55,6 +55,12 @@ ALTER TABLE clientes DISABLE ROW LEVEL SECURITY;
 -- MIGRACIÓN para bases de datos existentes (ejecutar si la tabla ya existe):
 -- ALTER TABLE clientes ADD COLUMN IF NOT EXISTS renovado         BOOLEAN DEFAULT FALSE;
 -- ALTER TABLE clientes ADD COLUMN IF NOT EXISTS fecha_renovacion TEXT;
+
+-- MIGRACIÓN — restricción UNIQUE en CUPS (BD ya existente):
+-- Paso 1: comprobar si hay CUPS duplicados (limpiar antes de continuar si hay resultados):
+-- SELECT cups, COUNT(*) FROM clientes GROUP BY cups HAVING COUNT(*) > 1;
+-- Paso 2: añadir la restricción de unicidad:
+-- ALTER TABLE clientes ADD CONSTRAINT clientes_cups_unique UNIQUE (cups);
 
 -- ── Tabla de historial de actividades ────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS actividades (

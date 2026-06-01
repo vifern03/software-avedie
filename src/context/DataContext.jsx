@@ -6,6 +6,13 @@ const DataContext = createContext(null);
 
 const today = () => new Date().toISOString().split('T')[0];
 
+const formatDateDDMMYYYY = (dateStr) => {
+  if (!dateStr) return '—';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+};
+
 export function DataProvider({ children }) {
   const { currentUser, users } = useAuth();
 
@@ -101,7 +108,7 @@ export function DataProvider({ children }) {
 
   // ── Clientes ────────────────────────────────────────────────────────────────
 
-  const addCliente = (data, tipo) => {
+  const addCliente = async (data, tipo) => {
     const tramitacion = data.fecha_tramitacion || today();
     const newCliente = {
       id:               Date.now(),
@@ -122,24 +129,24 @@ export function DataProvider({ children }) {
       estado:           data.estado          || 'Pendiente Firma',
       comercial:        data.agente_gestor   || currentUser?.username || 'Desconocido',
       fecha_tramitacion: tramitacion,
-      fecha_firma:       null,
-      fecha_formalizada: null,
+      fecha_firma:       data.fecha_firma       || null,
+      fecha_formalizada: data.fecha_formalizada || null,
       dni_escaneado:    data.dni_escaneado   || '',
       ultima_factura:   data.ultima_factura  || '',
     };
     setClientes(prev => [newCliente, ...prev]);
-    supabase.from('clientes').insert([newCliente])
-      .then(({ error }) => {
-        if (error) {
-          console.error('addCliente:', error);
-          setClientes(prev => prev.filter(c => c.id !== newCliente.id));
-        }
-      });
+    const { error } = await supabase.from('clientes').insert([newCliente]);
+    if (error) {
+      console.error('addCliente:', error);
+      setClientes(prev => prev.filter(c => c.id !== newCliente.id));
+      return { error };
+    }
     addActivity(
       tipo === 'B2B' ? 'Alta B2B' : 'Alta B2C',
-      `${currentUser?.username} ha tramitado un nuevo contrato ${tipo} para el cliente ${data.nombre}`,
+      `${currentUser?.username} ha tramitado un contrato para el cliente ${data.nombre} (${data.estado} - ${formatDateDDMMYYYY(data.fecha_tramitacion || today())})`,
       currentUser?.username
     );
+    return { error: null };
   };
 
   const updateCliente = (id, data) => {
@@ -285,6 +292,10 @@ export function DataProvider({ children }) {
   // ── Ranking ─────────────────────────────────────────────────────────────────
 
   const rankingComerciales = useMemo(() => {
+    const now = new Date();
+    const curMonth = now.getMonth();
+    const curYear  = now.getFullYear();
+
     const map = {};
     users.forEach((u) => {
       const initials = (u.displayName || u.username)
@@ -292,8 +303,11 @@ export function DataProvider({ children }) {
       map[u.username] = { id: u.username, nombre: u.displayName || u.username, avatar: initials, cerrados: 0, pendientes: 0 };
     });
     clientes.forEach((c) => {
+      const d = new Date(c.fecha_tramitacion || '');
+      if (isNaN(d.getTime()) || d.getMonth() !== curMonth || d.getFullYear() !== curYear) return;
       if (!map[c.comercial]) {
-        map[c.comercial] = { id: c.comercial, nombre: c.comercial, avatar: c.comercial.slice(0, 2).toUpperCase(), cerrados: 0, pendientes: 0 };
+        const av = (c.comercial || '??').slice(0, 2).toUpperCase();
+        map[c.comercial] = { id: c.comercial, nombre: c.comercial, avatar: av, cerrados: 0, pendientes: 0 };
       }
       if (c.estado === 'Formalizado') map[c.comercial].cerrados++;
       else if (c.estado === 'Tramitado' || c.estado === 'Pendiente Firma') map[c.comercial].pendientes++;

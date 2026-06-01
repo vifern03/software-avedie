@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
-import { X, User, Building2, Phone, Zap, FileText, CheckCircle, Mail, CreditCard, Upload, Pencil, Calendar, UserCheck, Briefcase, Hash, AlignLeft } from 'lucide-react';
+import { X, User, Building2, Phone, Zap, FileText, CheckCircle, AlertCircle, Mail, CreditCard, Upload, Pencil, Calendar, UserCheck, Briefcase, Hash, AlignLeft } from 'lucide-react';
+import DateInput from './DateInput';
 import { useAuth } from '../context/AuthContext';
 
 const tarifas  = ['2.0TD', '3.0TD', '3.1A', '6.1TD', '6.1A', '6.2', '6.3', '6.4', 'RL.1', 'RL.2', 'RL.3'];
@@ -17,10 +18,13 @@ const subtipos = [
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 
-export default function NewClientModal({ tipo, onClose, onSave, initialData }) {
+export default function NewClientModal({ tipo, onClose, onSave, initialData, existingCups, editId }) {
   const { currentUser, users } = useAuth();
   const isB2B = tipo === 'B2B';
   const isEdit = !!initialData;
+
+  const initialAgenteGestorValue = initialData?.agente_gestor || currentUser?.username || '';
+  const isKnownUser = !initialAgenteGestorValue || users.some(u => u.username === initialAgenteGestorValue);
 
   const [form, setForm] = useState({
     nombre:            initialData?.nombre            || '',
@@ -38,12 +42,14 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData }) {
     mail:              initialData?.mail              || '',
     cuenta_bancaria:   initialData?.cuenta_bancaria   || '',
     fecha_tramitacion: initialData?.fecha_tramitacion || todayStr(),
-    agente_gestor:     initialData?.agente_gestor     || currentUser?.username || '',
+    agente_gestor:     isKnownUser ? initialAgenteGestorValue : '__otro__',
     fecha_firma:       initialData?.fecha_firma       ?? null,
     fecha_formalizada: initialData?.fecha_formalizada ?? null,
   });
-  const [errors, setErrors] = useState({});
-  const [saved,  setSaved]  = useState(false);
+  const [agenteGestorOtro, setAgenteGestorOtro] = useState(isKnownUser ? '' : initialAgenteGestorValue);
+  const [errors,       setErrors]       = useState({});
+  const [saved,        setSaved]        = useState(false);
+  const [cupsDbError,  setCupsDbError]  = useState(null);
 
   const existingDni     = initialData?.dni_escaneado  || '';
   const existingFactura = initialData?.ultima_factura || '';
@@ -70,7 +76,11 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData }) {
       }
       return updated;
     });
-    setErrors((e) => ({ ...e, [field]: false }));
+    setErrors((e) => {
+      const next = { ...e, [field]: false };
+      if (field === 'cups') { next.cups_duplicate = false; setCupsDbError(null); }
+      return next;
+    });
   };
 
   // M-2: validar tamaño antes de FileReader (máx. 5 MB para adjuntos de contrato)
@@ -95,25 +105,52 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData }) {
     if (!form.nombre.trim())         e.nombre            = true;
     if (!form.identificacion.trim()) e.identificacion     = true;
     if (!form.telefono.trim())       e.telefono           = true;
-    if (!form.cups.trim())           e.cups               = true;
+    if (!form.cups.trim()) {
+      e.cups = true;
+    } else if (existingCups?.size) {
+      const cupsVal     = form.cups.trim().toUpperCase();
+      const originalCups = (initialData?.cups || '').toUpperCase().trim();
+      if (existingCups.has(cupsVal) && cupsVal !== originalCups) {
+        e.cups_duplicate = true;
+      }
+    }
     if (!form.tarifa)                e.tarifa             = true;
     if (!form.estado)                e.estado             = true;
     if (!form.fecha_tramitacion)     e.fecha_tramitacion  = true;
+    if ((form.estado === 'Tramitado' || form.estado === 'Formalizado') && !form.fecha_firma)
+      e.fecha_firma = true;
+    if (form.estado === 'Formalizado' && !form.fecha_formalizada)
+      e.fecha_formalizada = true;
+    if (form.agente_gestor === '__otro__' && !agenteGestorOtro.trim())
+      e.agente_gestor_otro = true;
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
   // M-1: submittingRef bloquea el segundo disparo antes de que React deshabilite el botón
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (submittingRef.current || !validate()) return;
     submittingRef.current = true;
+    setCupsDbError(null);
+
+    const efectiveAgenteGestor = form.agente_gestor === '__otro__' ? agenteGestorOtro.trim() : form.agente_gestor;
+    const result = await onSave({ ...form, agente_gestor: efectiveAgenteGestor, tipo, dni_escaneado: dniBase64, ultima_factura: facturaBase64 });
+
+    submittingRef.current = false;
+
+    if (result?.error) {
+      const isCupsDup = result.error.code === '23505';
+      setCupsDbError(
+        isCupsDup
+          ? 'Error: Este CUPS ya está registrado en otro contrato.'
+          : `Error al guardar: ${result.error.message || 'inténtalo de nuevo.'}`
+      );
+      return;
+    }
+
     setSaved(true);
-    setTimeout(() => {
-      onSave({ ...form, tipo, dni_escaneado: dniBase64, ultima_factura: facturaBase64 });
-      submittingRef.current = false;
-      onClose();
-    }, 900);
+    setTimeout(() => onClose(), 900);
   };
 
   const inputClass = (field) =>
@@ -155,7 +192,18 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData }) {
               {users.map((u) => (
                 <option key={u.username} value={u.username}>{u.displayName || u.username}</option>
               ))}
+              <option value="__otro__">Otro (especificar)</option>
             </select>
+            {form.agente_gestor === '__otro__' && (
+              <input
+                type="text"
+                placeholder="Nombre completo del tramitador..."
+                value={agenteGestorOtro}
+                onChange={(e) => { setAgenteGestorOtro(e.target.value); setErrors(er => ({ ...er, agente_gestor_otro: false })); }}
+                className={`input-field mt-2 ${errors.agente_gestor_otro ? '!border-red-400 focus:!ring-red-300' : ''}`}
+              />
+            )}
+            {errors.agente_gestor_otro && <p className="text-red-500 text-xs mt-1">Debes especificar el nombre del tramitador</p>}
           </div>
 
           {/* Línea de Negocio */}
@@ -195,10 +243,9 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData }) {
             <label className="block text-xs font-semibold text-blue-700 mb-1.5 flex items-center gap-1.5">
               <Calendar size={13} /> Fecha de Tramitación *
             </label>
-            <input
-              type="date"
+            <DateInput
               value={form.fecha_tramitacion}
-              onChange={(e) => set('fecha_tramitacion', e.target.value)}
+              onChange={(iso) => set('fecha_tramitacion', iso)}
               className={`input-field bg-white ${errors.fecha_tramitacion ? '!border-red-400' : '!border-blue-200'}`}
             />
             {errors.fecha_tramitacion && <p className="text-red-500 text-xs mt-1">Este campo es obligatorio</p>}
@@ -258,9 +305,11 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData }) {
               <div className="relative">
                 <div className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray"><Zap size={15} /></div>
                 <input type="text" placeholder="Ej: ES1234567890" value={form.cups}
-                  onChange={(e) => set('cups', e.target.value.toUpperCase())} className={`${inputClass('cups')} pl-9`} />
+                  onChange={(e) => set('cups', e.target.value.toUpperCase())}
+                  className={`${(errors.cups || errors.cups_duplicate) ? 'input-field !border-red-400 focus:!ring-red-300' : 'input-field'} pl-9`} />
               </div>
               {errors.cups && <p className="text-red-500 text-xs mt-1">Obligatorio</p>}
+              {errors.cups_duplicate && <p className="text-red-500 text-xs mt-1">Este CUPS ya está registrado en otro contrato</p>}
             </div>
           </div>
 
@@ -308,6 +357,56 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData }) {
               {errors.estado && <p className="text-red-500 text-xs mt-1">Obligatorio</p>}
             </div>
           </div>
+
+          {/* Fecha de Firma — visible cuando estado es Tramitado o Formalizado */}
+          {(form.estado === 'Tramitado' || form.estado === 'Formalizado') && (
+            <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
+              <label className="block text-xs font-semibold text-orange-700 mb-1.5 flex items-center gap-1.5">
+                <Calendar size={13} /> Fecha de Firma *
+              </label>
+              <div className="flex items-center gap-2">
+                <DateInput
+                  value={form.fecha_firma || ''}
+                  onChange={(iso) => set('fecha_firma', iso || null)}
+                  className={`input-field bg-white flex-1 ${errors.fecha_firma ? '!border-red-400' : '!border-orange-200'}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => set('fecha_firma', form.fecha_tramitacion)}
+                  className="text-xs text-orange-600 hover:text-orange-800 whitespace-nowrap px-2 py-1.5 border border-orange-200 rounded-lg bg-white hover:bg-orange-100 transition-colors"
+                  title="Rellenar automáticamente con la fecha de tramitación"
+                >
+                  Coincide con fecha anterior
+                </button>
+              </div>
+              {errors.fecha_firma && <p className="text-red-500 text-xs mt-1">Este campo es obligatorio para este estado</p>}
+            </div>
+          )}
+
+          {/* Fecha de Formalización — visible solo cuando estado es Formalizado */}
+          {form.estado === 'Formalizado' && (
+            <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+              <label className="block text-xs font-semibold text-green-700 mb-1.5 flex items-center gap-1.5">
+                <Calendar size={13} /> Fecha de Formalización *
+              </label>
+              <div className="flex items-center gap-2">
+                <DateInput
+                  value={form.fecha_formalizada || ''}
+                  onChange={(iso) => set('fecha_formalizada', iso || null)}
+                  className={`input-field bg-white flex-1 ${errors.fecha_formalizada ? '!border-red-400' : '!border-green-200'}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => set('fecha_formalizada', form.fecha_firma || form.fecha_tramitacion)}
+                  className="text-xs text-green-600 hover:text-green-800 whitespace-nowrap px-2 py-1.5 border border-green-200 rounded-lg bg-white hover:bg-green-100 transition-colors"
+                  title="Rellenar automáticamente con la fecha de firma"
+                >
+                  Coincide con fecha anterior
+                </button>
+              </div>
+              {errors.fecha_formalizada && <p className="text-red-500 text-xs mt-1">Este campo es obligatorio para este estado</p>}
+            </div>
+          )}
 
           {/* Id Producto */}
           <div>
@@ -385,6 +484,14 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData }) {
               </button>
             </div>
           </div>
+
+          {/* Banner error base de datos (p.ej. CUPS duplicado que pasó el pre-check) */}
+          {cupsDbError && (
+            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <AlertCircle size={16} className="text-red-500 flex-shrink-0 mt-0.5" />
+              <p className="text-red-700 text-sm font-medium">{cupsDbError}</p>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-google-border">

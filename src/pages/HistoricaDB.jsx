@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { Search, Filter, FileSpreadsheet, ChevronUp, ChevronDown, Database, Trash2, Pencil, Eye, FileText, X, PenTool, FileCheck } from 'lucide-react';
@@ -7,6 +7,7 @@ import DeleteConfirmModal from '../components/DeleteConfirmModal';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import Pagination from '../components/Pagination';
 import { useData } from '../context/DataContext';
+import DateInput from '../components/DateInput';
 
 function downloadBase64File(base64, clientName = 'documento') {
   const mime  = base64.split(';')[0].replace('data:', '');
@@ -53,6 +54,13 @@ const now   = new Date();
 const YEAR  = now.getFullYear();
 const MONTH = now.getMonth();
 
+const formatDate = (dateStr) => {
+  if (!dateStr) return '—';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+};
+
 function getTimeFilteredList(list, filter) {
   if (!filter) return list;
   return list.filter((c) => {
@@ -86,6 +94,11 @@ const FilterPill = ({ label, active, onClick }) => (
 export default function HistoricaDB() {
   const { clientes, updateCliente, firmarContrato, formalizarContrato, deleteCliente } = useData();
 
+  const allCups = useMemo(
+    () => new Set(clientes.map(c => (c.cups || '').toUpperCase().trim()).filter(Boolean)),
+    [clientes]
+  );
+
   const [editClient,       setEditClient]       = useState(null);
   const [deleteTarget,     setDeleteTarget]     = useState(null);
   const [firmaTarget,      setFirmaTarget]      = useState(null);
@@ -112,7 +125,7 @@ export default function HistoricaDB() {
 
   const handleUpdate = (data) => {
     updateCliente(editClient.id, data);
-    setEditClient(null);
+    return { error: null };
   };
 
   const toggleSort = (field) => {
@@ -242,7 +255,7 @@ export default function HistoricaDB() {
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const TOTAL_COLS = 20;
+  const TOTAL_COLS = 21;
 
   // Column definitions (20 cols, exact order)
   const sortableCols = [
@@ -334,12 +347,12 @@ export default function HistoricaDB() {
               <span className="text-xs font-medium text-google-gray">F. Formalizada:</span>
               <div className="flex items-center gap-1">
                 <label className="text-xs text-google-gray">Desde</label>
-                <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)}
+                <DateInput value={dateFrom} onChange={(iso) => setDateFrom(iso)}
                   className="input-field h-7 text-xs px-2 w-36" />
               </div>
               <div className="flex items-center gap-1">
                 <label className="text-xs text-google-gray">Hasta</label>
-                <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)}
+                <DateInput value={dateTo} onChange={(iso) => setDateTo(iso)}
                   className="input-field h-7 text-xs px-2 w-36" />
               </div>
               {(dateFrom || dateTo) && (
@@ -377,6 +390,7 @@ export default function HistoricaDB() {
                   {th('estado',            'Estado')}
                   <th className="table-header">DNI/CIF Esc.</th>
                   <th className="table-header">Últ. Factura</th>
+                  <th className="table-header">Descripción</th>
                   <th className="table-header">Acciones</th>
                 </tr>
               </thead>
@@ -409,16 +423,17 @@ export default function HistoricaDB() {
                       <td className="table-cell text-google-gray text-xs">{c.id_producto || '—'}</td>
                       <td className="table-cell text-google-gray text-xs">{c.creado_por || '—'}</td>
                       <td className="table-cell text-google-gray text-xs">{c.comercial}</td>
-                      <td className="table-cell tabular-nums text-xs text-google-gray">{c.fecha_firma || '—'}</td>
-                      <td className="table-cell tabular-nums text-xs text-google-gray">{c.fecha_tramitacion || '—'}</td>
+                      <td className="table-cell tabular-nums text-xs text-google-gray">{formatDate(c.fecha_firma)}</td>
+                      <td className="table-cell tabular-nums text-xs text-google-gray">{formatDate(c.fecha_tramitacion)}</td>
                       <td className="table-cell tabular-nums text-xs">
                         {c.fecha_formalizada
-                          ? <span className="text-green-700 font-medium">{c.fecha_formalizada}</span>
+                          ? <span className="text-green-700 font-medium">{formatDate(c.fecha_formalizada)}</span>
                           : <span className="text-google-gray italic">—</span>}
                       </td>
                       <td className="table-cell"><StatusBadge estado={c.estado} /></td>
                       <td className="table-cell text-center"><FileCell value={c.dni_escaneado} clientName={`DNI_${c.nombre}`} /></td>
                       <td className="table-cell text-center"><FileCell value={c.ultima_factura} clientName={`Factura_${c.nombre}`} /></td>
+                      <td className="table-cell text-google-gray text-xs max-w-[180px] truncate" title={c.descripcion || ''}>{c.descripcion || '—'}</td>
                       <td className="table-cell text-center">
                         <div className="flex items-center justify-center gap-1">
                           {c.estado === 'Pendiente Firma' && (
@@ -494,6 +509,8 @@ export default function HistoricaDB() {
           tipo={editClient.tipo}
           onClose={() => setEditClient(null)}
           onSave={handleUpdate}
+          existingCups={allCups}
+          editId={editClient.id}
           initialData={{
             nombre:            editClient.nombre,
             identificacion:    editClient.cif_dni,
