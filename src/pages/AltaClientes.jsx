@@ -126,13 +126,13 @@ export default function AltaClientes({ tipo }) {
   cutoff.setDate(cutoff.getDate() - 30);
   cutoff.setHours(0, 0, 0, 0);
 
-  const isComercial = currentUser?.role === 'comercial';
-  const isAdmin     = currentUser?.role === 'admin';
+  const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+  const isAdmin      = currentUser?.role === 'admin';
 
   const baseClientes = clientes.filter((c) => {
     const d = new Date(c.fecha_tramitacion || '');
     if (isNaN(d) || d < cutoff) return false;
-    if (isComercial && c.comercial !== currentUser.username) return false;
+    if (!isPrivileged && c.comercial !== currentUser?.username) return false;
     return true;
   });
 

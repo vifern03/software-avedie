@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { Store, Plus, CalendarDays, Users, Briefcase, Search, Trash2, Pencil, CheckCircle, X, FileSpreadsheet } from 'lucide-react';
+import { Store, Plus, CalendarDays, Users, Briefcase, Search, Trash2, Pencil, CheckCircle, X, FileSpreadsheet, Camera, Loader2 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
@@ -45,12 +45,29 @@ function VisitaModal({ onClose, onSave, initialData }) {
     tipo:        initialData?.tipo        || '',
     tipo_otro:   initialData?.tipo_otro   || '',
   });
-  const [errors, setErrors] = useState({});
-  const [saved,  setSaved]  = useState(false);
+  const [errors,     setErrors]     = useState({});
+  const [saved,      setSaved]      = useState(false);
+  const [saving,     setSaving]     = useState(false);
+  const [dniFile,    setDniFile]    = useState(null);
+  const [dniPreview, setDniPreview] = useState(initialData?.dni_cif_escaneado_url || '');
+  const dniInputRef = useRef(null);
 
   const set = (field, value) => {
     setForm(f => ({ ...f, [field]: value }));
     setErrors(e => ({ ...e, [field]: false }));
+  };
+
+  const handleDniChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setDniFile(file);
+    if (file.type === 'application/pdf') {
+      setDniPreview('');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => setDniPreview(ev.target.result);
+    reader.readAsDataURL(file);
   };
 
   const validate = () => {
@@ -66,11 +83,14 @@ function VisitaModal({ onClose, onSave, initialData }) {
     return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validate()) return;
+    setSaving(true);
+    const result = await onSave(form, dniFile, initialData?.dni_cif_escaneado_url || '');
+    if (result?.error) { setSaving(false); return; }
     setSaved(true);
-    setTimeout(() => { onSave(form); onClose(); }, 800);
+    setTimeout(() => onClose(), 800);
   };
 
   const ic = (f) => `input-field ${errors[f] ? '!border-red-400 focus:!ring-red-300' : ''}`;
@@ -170,14 +190,46 @@ function VisitaModal({ onClose, onSave, initialData }) {
             {errors.tipo_otro && <p className="text-red-500 text-xs mt-1">Por favor, detalla el motivo</p>}
           </div>
 
+          {/* DNI/CIF Escaneado — OPCIONAL, libertad total (foto, imagen o PDF) */}
+          <div>
+            <label className="block text-xs font-medium text-google-gray mb-1.5">
+              DNI/CIF Escaneado <span className="font-normal">(opcional — foto, imagen o PDF)</span>
+            </label>
+            <input
+              ref={dniInputRef}
+              type="file"
+              accept="image/*,application/pdf"
+              onChange={handleDniChange}
+              className="hidden"
+            />
+            <button type="button" onClick={() => dniInputRef.current?.click()}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-google-border hover:border-google-blue hover:bg-blue-50 transition-colors text-sm text-google-gray hover:text-google-blue">
+              <Camera size={18} />
+              <span>
+                {dniFile
+                  ? dniFile.name
+                  : dniPreview && isEdit
+                    ? 'Cambiar adjunto'
+                    : 'Adjuntar foto, imagen o PDF'}
+              </span>
+            </button>
+            {dniPreview && (
+              <div className="mt-2 rounded-lg overflow-hidden border border-google-border">
+                <img src={dniPreview} alt="DNI/CIF escaneado" className="w-full h-28 object-cover" />
+              </div>
+            )}
+          </div>
+
           {/* Actions */}
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-google-border">
-            <button type="button" onClick={onClose} className="btn-secondary">Cancelar</button>
-            <button type="submit" disabled={saved}
+            <button type="button" onClick={onClose} disabled={saving} className="btn-secondary">Cancelar</button>
+            <button type="submit" disabled={saving || saved}
               className={`btn-primary flex items-center gap-2 ${saved ? 'bg-green-500 hover:bg-green-500' : ''}`}>
               {saved
                 ? <><CheckCircle size={15} /><span>Guardado</span></>
-                : <span>{isEdit ? 'Guardar Cambios' : 'Registrar Visita'}</span>}
+                : saving
+                  ? <><Loader2 size={15} className="animate-spin" /><span>Guardando...</span></>
+                  : <span>{isEdit ? 'Guardar Cambios' : 'Registrar Visita'}</span>}
             </button>
           </div>
         </form>
@@ -201,7 +253,8 @@ export default function RegistroVisitas() {
   const { visitas, addVisita, updateVisita, deleteVisita } = useData();
   const { currentUser } = useAuth();
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin      = currentUser?.role === 'admin';
+  const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'manager';
 
   const [showModal,    setShowModal]    = useState(false);
   const [editVisita,   setEditVisita]   = useState(null);
@@ -230,12 +283,16 @@ export default function RegistroVisitas() {
   const prevMonthPrefix = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
   const mesNombre       = now.toLocaleString('es-ES', { month: 'long' }).replace(/^\w/, c => c.toUpperCase());
 
-  const visitasHoy = visitas.filter(v => v.fecha === todayISO).length;
-  const visitasMes = visitas.filter(v => v.fecha.startsWith(monthPrefix)).length;
+  const visitasBase = isPrivileged
+    ? visitas
+    : visitas.filter(v => v.registrado_por === currentUser?.username);
+
+  const visitasHoy = visitasBase.filter(v => v.fecha === todayISO).length;
+  const visitasMes = visitasBase.filter(v => v.fecha.startsWith(monthPrefix)).length;
   const tipoMasRepetido = (() => {
-    if (!visitas.length) return '—';
+    if (!visitasBase.length) return '—';
     const counts = {};
-    visitas.forEach(v => { counts[v.tipo] = (counts[v.tipo] || 0) + 1; });
+    visitasBase.forEach(v => { counts[v.tipo] = (counts[v.tipo] || 0) + 1; });
     return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || '—';
   })();
 
@@ -261,10 +318,9 @@ export default function RegistroVisitas() {
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const handleSave = (data) => {
-    if (editVisita) updateVisita(editVisita.id, data);
-    else            addVisita(data);
-    setEditVisita(null);
+  const handleSave = async (data, dniFile, existingDniUrl) => {
+    if (editVisita) return await updateVisita(editVisita.id, data, dniFile, existingDniUrl);
+    return await addVisita(data, dniFile);
   };
 
   const tipoDisplay = (v) => v.tipo === 'Otro' ? (v.tipo_otro || 'Otro') : v.tipo;

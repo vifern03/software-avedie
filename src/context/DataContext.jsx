@@ -18,28 +18,56 @@ export function DataProvider({ children }) {
 
   const [clientes,    setClientes]    = useState([]);
   const [actividades, setActividades] = useState([]);
-  const [visitas,     setVisitas]     = useState([]);
-  const [isLoading,   setIsLoading]   = useState(true);
+  const [visitas,      setVisitas]      = useState([]);
+  const [visitasPymes, setVisitasPymes] = useState([]);
+  const [isLoading,    setIsLoading]    = useState(true);
 
   useEffect(() => {
     async function loadAll() {
+      setIsLoading(true);
+
+      const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+
+      let visitasQuery = supabase
+        .from('visitas')
+        .select('*')
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false });
+
+      if (currentUser && !isPrivileged) {
+        visitasQuery = visitasQuery.eq('registrado_por', currentUser.username);
+      }
+
+      let visitasPymesQuery = supabase
+        .from('visitas_pymes')
+        .select('*')
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false });
+
+      if (currentUser && !isPrivileged) {
+        visitasPymesQuery = visitasPymesQuery.eq('registrado_por', currentUser.username);
+      }
+
       const [
-        { data: clientesData   },
-        { data: actividadesData },
-        { data: visitasData    },
+        { data: clientesData     },
+        { data: actividadesData  },
+        { data: visitasData      },
+        { data: visitasPymesData },
       ] = await Promise.all([
         supabase.from('clientes').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
         supabase.from('actividades').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
-        supabase.from('visitas').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
+        visitasQuery,
+        visitasPymesQuery,
       ]);
 
-      setClientes(clientesData    || []);
+      setClientes(clientesData      || []);
       setActividades(actividadesData || []);
-      setVisitas(visitasData      || []);
+      setVisitas(visitasData        || []);
+      setVisitasPymes(visitasPymesData || []);
       setIsLoading(false);
     }
     loadAll();
-  }, []);
+  }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Actividades ─────────────────────────────────────────────────────────────
 
@@ -71,46 +99,148 @@ export function DataProvider({ children }) {
 
   // ── Visitas ─────────────────────────────────────────────────────────────────
 
-  const addVisita = (data) => {
+  const addVisita = async (data, dniFile) => {
+    let dni_cif_escaneado_url = '';
+    if (dniFile) {
+      const ext      = dniFile.name.split('.').pop() || 'jpg';
+      const fileName = `${Date.now()}_${currentUser?.username || 'anon'}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('visitas-dni')
+        .upload(fileName, dniFile, { upsert: false });
+      if (!upErr) {
+        const { data: urlData } = supabase.storage.from('visitas-dni').getPublicUrl(fileName);
+        dni_cif_escaneado_url = urlData.publicUrl;
+      } else {
+        console.error('addVisita upload:', upErr);
+      }
+    }
     const newVisita = {
-      id:             Date.now(),
-      fecha:          data.fecha,
-      hora:           data.hora,
-      dni:            data.dni,
-      nombre:         data.nombre,
-      telefono:       data.telefono   || '',
-      mail:           data.mail       || '',
-      tipo:           data.tipo,
-      tipo_otro:      data.tipo_otro  || '',
-      punto_venta:    data.punto_venta || '',
-      registrado_por: currentUser?.username || 'Sistema',
+      id:                   Date.now(),
+      fecha:                data.fecha,
+      hora:                 data.hora,
+      dni:                  data.dni,
+      nombre:               data.nombre,
+      telefono:             data.telefono    || '',
+      mail:                 data.mail        || '',
+      tipo:                 data.tipo,
+      tipo_otro:            data.tipo_otro   || '',
+      punto_venta:          data.punto_venta || '',
+      registrado_por:       currentUser?.username || 'Sistema',
+      dni_cif_escaneado_url,
     };
     setVisitas(prev => [newVisita, ...prev]);
-    supabase.from('visitas').insert([newVisita])
-      .then(({ error }) => {
-        if (error) {
-          console.error('addVisita:', error);
-          setVisitas(prev => prev.filter(v => v.id !== newVisita.id));
-        } else {
-          addActivity(
-            'Visita',
-            `${currentUser?.username || 'Sistema'} ha registrado una visita de ${newVisita.nombre} en el punto de venta ${newVisita.punto_venta}`,
-            currentUser?.username
-          );
-        }
-      });
+    const { error } = await supabase.from('visitas').insert([newVisita]);
+    if (error) {
+      console.error('addVisita:', error);
+      setVisitas(prev => prev.filter(v => v.id !== newVisita.id));
+      return { error };
+    }
+    addActivity(
+      'Visita',
+      `${currentUser?.username || 'Sistema'} ha registrado una visita de ${newVisita.nombre} en el punto de venta ${newVisita.punto_venta}`,
+      currentUser?.username
+    );
+    return { error: null };
   };
 
-  const updateVisita = (id, data) => {
-    setVisitas(prev => prev.map(v => v.id === id ? { ...v, ...data } : v));
-    supabase.from('visitas').update(data).eq('id', id)
-      .then(({ error }) => { if (error) console.error('updateVisita:', error); });
+  const updateVisita = async (id, data, dniFile, existingDniUrl) => {
+    let dni_cif_escaneado_url = existingDniUrl || '';
+    if (dniFile) {
+      const ext      = dniFile.name.split('.').pop() || 'jpg';
+      const fileName = `${Date.now()}_${currentUser?.username || 'anon'}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('visitas-dni')
+        .upload(fileName, dniFile, { upsert: false });
+      if (!upErr) {
+        const { data: urlData } = supabase.storage.from('visitas-dni').getPublicUrl(fileName);
+        dni_cif_escaneado_url = urlData.publicUrl;
+      } else {
+        console.error('updateVisita upload:', upErr);
+      }
+    }
+    const updateObj = { ...data, dni_cif_escaneado_url };
+    setVisitas(prev => prev.map(v => v.id === id ? { ...v, ...updateObj } : v));
+    const { error } = await supabase.from('visitas').update(updateObj).eq('id', id);
+    if (error) { console.error('updateVisita:', error); return { error }; }
+    return { error: null };
   };
 
   const deleteVisita = (id) => {
     setVisitas(prev => prev.filter(v => v.id !== id));
     supabase.from('visitas').update({ deleted_at: new Date().toISOString() }).eq('id', id)
       .then(({ error }) => { if (error) console.error('deleteVisita:', error); });
+  };
+
+  // ── Visitas PYMES ────────────────────────────────────────────────────────────
+
+  const addVisitaPyme = async (data, fotoFile) => {
+    let foto_url = '';
+    if (fotoFile) {
+      const ext      = fotoFile.name.split('.').pop() || 'jpg';
+      const fileName = `${Date.now()}_${currentUser?.username || 'anon'}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('pymes-fotos')
+        .upload(fileName, fotoFile, { upsert: false });
+      if (!upErr) {
+        const { data: urlData } = supabase.storage.from('pymes-fotos').getPublicUrl(fileName);
+        foto_url = urlData.publicUrl;
+      } else {
+        console.error('addVisitaPyme upload:', upErr);
+      }
+    }
+    const newVisita = {
+      id:                 Date.now(),
+      fecha:              data.fecha,
+      hora:               data.hora,
+      persona_autorizada: data.persona_autorizada,
+      correo_persona:     data.correo_persona   || '',
+      telefono_cliente:   data.telefono_cliente || '',
+      correo_cliente:     data.correo_cliente   || '',
+      foto_url,
+      comentarios:        data.comentarios      || '',
+      registrado_por:     currentUser?.username || 'Sistema',
+    };
+    setVisitasPymes(prev => [newVisita, ...prev]);
+    const { error } = await supabase.from('visitas_pymes').insert([newVisita]);
+    if (error) {
+      console.error('addVisitaPyme:', error);
+      setVisitasPymes(prev => prev.filter(v => v.id !== newVisita.id));
+      return { error };
+    }
+    addActivity(
+      'Visita PYME',
+      `${currentUser?.username || 'Sistema'} ha registrado una visita PYME a ${newVisita.persona_autorizada}`,
+      currentUser?.username
+    );
+    return { error: null };
+  };
+
+  const updateVisitaPyme = async (id, data, fotoFile, existingFotoUrl) => {
+    let foto_url = existingFotoUrl || '';
+    if (fotoFile) {
+      const ext      = fotoFile.name.split('.').pop() || 'jpg';
+      const fileName = `${Date.now()}_${currentUser?.username || 'anon'}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('pymes-fotos')
+        .upload(fileName, fotoFile, { upsert: false });
+      if (!upErr) {
+        const { data: urlData } = supabase.storage.from('pymes-fotos').getPublicUrl(fileName);
+        foto_url = urlData.publicUrl;
+      } else {
+        console.error('updateVisitaPyme upload:', upErr);
+      }
+    }
+    const updateObj = { ...data, foto_url };
+    setVisitasPymes(prev => prev.map(v => v.id === id ? { ...v, ...updateObj } : v));
+    const { error } = await supabase.from('visitas_pymes').update(updateObj).eq('id', id);
+    if (error) { console.error('updateVisitaPyme:', error); return { error }; }
+    return { error: null };
+  };
+
+  const deleteVisitaPyme = (id) => {
+    setVisitasPymes(prev => prev.filter(v => v.id !== id));
+    supabase.from('visitas_pymes').update({ deleted_at: new Date().toISOString() }).eq('id', id)
+      .then(({ error }) => { if (error) console.error('deleteVisitaPyme:', error); });
   };
 
   // ── Clientes ────────────────────────────────────────────────────────────────
@@ -329,6 +459,7 @@ export function DataProvider({ children }) {
       clientesB2B: clientes.filter(c => c.tipo === 'B2B'),
       actividades,
       visitas,
+      visitasPymes,
       rankingComerciales,
       isLoading,
       addCliente,
@@ -342,6 +473,9 @@ export function DataProvider({ children }) {
       addVisita,
       updateVisita,
       deleteVisita,
+      addVisitaPyme,
+      updateVisitaPyme,
+      deleteVisitaPyme,
     }}>
       {children}
     </DataContext.Provider>
