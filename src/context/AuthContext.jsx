@@ -8,7 +8,7 @@ const AuthContext = createContext(null);
 export const DEFAULT_PERMISSIONS = {
   admin:     { dashboard: true,  historica: true,  radar: true,  b2c: true, b2b: true, historial: true,  visitas: true,  visitas_pymes: true,  reportes: true  },
   manager:   { dashboard: false, historica: false, radar: true,  b2c: true, b2b: true, historial: false, visitas: true,  visitas_pymes: true,  reportes: true  },
-  comercial: { dashboard: false, historica: false, radar: false, b2c: true, b2b: true, historial: false, visitas: false, visitas_pymes: false, reportes: true  },
+  comercial: { dashboard: false, historica: false, radar: false, b2c: true, b2b: true, historial: false, visitas: true,  visitas_pymes: true,  reportes: true  },
 };
 
 const SESSION_KEY = 'crm_avedie_user';

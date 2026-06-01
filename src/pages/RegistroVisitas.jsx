@@ -565,7 +565,7 @@ export default function RegistroVisitas() {
                     <td className="table-cell text-google-gray text-xs">{v.registrado_por}</td>
                     <td className="table-cell text-center">
                       <div className="flex items-center justify-center gap-1">
-                        {isAdmin ? (
+                        {(isPrivileged || v.registrado_por === currentUser?.username) ? (
                           <>
                             <button onClick={() => setEditVisita(v)}
                               className="p-1 rounded hover:bg-blue-50 transition-colors" title="Editar">

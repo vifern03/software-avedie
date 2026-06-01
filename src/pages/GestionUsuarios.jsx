@@ -8,14 +8,15 @@ import { hashPassword } from '../lib/crypto';
 import PinModal from '../components/PinModal';
 
 const PAGES = [
-  { id: 'dashboard', label: 'Dashboard'  },
-  { id: 'historica', label: 'Histórica'  },
-  { id: 'radar',     label: 'Radar'      },
-  { id: 'b2c',       label: 'Alta B2C'  },
-  { id: 'b2b',       label: 'Alta B2B'  },
-  { id: 'visitas',   label: 'Visitas'   },
-  { id: 'reportes',  label: 'Reportes'  },
-  { id: 'historial', label: 'Historial' },
+  { id: 'dashboard',    label: 'Dashboard'       },
+  { id: 'historica',    label: 'Histórica'       },
+  { id: 'radar',        label: 'Radar'           },
+  { id: 'b2c',          label: 'Alta B2C'        },
+  { id: 'b2b',          label: 'Alta B2B'        },
+  { id: 'visitas',      label: 'Visitas Tienda'  },
+  { id: 'visitas_pymes', label: 'Visitas PYME'   },
+  { id: 'reportes',     label: 'Reportes'        },
+  { id: 'historial',    label: 'Historial'       },
 ];
 
 const ROLE_META = {
@@ -538,7 +539,7 @@ export default function GestionUsuarios() {
                 )}
               </div>
 
-              <div className="grid grid-cols-4 lg:grid-cols-8 divide-x divide-google-border">
+              <div className="grid grid-cols-3 lg:grid-cols-9 divide-x divide-google-border">
                 {PAGES.map((page) => {
                   const active = isAdmin
                     ? true
@@ -615,7 +616,7 @@ export default function GestionUsuarios() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+                  <div className="grid grid-cols-3 sm:grid-cols-9 gap-2">
                     {PAGES.map((page) => {
                       const isOverridden = userOverrides[page.id] !== undefined;
                       const effective    = isOverridden

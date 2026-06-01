@@ -189,21 +189,21 @@ export function DataProvider({ children }) {
       }
     }
     const newVisita = {
-      id:                 Date.now(),
-      fecha:              data.fecha,
-      hora:               data.hora,
-      persona_autorizada: data.persona_autorizada,
-      correo_persona:     data.correo_persona   || '',
-      telefono_cliente:   data.telefono_cliente || '',
-      correo_cliente:     data.correo_cliente   || '',
-      foto_url,
-      comentarios:        data.comentarios      || '',
-      registrado_por:     currentUser?.username || 'Sistema',
+      id:                         Date.now(),
+      fecha:                      data.fecha,
+      hora:                       data.hora,
+      persona_autorizada:         data.persona_autorizada,
+      correo:                     data.correo_persona            || '',
+      telefono_contacto_cliente:  data.telefono_cliente          || '',
+      correo_electronico_cliente: data.correo_cliente            || '',
+      foto_negocio_url:           foto_url,
+      comentarios_visita:         data.comentarios               || '',
+      registrado_por:             currentUser?.username          || 'Sistema',
     };
     setVisitasPymes(prev => [newVisita, ...prev]);
     const { error } = await supabase.from('visitas_pymes').insert([newVisita]);
     if (error) {
-      console.error('addVisitaPyme:', error);
+      console.error('addVisitaPyme error:', error.message, error.details, error.hint);
       setVisitasPymes(prev => prev.filter(v => v.id !== newVisita.id));
       return { error };
     }
@@ -230,10 +230,19 @@ export function DataProvider({ children }) {
         console.error('updateVisitaPyme upload:', upErr);
       }
     }
-    const updateObj = { ...data, foto_url };
+    const updateObj = {
+      fecha:                      data.fecha,
+      hora:                       data.hora,
+      persona_autorizada:         data.persona_autorizada,
+      correo:                     data.correo_persona            || '',
+      telefono_contacto_cliente:  data.telefono_cliente          || '',
+      correo_electronico_cliente: data.correo_cliente            || '',
+      foto_negocio_url:           foto_url,
+      comentarios_visita:         data.comentarios               || '',
+    };
     setVisitasPymes(prev => prev.map(v => v.id === id ? { ...v, ...updateObj } : v));
     const { error } = await supabase.from('visitas_pymes').update(updateObj).eq('id', id);
-    if (error) { console.error('updateVisitaPyme:', error); return { error }; }
+    if (error) { console.error('updateVisitaPyme error:', error.message, error.details); return { error }; }
     return { error: null };
   };
 

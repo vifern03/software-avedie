@@ -27,13 +27,13 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername }) {
     fecha:              initialData?.fecha              || todayStr(),
     hora:               initialData?.hora               || nowTime(),
     persona_autorizada: initialData?.persona_autorizada || '',
-    correo_persona:     initialData?.correo_persona     || '',
-    telefono_cliente:   initialData?.telefono_cliente   || '',
-    correo_cliente:     initialData?.correo_cliente     || '',
-    comentarios:        initialData?.comentarios        || '',
+    correo_persona:     initialData?.correo                      || '',
+    telefono_cliente:   initialData?.telefono_contacto_cliente  || '',
+    correo_cliente:     initialData?.correo_electronico_cliente || '',
+    comentarios:        initialData?.comentarios_visita         || '',
   });
   const [fotoFile,    setFotoFile]    = useState(null);
-  const [fotoPreview, setFotoPreview] = useState(initialData?.foto_url || '');
+  const [fotoPreview, setFotoPreview] = useState(initialData?.foto_negocio_url || '');
   const [errors,      setErrors]      = useState({});
   const [saving,      setSaving]      = useState(false);
   const [saved,       setSaved]       = useState(false);
@@ -67,7 +67,7 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername }) {
     e.preventDefault();
     if (!validate()) return;
     setSaving(true);
-    const result = await onSave(form, fotoFile, initialData?.foto_url || '');
+    const result = await onSave(form, fotoFile, initialData?.foto_negocio_url || '');
     if (result?.error) { setSaving(false); return; }
     setSaved(true);
     setTimeout(() => onClose(), 800);
@@ -280,8 +280,8 @@ export default function RegistroVisitasPymes() {
       const matchSearch = !search
         || v.persona_autorizada?.toLowerCase().includes(q)
         || v.registrado_por?.toLowerCase().includes(q)
-        || v.telefono_cliente?.toLowerCase().includes(q)
-        || v.correo_cliente?.toLowerCase().includes(q);
+        || v.telefono_contacto_cliente?.toLowerCase().includes(q)
+        || v.correo_electronico_cliente?.toLowerCase().includes(q);
       const matchTime =
           timeFilter === 'hoy'          ? v.fecha === todayISO
         : timeFilter === 'mes_actual'   ? v.fecha.startsWith(monthPrefix)
@@ -312,11 +312,11 @@ export default function RegistroVisitasPymes() {
       { header: 'Hora',               key: 'hora',               width: 10 },
       { header: 'Registrado por',     key: 'registrado_por',     width: 20 },
       { header: 'Persona Autorizada', key: 'persona_autorizada', width: 28 },
-      { header: 'Correo Persona',     key: 'correo_persona',     width: 28 },
-      { header: 'Tel. Cliente',       key: 'telefono_cliente',   width: 18, style: { numFmt: '@' } },
-      { header: 'Correo Cliente',     key: 'correo_cliente',     width: 28 },
-      { header: 'Foto (URL)',         key: 'foto_url',           width: 40 },
-      { header: 'Comentarios',        key: 'comentarios',        width: 40 },
+      { header: 'Correo Persona',     key: 'correo',                      width: 28 },
+      { header: 'Tel. Cliente',       key: 'telefono_contacto_cliente',  width: 18, style: { numFmt: '@' } },
+      { header: 'Correo Cliente',     key: 'correo_electronico_cliente', width: 28 },
+      { header: 'Foto (URL)',         key: 'foto_negocio_url',           width: 40 },
+      { header: 'Comentarios',        key: 'comentarios_visita',         width: 40 },
     ];
 
     const hBorder = { style: 'thin', color: { argb: 'FFBDBDBD' } };
@@ -335,11 +335,11 @@ export default function RegistroVisitasPymes() {
         hora:               v.hora               || '',
         registrado_por:     v.registrado_por     || '',
         persona_autorizada: v.persona_autorizada || '',
-        correo_persona:     v.correo_persona     || '',
-        telefono_cliente:   String(v.telefono_cliente || ''),
-        correo_cliente:     v.correo_cliente     || '',
-        foto_url:           v.foto_url           || '',
-        comentarios:        v.comentarios        || '',
+        correo:                      v.correo                      || '',
+        telefono_contacto_cliente:  String(v.telefono_contacto_cliente  || ''),
+        correo_electronico_cliente: v.correo_electronico_cliente || '',
+        foto_negocio_url:           v.foto_negocio_url           || '',
+        comentarios_visita:         v.comentarios_visita         || '',
       });
       row.eachCell({ includeEmpty: true }, (cell, colNum) => {
         cell.border    = { top: dBorder, left: dBorder, bottom: dBorder, right: dBorder };
@@ -500,24 +500,24 @@ export default function RegistroVisitasPymes() {
                     <td className="table-cell tabular-nums text-xs text-google-gray">{v.hora}</td>
                     <td className="table-cell text-google-gray text-xs">{v.registrado_por}</td>
                     <td className="table-cell font-medium text-google-dark whitespace-nowrap">{v.persona_autorizada}</td>
-                    <td className="table-cell text-google-gray">{v.telefono_cliente || '—'}</td>
-                    <td className="table-cell text-google-gray text-xs">{v.correo_cliente || '—'}</td>
+                    <td className="table-cell text-google-gray">{v.telefono_contacto_cliente || '—'}</td>
+                    <td className="table-cell text-google-gray text-xs">{v.correo_electronico_cliente || '—'}</td>
                     <td className="table-cell text-center">
-                      {v.foto_url
-                        ? <a href={v.foto_url} target="_blank" rel="noopener noreferrer"
+                      {v.foto_negocio_url
+                        ? <a href={v.foto_negocio_url} target="_blank" rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 font-medium">
                             <ExternalLink size={13} />Ver
                           </a>
                         : <span className="text-google-gray">—</span>}
                     </td>
                     <td className="table-cell text-google-gray text-xs max-w-[200px]">
-                      <span className="line-clamp-2" title={v.comentarios || ''}>
-                        {v.comentarios || '—'}
+                      <span className="line-clamp-2" title={v.comentarios_visita || ''}>
+                        {v.comentarios_visita || '—'}
                       </span>
                     </td>
                     <td className="table-cell text-center">
                       <div className="flex items-center justify-center gap-1">
-                        {isAdmin ? (
+                        {(isPrivileged || v.registrado_por === currentUser?.username) ? (
                           <>
                             <button onClick={() => setEditVisita(v)}
                               className="p-1 rounded hover:bg-blue-50 transition-colors" title="Editar">
