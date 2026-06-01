@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
   display_name   TEXT,
   is_undeletable BOOLEAN     DEFAULT FALSE,
   security_pin   TEXT,
+  deleted_at     TIMESTAMPTZ DEFAULT NULL,
   created_at     TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE usuarios DISABLE ROW LEVEL SECURITY;
@@ -48,6 +49,7 @@ CREATE TABLE IF NOT EXISTS clientes (
   ultima_factura    TEXT,
   renovado          BOOLEAN     DEFAULT FALSE,
   fecha_renovacion  TEXT,
+  deleted_at        TIMESTAMPTZ DEFAULT NULL,
   created_at        TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE clientes DISABLE ROW LEVEL SECURITY;
@@ -70,6 +72,7 @@ CREATE TABLE IF NOT EXISTS actividades (
   comercial   TEXT,
   fecha       TEXT,
   hora        TEXT,
+  deleted_at  TIMESTAMPTZ DEFAULT NULL,
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE actividades DISABLE ROW LEVEL SECURITY;
@@ -86,6 +89,7 @@ CREATE TABLE IF NOT EXISTS visitas (
   tipo           TEXT,
   tipo_otro      TEXT,
   registrado_por TEXT,
+  deleted_at     TIMESTAMPTZ DEFAULT NULL,
   created_at     TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE visitas DISABLE ROW LEVEL SECURITY;

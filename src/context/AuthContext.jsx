@@ -52,7 +52,7 @@ export function AuthProvider({ children }) {
       }
 
       const [{ data: usersData, error: uErr }, { data: configData }] = await Promise.all([
-        supabase.from('usuarios').select('*'),
+        supabase.from('usuarios').select('*').is('deleted_at', null),
         supabase.from('configuracion').select('*'),
       ]);
 
@@ -245,7 +245,7 @@ export function AuthProvider({ children }) {
     const target = users.find(u => u.username === username);
     if (target?.isUndeletable) return;
     setUsers(prev => prev.filter(u => u.username !== username));
-    supabase.from('usuarios').delete().eq('username', username)
+    supabase.from('usuarios').update({ deleted_at: new Date().toISOString() }).eq('username', username)
       .then(({ error }) => { if (error) console.error('deleteUser:', error); });
   }, [users]);
 

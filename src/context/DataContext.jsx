@@ -28,9 +28,9 @@ export function DataProvider({ children }) {
         { data: actividadesData },
         { data: visitasData    },
       ] = await Promise.all([
-        supabase.from('clientes').select('*').order('created_at', { ascending: false }),
-        supabase.from('actividades').select('*').order('created_at', { ascending: false }),
-        supabase.from('visitas').select('*').order('created_at', { ascending: false }),
+        supabase.from('clientes').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
+        supabase.from('actividades').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
+        supabase.from('visitas').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
       ]);
 
       setClientes(clientesData    || []);
@@ -65,7 +65,7 @@ export function DataProvider({ children }) {
 
   const clearActividades = () => {
     setActividades([]);
-    supabase.from('actividades').delete().not('id', 'is', null)
+    supabase.from('actividades').update({ deleted_at: new Date().toISOString() }).is('deleted_at', null)
       .then(({ error }) => { if (error) console.error('clearActividades:', error); });
   };
 
@@ -102,7 +102,7 @@ export function DataProvider({ children }) {
 
   const deleteVisita = (id) => {
     setVisitas(prev => prev.filter(v => v.id !== id));
-    supabase.from('visitas').delete().eq('id', id)
+    supabase.from('visitas').update({ deleted_at: new Date().toISOString() }).eq('id', id)
       .then(({ error }) => { if (error) console.error('deleteVisita:', error); });
   };
 
@@ -278,7 +278,7 @@ export function DataProvider({ children }) {
   const deleteCliente = (id) => {
     const cliente = clientes.find(c => c.id === id);
     setClientes(prev => prev.filter(c => c.id !== id));
-    supabase.from('clientes').delete().eq('id', id)
+    supabase.from('clientes').update({ deleted_at: new Date().toISOString() }).eq('id', id)
       .then(({ error }) => { if (error) console.error('deleteCliente:', error); });
     if (cliente) {
       addActivity(
