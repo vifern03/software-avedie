@@ -337,7 +337,7 @@ export default function RegistroVisitas() {
     <div className="p-3 md:p-6 space-y-4 md:space-y-6 max-w-7xl">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-google-dark flex items-center gap-2">
             <Store size={22} className="text-google-blue" />
@@ -345,7 +345,7 @@ export default function RegistroVisitas() {
           </h1>
           <p className="text-sm text-google-gray mt-1">Control de visitas y atención presencial en tienda</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button onClick={() => exportVisitasToXLSX(visitas, 'Completo')}
             className="btn-secondary flex items-center gap-2">
             <FileSpreadsheet size={15} />
@@ -364,7 +364,7 @@ export default function RegistroVisitas() {
       </div>
 
       {/* Counter cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="card p-5 flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-google-blue flex items-center justify-center flex-shrink-0">
             <CalendarDays size={22} className="text-white" />
@@ -398,12 +398,12 @@ export default function RegistroVisitas() {
 
       {/* Filters */}
       <div className="card px-5 py-4 space-y-3">
-        {/* Fila 1: búsqueda + tipo + pills rápidas */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative flex-1 min-w-[200px]">
+        {/* Fila 1: búsqueda + select de tipo */}
+        <div className="flex flex-wrap gap-3">
+          <div className="relative flex-1 min-w-[180px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray" />
             <input type="text" placeholder="Buscar por DNI o nombre..." value={search}
-              onChange={e => setSearch(e.target.value)} className="input-field pl-9 h-9" />
+              onChange={e => setSearch(e.target.value)} className="input-field pl-9 h-9 w-full" />
             {search && (
               <button onClick={() => setSearch('')}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-google-gray hover:text-google-dark">
@@ -412,36 +412,37 @@ export default function RegistroVisitas() {
             )}
           </div>
           <select value={filterTipo} onChange={e => setFilterTipo(e.target.value)}
-            className="input-field h-9 text-xs w-48">
+            className="input-field h-9 text-xs min-w-[160px] flex-shrink-0">
             <option value="">Todos los tipos</option>
             {TIPOS_GESTION.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
-          <div className="flex items-center gap-2">
-            <FilterPill label="Todo"
-              active={timeFilter === ''}
-              onClick={() => setTimeFilter('')} />
-            <FilterPill label="Hoy"
-              active={timeFilter === 'hoy'}
-              onClick={() => { setTimeFilter('hoy'); setFechaDesde(''); setFechaHasta(''); }} />
-            <FilterPill label={`Este Mes (${monthName(0)})`}
-              active={timeFilter === 'mes_actual'}
-              onClick={() => { setTimeFilter('mes_actual'); setFechaDesde(''); setFechaHasta(''); }} />
-            <FilterPill label={`Mes Anterior (${monthName(-1)})`}
-              active={timeFilter === 'mes_anterior'}
-              onClick={() => { setTimeFilter('mes_anterior'); setFechaDesde(''); setFechaHasta(''); }} />
-          </div>
         </div>
-        {/* Fila 2: rango de fechas */}
+        {/* Fila 2: pills de rango rápido */}
+        <div className="flex flex-wrap gap-2">
+          <FilterPill label="Todo"
+            active={timeFilter === ''}
+            onClick={() => setTimeFilter('')} />
+          <FilterPill label="Hoy"
+            active={timeFilter === 'hoy'}
+            onClick={() => { setTimeFilter('hoy'); setFechaDesde(''); setFechaHasta(''); }} />
+          <FilterPill label={`Este Mes (${monthName(0)})`}
+            active={timeFilter === 'mes_actual'}
+            onClick={() => { setTimeFilter('mes_actual'); setFechaDesde(''); setFechaHasta(''); }} />
+          <FilterPill label={`Mes Anterior (${monthName(-1)})`}
+            active={timeFilter === 'mes_anterior'}
+            onClick={() => { setTimeFilter('mes_anterior'); setFechaDesde(''); setFechaHasta(''); }} />
+        </div>
+        {/* Fila 3: rango de fechas personalizado */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-google-gray">Fecha visita:</span>
+          <span className="text-xs font-medium text-google-gray w-full sm:w-auto">Fecha visita:</span>
           <div className="flex items-center gap-1">
-            <label className="text-xs text-google-gray">Desde</label>
+            <label className="text-xs text-google-gray whitespace-nowrap">Desde</label>
             <input type="date" value={fechaDesde}
               onChange={e => { setFechaDesde(e.target.value); setTimeFilter(''); }}
               className="input-field h-7 text-xs px-2 w-36" />
           </div>
           <div className="flex items-center gap-1">
-            <label className="text-xs text-google-gray">Hasta</label>
+            <label className="text-xs text-google-gray whitespace-nowrap">Hasta</label>
             <input type="date" value={fechaHasta}
               onChange={e => { setFechaHasta(e.target.value); setTimeFilter(''); }}
               className="input-field h-7 text-xs px-2 w-36" />
