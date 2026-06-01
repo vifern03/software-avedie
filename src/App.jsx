@@ -116,7 +116,7 @@ export default function App() {
         onNavigate={handleNavigate}
         onOpenAI={() => setIsAIOpen(true)}
       />
-      <main className="flex-1 overflow-y-auto bg-white">
+      <main className="flex-1 overflow-y-auto bg-white pt-14 md:pt-0">
         {renderPage()}
       </main>
       <AIAssistant isOpen={isAIOpen} onOpenChange={setIsAIOpen} />

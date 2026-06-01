@@ -168,7 +168,7 @@ export default function AltaClientes({ tipo }) {
   const subtipo = (c) => c.subtipo === 'Otro' ? (c.subtipo_otro || 'Otro') : (c.subtipo || '—');
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl">
+    <div className="p-3 md:p-6 space-y-4 md:space-y-6 max-w-7xl">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -184,7 +184,7 @@ export default function AltaClientes({ tipo }) {
       </div>
 
       {/* Counter cards — 3 estados */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="card p-5 flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-red-500 flex items-center justify-center flex-shrink-0">
             <AlertCircle size={22} className="text-white" />

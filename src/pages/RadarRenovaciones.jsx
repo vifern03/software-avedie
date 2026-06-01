@@ -365,7 +365,7 @@ export default function RadarRenovaciones() {
     nombre.split(' ').map((w) => w[0]).filter(Boolean).slice(0, 2).join('');
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl">
+    <div className="p-3 md:p-6 space-y-4 md:space-y-6 max-w-5xl">
 
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">

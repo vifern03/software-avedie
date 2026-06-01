@@ -602,7 +602,7 @@ export default function ReportesSoftware() {
   const colSpan = isAdmin ? 8 : 6;
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl">
+    <div className="p-3 md:p-6 space-y-4 md:space-y-6 max-w-7xl">
 
       {/* Header */}
       <div className="flex items-center justify-between">

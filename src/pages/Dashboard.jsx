@@ -59,7 +59,7 @@ export default function Dashboard({ onNavigate }) {
   const maxCerrados = Math.max(1, ...rankingComerciales.map((c) => c.cerrados));
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl">
+    <div className="p-3 md:p-6 space-y-4 md:space-y-6 max-w-7xl">
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
@@ -76,7 +76,7 @@ export default function Dashboard({ onNavigate }) {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <StatCard icon={FileCheck} label="Total Contratos"   value={totalContratos}  color="bg-google-blue" />
         <StatCard icon={Users}     label="Formalizados"      value={formalizados}    color="bg-green-500"   />
         <StatCard icon={Clock}     label="Tramitados"        value={tramitados}      color="bg-orange-500"  />

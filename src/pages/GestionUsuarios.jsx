@@ -438,7 +438,7 @@ export default function GestionUsuarios() {
   const nonAdminUsers = sortedUsers.filter(u => u.role !== 'admin');
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl">
+    <div className="p-3 md:p-6 space-y-4 md:space-y-6 max-w-5xl">
 
       {showPin && (
         <PinModal
