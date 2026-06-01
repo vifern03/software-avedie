@@ -1,7 +1,9 @@
-// Proxy seguro para Gemini 1.5 Flash.
-// La clave API vive exclusivamente en process.env.GEMINI_API_KEY (variable de entorno
-// del servidor Netlify), nunca se expone en el bundle de JavaScript del cliente.
-import { GoogleGenerativeAI } from '@google/generative-ai';
+// Proxy seguro para Gemini 2.0 Flash.
+// Usa la REST API directamente (sin SDK) para evitar incompatibilidades de versión.
+// La clave API vive exclusivamente en process.env.GEMINI_API_KEY en Netlify.
+
+const GEMINI_ENDPOINT =
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
 const SYSTEM_PROMPT =
   process.env.SYSTEM_PROMPT ||
@@ -18,13 +20,16 @@ const CORS_HEADERS = {
 };
 
 export const handler = async (event) => {
-  // Preflight CORS
   if (event.httpMethod === 'OPTIONS') {
     return { statusCode: 200, headers: CORS_HEADERS, body: '' };
   }
 
   if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, headers: CORS_HEADERS, body: JSON.stringify({ error: 'Method Not Allowed' }) };
+    return {
+      statusCode: 405,
+      headers: CORS_HEADERS,
+      body: JSON.stringify({ error: 'Method Not Allowed' }),
+    };
   }
 
   const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
@@ -48,27 +53,37 @@ export const handler = async (event) => {
       };
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
+    // Construir partes del mensaje actual
+    const currentParts = [];
+    if (text) currentParts.push({ text });
+    if (file?.data && file?.mimeType) {
+      currentParts.push({ inlineData: { mimeType: file.mimeType, data: file.data } });
+    }
 
-    // Inyectar contexto de sistema como primer turno del historial
-    const fullHistory = [
+    // Historial completo: system prompt como primer turno + conversación + mensaje actual
+    const contents = [
       { role: 'user',  parts: [{ text: SYSTEM_PROMPT }] },
       { role: 'model', parts: [{ text: 'Entendido. Estoy listo para asistirte como asistente de Grupo Avedie.' }] },
       ...history,
+      { role: 'user',  parts: currentParts },
     ];
 
-    const chat = model.startChat({ history: fullHistory });
+    const geminiRes = await fetch(`${GEMINI_ENDPOINT}?key=${apiKey}`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ contents }),
+    });
 
-    // Construir partes del mensaje actual
-    const parts = [];
-    if (text) parts.push({ text });
-    if (file?.data && file?.mimeType) {
-      parts.push({ inlineData: { mimeType: file.mimeType, data: file.data } });
+    const geminiData = await geminiRes.json();
+
+    if (!geminiRes.ok) {
+      const msg = geminiData?.error?.message || `Gemini API ${geminiRes.status}`;
+      console.error('Gemini API error:', msg);
+      throw new Error(msg);
     }
 
-    const result      = await chat.sendMessage(parts);
-    const responseText = result.response.text();
+    const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!responseText) throw new Error('Respuesta vacía del modelo.');
 
     return {
       statusCode: 200,
@@ -80,7 +95,7 @@ export const handler = async (event) => {
     return {
       statusCode: 500,
       headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Error al procesar la solicitud con la IA. Inténtalo de nuevo.' }),
+      body: JSON.stringify({ error: err.message || 'Error al procesar la solicitud con la IA.' }),
     };
   }
 };
