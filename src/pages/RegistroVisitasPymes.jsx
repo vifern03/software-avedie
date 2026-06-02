@@ -7,6 +7,11 @@ import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
 import DeleteConfirmModal from '../components/DeleteConfirmModal';
 
+const isMobileDevice = () => {
+  const ua = navigator.userAgent || navigator.vendor || '';
+  return /android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua);
+};
+
 const todayStr = () => new Date().toISOString().split('T')[0];
 const nowTime  = () => {
   const n = new Date();
@@ -22,12 +27,12 @@ const monthName = (offset) => {
 };
 
 function VisitaPymeModal({ onClose, onSave, initialData, currentUsername }) {
-  const isEdit = !!initialData;
+  const isEdit   = !!initialData;
+  const isMobile = isMobileDevice();
   const [form, setForm] = useState({
     fecha:              initialData?.fecha              || todayStr(),
     hora:               initialData?.hora               || nowTime(),
     persona_autorizada: initialData?.persona_autorizada || '',
-    correo_persona:     initialData?.correo                      || '',
     telefono_cliente:   initialData?.telefono_contacto_cliente  || '',
     correo_cliente:     initialData?.correo_electronico_cliente || '',
     comentarios:        initialData?.comentarios_visita         || '',
@@ -100,6 +105,16 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername }) {
 
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4 overflow-y-auto">
 
+          {/* Bloqueo escritorio */}
+          {!isMobile && (
+            <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+              <span className="text-lg leading-none mt-0.5 flex-shrink-0">⚠️</span>
+              <p className="text-sm font-medium text-amber-800">
+                Por seguridad, el Registro de PYMEs solo puede completarse desde un teléfono móvil (se requiere foto en vivo del negocio).
+              </p>
+            </div>
+          )}
+
           {/* Registrado por */}
           <div>
             <label className="block text-xs font-medium text-google-gray mb-1.5">Registrado por</label>
@@ -114,14 +129,6 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername }) {
               value={form.persona_autorizada} onChange={e => set('persona_autorizada', e.target.value)}
               className={ic('persona_autorizada')} />
             {errors.persona_autorizada && <p className="text-red-500 text-xs mt-1">Obligatorio</p>}
-          </div>
-
-          {/* Correo persona autorizada */}
-          <div>
-            <label className="block text-xs font-medium text-google-gray mb-1.5">Correo (persona autorizada)</label>
-            <input type="email" placeholder="correo@empresa.com"
-              value={form.correo_persona} onChange={e => set('correo_persona', e.target.value)}
-              className="input-field" />
           </div>
 
           {/* Fecha y Hora */}
@@ -166,24 +173,30 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername }) {
               capture="environment"
               onChange={handleFotoChange}
               className="hidden"
+              disabled={!isMobile}
             />
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => isMobile && fileInputRef.current?.click()}
+              disabled={!isMobile}
               className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed transition-colors text-sm ${
-                errors.foto
-                  ? 'border-red-400 bg-red-50 text-red-600 hover:border-red-500 hover:bg-red-100'
-                  : fotoPreview
-                    ? 'border-emerald-400 bg-emerald-50 text-emerald-700 hover:border-emerald-500'
-                    : 'border-google-border text-google-gray hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700'
+                !isMobile
+                  ? 'border-amber-300 bg-amber-50 text-amber-600 cursor-not-allowed opacity-70'
+                  : errors.foto
+                    ? 'border-red-400 bg-red-50 text-red-600 hover:border-red-500 hover:bg-red-100'
+                    : fotoPreview
+                      ? 'border-emerald-400 bg-emerald-50 text-emerald-700 hover:border-emerald-500'
+                      : 'border-google-border text-google-gray hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700'
               }`}>
               <Camera size={18} />
               <span>
-                {fotoFile
-                  ? fotoFile.name
-                  : fotoPreview && isEdit
-                    ? 'Cambiar foto del negocio'
-                    : 'Hacer Foto al Negocio (Obligatorio)'}
+                {!isMobile
+                  ? 'Solo disponible desde el móvil'
+                  : fotoFile
+                    ? fotoFile.name
+                    : fotoPreview && isEdit
+                      ? 'Cambiar foto del negocio'
+                      : 'Hacer Foto al Negocio (Obligatorio)'}
               </span>
             </button>
             {errors.foto && !fotoPreview && (
@@ -207,8 +220,8 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername }) {
           {/* Actions */}
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-google-border">
             <button type="button" onClick={onClose} disabled={saving} className="btn-secondary">Cancelar</button>
-            <button type="submit" disabled={saving || saved}
-              className={`btn-primary flex items-center gap-2 ${saved ? 'bg-green-500 hover:bg-green-500' : ''}`}>
+            <button type="submit" disabled={saving || saved || !isMobile}
+              className={`btn-primary flex items-center gap-2 ${saved ? 'bg-green-500 hover:bg-green-500' : ''} ${!isMobile ? 'opacity-50 cursor-not-allowed' : ''}`}>
               {saved
                 ? <><CheckCircle size={15} /><span>Guardado</span></>
                 : saving
