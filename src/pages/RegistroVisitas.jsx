@@ -8,11 +8,11 @@ import Pagination from '../components/Pagination';
 import DeleteConfirmModal from '../components/DeleteConfirmModal';
 
 const TIPOS_GESTION = [
-  'Facturas',
-  'App',
-  'Contrato Luz/Gas',
-  'Incidencia',
-  'Información Tarifas',
+  'Contratación Luz',
+  'Contratación Gas',
+  'Cambio de Tarifa',
+  'Reclamación',
+  'Consulta Tarifas',
   'Otro',
 ];
 
@@ -182,12 +182,30 @@ function VisitaModal({ onClose, onSave, initialData }) {
               {TIPOS_GESTION.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
             {errors.tipo && <p className="text-red-500 text-xs mt-1">Obligatorio</p>}
-            {form.tipo === 'Otro' && (
-              <input type="text" placeholder="Detalla el motivo..." value={form.tipo_otro}
+
+            {/* Descripción de la Gestión — siempre visible, requerida solo si tipo='Otro' */}
+            <div className="mt-2">
+              <label className={`block text-xs font-medium mb-1 transition-colors ${form.tipo === 'Otro' ? 'text-blue-600' : 'text-google-gray'}`}>
+                Descripción de la Gestión{' '}
+                {form.tipo === 'Otro'
+                  ? <span className="text-red-500">*</span>
+                  : <span className="font-normal text-google-gray">(opcional)</span>}
+              </label>
+              <input
+                type="text"
+                placeholder="Especifica más detalles sobre la gestión realizada (ej: cambio de IBAN, reclamación de factura...)"
+                value={form.tipo_otro}
                 onChange={e => set('tipo_otro', e.target.value)}
-                className={`input-field mt-2 ${errors.tipo_otro ? '!border-red-400' : ''}`} />
-            )}
-            {errors.tipo_otro && <p className="text-red-500 text-xs mt-1">Por favor, detalla el motivo</p>}
+                className={`input-field transition-all ${
+                  errors.tipo_otro
+                    ? '!border-red-400 focus:!ring-red-300'
+                    : form.tipo === 'Otro'
+                      ? '!border-blue-400 focus:!ring-blue-300 bg-blue-50'
+                      : ''
+                }`}
+              />
+              {errors.tipo_otro && <p className="text-red-500 text-xs mt-1">Por favor, detalla el motivo</p>}
+            </div>
           </div>
 
           {/* DNI/CIF Escaneado — OPCIONAL, libertad total (foto, imagen o PDF) */}
@@ -259,17 +277,19 @@ export default function RegistroVisitas() {
   const [showModal,    setShowModal]    = useState(false);
   const [editVisita,   setEditVisita]   = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [search,       setSearch]       = useState('');
-  const [timeFilter,   setTimeFilter]   = useState('');
-  const [filterTipo,   setFilterTipo]   = useState('');
-  const [fechaDesde,   setFechaDesde]   = useState('');
-  const [fechaHasta,   setFechaHasta]   = useState('');
+  const [search,          setSearch]          = useState('');
+  const [searchDesc,      setSearchDesc]      = useState('');
+  const [timeFilter,      setTimeFilter]      = useState('');
+  const [filterTipo,      setFilterTipo]      = useState('');
+  const [filterUbicacion, setFilterUbicacion] = useState('');
+  const [fechaDesde,      setFechaDesde]      = useState('');
+  const [fechaHasta,      setFechaHasta]      = useState('');
 
   const ITEMS_PER_PAGE = 15;
   const [currentPage, setCurrentPage] = useState(1);
   const tableScrollRef = useRef(null);
 
-  useEffect(() => { setCurrentPage(1); }, [search, timeFilter, filterTipo, fechaDesde, fechaHasta]);
+  useEffect(() => { setCurrentPage(1); }, [search, searchDesc, timeFilter, filterTipo, filterUbicacion, fechaDesde, fechaHasta]);
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
@@ -283,9 +303,7 @@ export default function RegistroVisitas() {
   const prevMonthPrefix = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
   const mesNombre       = now.toLocaleString('es-ES', { month: 'long' }).replace(/^\w/, c => c.toUpperCase());
 
-  const visitasBase = isPrivileged
-    ? visitas
-    : visitas.filter(v => v.registrado_por === currentUser?.username);
+  const visitasBase = visitas;
 
   const visitasHoy = visitasBase.filter(v => v.fecha === todayISO).length;
   const visitasMes = visitasBase.filter(v => v.fecha.startsWith(monthPrefix)).length;
@@ -299,15 +317,17 @@ export default function RegistroVisitas() {
   const filtered = visitas
     .filter(v => {
       const q           = search.toLowerCase();
-      const matchSearch = !search || v.dni.toLowerCase().includes(q) || v.nombre.toLowerCase().includes(q);
+      const matchSearch = !search || (v.dni || '').toLowerCase().includes(q) || (v.nombre || '').toLowerCase().includes(q);
+      const matchDesc   = !searchDesc || (v.tipo_otro || '').toLowerCase().includes(searchDesc.toLowerCase());
       const matchTime   = timeFilter === 'hoy'          ? v.fecha === todayISO
                         : timeFilter === 'mes_actual'   ? v.fecha.startsWith(monthPrefix)
                         : timeFilter === 'mes_anterior' ? v.fecha.startsWith(prevMonthPrefix)
                         : true;
-      const matchTipo       = !filterTipo || v.tipo === filterTipo;
+      const matchTipo       = !filterTipo      || v.tipo        === filterTipo;
+      const matchUbicacion  = !filterUbicacion || v.punto_venta === filterUbicacion;
       const matchFechaDesde = !fechaDesde || v.fecha >= fechaDesde;
       const matchFechaHasta = !fechaHasta || v.fecha <= fechaHasta;
-      return matchSearch && matchTime && matchTipo && matchFechaDesde && matchFechaHasta;
+      return matchSearch && matchDesc && matchTime && matchTipo && matchUbicacion && matchFechaDesde && matchFechaHasta;
     })
     .sort((a, b) => {
       const da = a.fecha + a.hora;
@@ -339,6 +359,7 @@ export default function RegistroVisitas() {
       { header: 'Teléfono',        key: 'telefono',       width: 16, style: { numFmt: '@' } },
       { header: 'Mail',            key: 'mail',           width: 28 },
       { header: 'Tipo de Gestión', key: 'tipo_display',   width: 22 },
+      { header: 'Descripción',     key: 'tipo_otro',      width: 32 },
       { header: 'Punto de Venta',  key: 'punto_venta',    width: 18 },
       { header: 'Registrado por',  key: 'registrado_por', width: 20 },
     ];
@@ -364,6 +385,7 @@ export default function RegistroVisitas() {
         telefono:       String(v.telefono || ''),
         mail:           v.mail            || '',
         tipo_display:   v.tipo === 'Otro' ? (v.tipo_otro || 'Otro') : (v.tipo || ''),
+        tipo_otro:      v.tipo_otro       || '',
         punto_venta:    v.punto_venta     || '',
         registrado_por: v.registrado_por  || '',
       });
@@ -454,9 +476,9 @@ export default function RegistroVisitas() {
 
       {/* Filters */}
       <div className="card px-5 py-4 space-y-3">
-        {/* Fila 1: búsqueda + select de tipo */}
-        <div className="flex flex-wrap gap-3">
-          <div className="relative flex-1 min-w-[180px]">
+        {/* Fila 1: buscadores DNI/nombre + descripción */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray" />
             <input type="text" placeholder="Buscar por DNI o nombre..." value={search}
               onChange={e => setSearch(e.target.value)} className="input-field pl-9 h-9 w-full" />
@@ -467,10 +489,30 @@ export default function RegistroVisitas() {
               </button>
             )}
           </div>
+          <div className="relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray" />
+            <input type="text" placeholder="Buscar por descripción..." value={searchDesc}
+              onChange={e => setSearchDesc(e.target.value)} className="input-field pl-9 h-9 w-full" />
+            {searchDesc && (
+              <button onClick={() => setSearchDesc('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-google-gray hover:text-google-dark">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+        </div>
+        {/* Fila 2: select tipo + select ubicación */}
+        <div className="flex flex-wrap gap-3">
           <select value={filterTipo} onChange={e => setFilterTipo(e.target.value)}
             className="input-field h-9 text-xs min-w-[160px] flex-shrink-0">
             <option value="">Todos los tipos</option>
             {TIPOS_GESTION.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <select value={filterUbicacion} onChange={e => setFilterUbicacion(e.target.value)}
+            className="input-field h-9 text-xs min-w-[160px] flex-shrink-0">
+            <option value="">Todas las ubicaciones</option>
+            <option value="Palencia">Palencia</option>
+            <option value="Valladolid">Valladolid</option>
           </select>
         </div>
         {/* Fila 2: pills de rango rápido */}
@@ -529,6 +571,7 @@ export default function RegistroVisitas() {
                 <th className="table-header">Teléfono</th>
                 <th className="table-header">Mail</th>
                 <th className="table-header">Tipo de Gestión</th>
+                <th className="table-header">Descripción</th>
                 <th className="table-header">Punto de Venta</th>
                 <th className="table-header">Registrado por</th>
                 <th className="table-header">Acciones</th>
@@ -537,7 +580,7 @@ export default function RegistroVisitas() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-10 text-google-gray text-sm">
+                  <td colSpan={11} className="text-center py-10 text-google-gray text-sm">
                     {visitas.length === 0
                       ? 'No hay visitas registradas. Pulsa "+ Nueva Visita" para empezar.'
                       : 'No se encontraron resultados con los filtros aplicados'}
@@ -557,9 +600,18 @@ export default function RegistroVisitas() {
                         {tipoDisplay(v)}
                       </span>
                     </td>
+                    <td className="table-cell text-google-gray text-xs max-w-[180px]">
+                      <span className="line-clamp-2" title={v.tipo_otro || ''}>
+                        {v.tipo_otro || '—'}
+                      </span>
+                    </td>
                     <td className="table-cell">
                       {v.punto_venta
-                        ? <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 whitespace-nowrap">{v.punto_venta}</span>
+                        ? <span className={`text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${
+                            v.punto_venta === 'Valladolid'
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-purple-100 text-purple-800'
+                          }`}>{v.punto_venta}</span>
                         : <span className="text-google-gray">—</span>}
                     </td>
                     <td className="table-cell text-google-gray text-xs">{v.registrado_por}</td>
