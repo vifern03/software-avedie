@@ -34,10 +34,6 @@ export function DataProvider({ children }) {
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
-      if (currentUser && !isPrivileged) {
-        visitasQuery = visitasQuery.eq('registrado_por', currentUser.username);
-      }
-
       let visitasPymesQuery = supabase
         .from('visitas_pymes')
         .select('*')
