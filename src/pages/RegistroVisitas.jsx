@@ -45,28 +45,36 @@ function VisitaModal({ onClose, onSave, initialData }) {
     tipo:        initialData?.tipo        || '',
     tipo_otro:   initialData?.tipo_otro   || '',
   });
-  const [errors,     setErrors]     = useState({});
-  const [saved,      setSaved]      = useState(false);
-  const [saving,     setSaving]     = useState(false);
-  const [dniFile,    setDniFile]    = useState(null);
-  const [dniPreview, setDniPreview] = useState(initialData?.dni_cif_escaneado_url || '');
-  const dniInputRef = useRef(null);
+  const [errors,  setErrors]  = useState({});
+  const [saved,   setSaved]   = useState(false);
+  const [saving,  setSaving]  = useState(false);
+
+  // Parsear URLs existentes (formato antiguo: string simple; nuevo: JSON array)
+  const _existingUrls = (() => {
+    const val = initialData?.dni_cif_escaneado_url || '';
+    if (!val) return ['', ''];
+    try { const a = JSON.parse(val); if (Array.isArray(a)) return [a[0]||'', a[1]||'']; } catch {}
+    return [val, ''];
+  })();
+  const [dniAnverso,        setDniAnverso]        = useState(null);
+  const [dniAnversoPreview, setDniAnversoPreview] = useState(_existingUrls[0]);
+  const [dniReverso,        setDniReverso]        = useState(null);
+  const [dniReversoPreview, setDniReversoPreview] = useState(_existingUrls[1]);
+  const dniAnversoRef = useRef(null);
+  const dniReversoRef = useRef(null);
 
   const set = (field, value) => {
     setForm(f => ({ ...f, [field]: value }));
     setErrors(e => ({ ...e, [field]: false }));
   };
 
-  const handleDniChange = (e) => {
+  const handleDniFile = (e, setFile, setPreview) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setDniFile(file);
-    if (file.type === 'application/pdf') {
-      setDniPreview('');
-      return;
-    }
+    setFile(file);
+    if (file.type === 'application/pdf') { setPreview('__pdf__'); return; }
     const reader = new FileReader();
-    reader.onload = (ev) => setDniPreview(ev.target.result);
+    reader.onload = (ev) => setPreview(ev.target.result);
     reader.readAsDataURL(file);
   };
 
@@ -87,7 +95,7 @@ function VisitaModal({ onClose, onSave, initialData }) {
     e.preventDefault();
     if (!validate()) return;
     setSaving(true);
-    const result = await onSave(form, dniFile, initialData?.dni_cif_escaneado_url || '');
+    const result = await onSave(form, dniAnverso, dniReverso, initialData?.dni_cif_escaneado_url || '');
     if (result?.error) { setSaving(false); return; }
     setSaved(true);
     setTimeout(() => onClose(), 800);
@@ -208,34 +216,62 @@ function VisitaModal({ onClose, onSave, initialData }) {
             </div>
           </div>
 
-          {/* DNI/CIF Escaneado — OPCIONAL, libertad total (foto, imagen o PDF) */}
+          {/* DNI/CIF Escaneado — Anverso + Reverso */}
           <div>
-            <label className="block text-xs font-medium text-google-gray mb-1.5">
+            <label className="block text-xs font-medium text-google-gray mb-2">
               DNI/CIF Escaneado <span className="font-normal">(opcional — foto, imagen o PDF)</span>
             </label>
-            <input
-              ref={dniInputRef}
-              type="file"
-              accept="image/*,application/pdf"
-              onChange={handleDniChange}
-              className="hidden"
-            />
-            <button type="button" onClick={() => dniInputRef.current?.click()}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed border-google-border hover:border-google-blue hover:bg-blue-50 transition-colors text-sm text-google-gray hover:text-google-blue">
-              <Camera size={18} />
-              <span>
-                {dniFile
-                  ? dniFile.name
-                  : dniPreview && isEdit
-                    ? 'Cambiar adjunto'
-                    : 'Adjuntar foto, imagen o PDF'}
-              </span>
-            </button>
-            {dniPreview && (
-              <div className="mt-2 rounded-lg overflow-hidden border border-google-border">
-                <img src={dniPreview} alt="DNI/CIF escaneado" className="w-full h-28 object-cover" />
+            <div className="grid grid-cols-2 gap-2">
+
+              {/* Anverso */}
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-google-gray">Anverso <span className="font-normal">(cara principal)</span></p>
+                <input ref={dniAnversoRef} type="file" accept="image/*,application/pdf" className="hidden"
+                  onChange={e => handleDniFile(e, setDniAnverso, setDniAnversoPreview)} />
+                <button type="button" onClick={() => dniAnversoRef.current?.click()}
+                  className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border-2 border-dashed transition-colors text-xs ${
+                    dniAnverso
+                      ? 'border-google-blue bg-blue-50 text-google-blue'
+                      : dniAnversoPreview
+                        ? 'border-green-400 bg-green-50 text-green-700'
+                        : 'border-google-border text-google-gray hover:border-google-blue hover:bg-blue-50 hover:text-google-blue'
+                  }`}>
+                  <Camera size={14} />
+                  <span className="truncate">
+                    {dniAnverso ? dniAnverso.name : dniAnversoPreview ? 'Cambiar' : 'Adjuntar'}
+                  </span>
+                </button>
+                {dniAnversoPreview && dniAnversoPreview !== '__pdf__' && (
+                  <img src={dniAnversoPreview} alt="Anverso" className="w-full h-20 object-cover rounded-lg border border-google-border" />
+                )}
+                {dniAnversoPreview === '__pdf__' && <p className="text-xs text-green-700">PDF adjunto ✓</p>}
               </div>
-            )}
+
+              {/* Reverso */}
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-google-gray">Reverso <span className="font-normal">(cara trasera, opcional)</span></p>
+                <input ref={dniReversoRef} type="file" accept="image/*,application/pdf" className="hidden"
+                  onChange={e => handleDniFile(e, setDniReverso, setDniReversoPreview)} />
+                <button type="button" onClick={() => dniReversoRef.current?.click()}
+                  className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border-2 border-dashed transition-colors text-xs ${
+                    dniReverso
+                      ? 'border-google-blue bg-blue-50 text-google-blue'
+                      : dniReversoPreview
+                        ? 'border-green-400 bg-green-50 text-green-700'
+                        : 'border-google-border text-google-gray hover:border-google-blue hover:bg-blue-50 hover:text-google-blue'
+                  }`}>
+                  <Camera size={14} />
+                  <span className="truncate">
+                    {dniReverso ? dniReverso.name : dniReversoPreview ? 'Cambiar' : 'Adjuntar'}
+                  </span>
+                </button>
+                {dniReversoPreview && dniReversoPreview !== '__pdf__' && (
+                  <img src={dniReversoPreview} alt="Reverso" className="w-full h-20 object-cover rounded-lg border border-google-border" />
+                )}
+                {dniReversoPreview === '__pdf__' && <p className="text-xs text-green-700">PDF adjunto ✓</p>}
+              </div>
+
+            </div>
           </div>
 
           {/* Actions */}
@@ -338,9 +374,9 @@ export default function RegistroVisitas() {
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const handleSave = async (data, dniFile, existingDniUrl) => {
-    if (editVisita) return await updateVisita(editVisita.id, data, dniFile, existingDniUrl);
-    return await addVisita(data, dniFile);
+  const handleSave = async (data, dniAnverso, dniReverso, existingDniUrl) => {
+    if (editVisita) return await updateVisita(editVisita.id, data, dniAnverso, dniReverso, existingDniUrl);
+    return await addVisita(data, dniAnverso, dniReverso);
   };
 
   const tipoDisplay = (v) => v.tipo === 'Otro' ? (v.tipo_otro || 'Otro') : v.tipo;

@@ -51,14 +51,24 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
   const [saved,        setSaved]        = useState(false);
   const [cupsDbError,  setCupsDbError]  = useState(null);
 
-  const existingDni     = initialData?.dni_escaneado  || '';
   const existingFactura = initialData?.ultima_factura || '';
-  const [dniBase64,       setDniBase64]       = useState(existingDni);
   const [facturaBase64,   setFacturaBase64]   = useState(existingFactura);
-  const [dniFileName,     setDniFileName]     = useState(existingDni     && existingDni.startsWith('data:')     ? 'Archivo existente' : '');
   const [facturaFileName, setFacturaFileName] = useState(existingFactura && existingFactura.startsWith('data:') ? 'Archivo existente' : '');
 
-  const dniInputRef     = useRef(null);
+  // Parsear DNI existente (puede ser string simple o JSON array)
+  const _parsedDni = (() => {
+    const val = initialData?.dni_escaneado || '';
+    if (!val) return ['', ''];
+    try { const a = JSON.parse(val); if (Array.isArray(a)) return [a[0]||'', a[1]||'']; } catch {}
+    return [val, ''];
+  })();
+  const [dniAnversoBase64,    setDniAnversoBase64]    = useState(_parsedDni[0]);
+  const [dniReversoBase64,    setDniReversoBase64]    = useState(_parsedDni[1]);
+  const [dniAnversoFileName,  setDniAnversoFileName]  = useState(_parsedDni[0] && _parsedDni[0].startsWith('data:') ? 'Archivo existente' : '');
+  const [dniReversoFileName,  setDniReversoFileName]  = useState(_parsedDni[1] && _parsedDni[1].startsWith('data:') ? 'Archivo existente' : '');
+
+  const dniAnversoRef   = useRef(null);
+  const dniReversoRef   = useRef(null);
   const facturaInputRef = useRef(null);
   // M-1: bandera de control para bloquear doble envío antes del re-render
   const submittingRef   = useRef(false);
@@ -135,7 +145,9 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
     setCupsDbError(null);
 
     const efectiveAgenteGestor = form.agente_gestor === '__otro__' ? agenteGestorOtro.trim() : form.agente_gestor;
-    const result = await onSave({ ...form, agente_gestor: efectiveAgenteGestor, tipo, dni_escaneado: dniBase64, ultima_factura: facturaBase64 });
+    const dniParts = [dniAnversoBase64, dniReversoBase64].filter(Boolean);
+    const dniEscaneado = dniParts.length === 0 ? '' : dniParts.length === 1 ? dniParts[0] : JSON.stringify(dniParts);
+    const result = await onSave({ ...form, agente_gestor: efectiveAgenteGestor, tipo, dni_escaneado: dniEscaneado, ultima_factura: facturaBase64 });
 
     submittingRef.current = false;
 
@@ -458,15 +470,34 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
               <label className="block text-xs font-medium text-google-gray mb-1.5">
                 Escanear DNI/CIF <span className="font-normal">(Opcional)</span>
               </label>
-              <input ref={dniInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
-                onChange={(e) => handleFileChange(e, setDniFileName, setDniBase64)} />
-              <button type="button" onClick={() => dniInputRef.current?.click()}
-                className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
-                  dniFileName ? 'border-green-300 bg-green-50 text-green-700'
-                  : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
-                <Upload size={14} className="flex-shrink-0" />
-                <span className="truncate">{dniFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                {/* Anverso */}
+                <div className="space-y-1">
+                  <p className="text-xs text-google-gray">Anverso</p>
+                  <input ref={dniAnversoRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
+                    onChange={(e) => handleFileChange(e, setDniAnversoFileName, setDniAnversoBase64)} />
+                  <button type="button" onClick={() => dniAnversoRef.current?.click()}
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-xs transition-colors ${
+                      dniAnversoFileName ? 'border-green-300 bg-green-50 text-green-700'
+                      : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
+                    <Upload size={13} className="flex-shrink-0" />
+                    <span className="truncate">{dniAnversoFileName || 'Seleccionar...'}</span>
+                  </button>
+                </div>
+                {/* Reverso */}
+                <div className="space-y-1">
+                  <p className="text-xs text-google-gray">Reverso <span className="font-normal">(opcional)</span></p>
+                  <input ref={dniReversoRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
+                    onChange={(e) => handleFileChange(e, setDniReversoFileName, setDniReversoBase64)} />
+                  <button type="button" onClick={() => dniReversoRef.current?.click()}
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-xs transition-colors ${
+                      dniReversoFileName ? 'border-green-300 bg-green-50 text-green-700'
+                      : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
+                    <Upload size={13} className="flex-shrink-0" />
+                    <span className="truncate">{dniReversoFileName || 'Seleccionar...'}</span>
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div>

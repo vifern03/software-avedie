@@ -77,15 +77,37 @@ function downloadBase64File(base64, clientName = 'documento') {
 
 function FileCell({ value, clientName }) {
   if (!value) return <span className="text-google-gray">—</span>;
-  if (typeof value === 'string' && value.startsWith('data:')) {
-    return (
-      <button onClick={() => downloadBase64File(value, clientName)}
-        className="p-1 rounded hover:bg-slate-100 transition-colors" title="Descargar">
-        <Eye size={15} className="text-slate-500" />
-      </button>
-    );
-  }
-  return <span className="inline-flex items-center justify-center p-1"><FileText size={15} className="text-slate-400" /></span>;
+
+  // Normalizar: puede ser JSON array, base64 simple o URL
+  let entries = [];
+  try { const a = JSON.parse(value); if (Array.isArray(a)) entries = a.filter(Boolean); } catch {}
+  if (!entries.length) entries = [value];
+
+  const labels = ['Anverso', 'Reverso'];
+  return (
+    <div className="flex items-center gap-1">
+      {entries.map((entry, i) => {
+        const label = labels[i] || `Doc ${i + 1}`;
+        if (typeof entry === 'string' && entry.startsWith('data:')) {
+          return (
+            <button key={i} onClick={() => downloadBase64File(entry, `${clientName}_${label}`)}
+              className="p-1 rounded hover:bg-slate-100 transition-colors" title={`Descargar ${label}`}>
+              <Eye size={15} className="text-slate-500" />
+            </button>
+          );
+        }
+        if (typeof entry === 'string' && (entry.startsWith('http://') || entry.startsWith('https://'))) {
+          return (
+            <a key={i} href={entry} target="_blank" rel="noopener noreferrer"
+              className="p-1 rounded hover:bg-slate-100 transition-colors" title={`Ver ${label}`}>
+              <Eye size={15} className="text-slate-500" />
+            </a>
+          );
+        }
+        return <span key={i} className="inline-flex items-center p-1"><FileText size={15} className="text-slate-400" /></span>;
+      })}
+    </div>
+  );
 }
 
 export default function AltaClientes({ tipo }) {
