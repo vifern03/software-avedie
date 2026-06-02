@@ -184,6 +184,8 @@ export function DataProvider({ children }) {
       foto_negocio_url:           foto_url,
       comentarios_visita:         data.comentarios               || '',
       registrado_por:             currentUser?.username          || 'Sistema',
+      nombre_empresa:             data.nombre_empresa            || '',
+      ubicacion:                  data.ubicacion                 || '',
     };
     setVisitasPymes(prev => [newVisita, ...prev]);
     const { error } = await supabase.from('visitas_pymes').insert([newVisita]);
@@ -224,6 +226,8 @@ export function DataProvider({ children }) {
       correo_electronico_cliente: data.correo_cliente            || '',
       foto_negocio_url:           foto_url,
       comentarios_visita:         data.comentarios               || '',
+      nombre_empresa:             data.nombre_empresa            || '',
+      ubicacion:                  data.ubicacion                 || '',
     };
     setVisitasPymes(prev => prev.map(v => v.id === id ? { ...v, ...updateObj } : v));
     const { error } = await supabase.from('visitas_pymes').update(updateObj).eq('id', id);
@@ -262,8 +266,11 @@ export function DataProvider({ children }) {
       fecha_tramitacion: tramitacion,
       fecha_firma:       data.fecha_firma       || null,
       fecha_formalizada: data.fecha_formalizada || null,
-      dni_escaneado:    data.dni_escaneado   || '',
-      ultima_factura:   data.ultima_factura  || '',
+      dni_escaneado:    data.dni_escaneado    || '',
+      ultima_factura:   data.ultima_factura   || '',
+      cif_autonomo_url: data.cif_autonomo_url || '',
+      justo_titulo_url: data.justo_titulo_url  || '',
+      factura_b2b_url:  data.factura_b2b_url   || '',
     };
     setClientes(prev => [newCliente, ...prev]);
     const { error } = await supabase.from('clientes').insert([newCliente]);
@@ -315,6 +322,15 @@ export function DataProvider({ children }) {
       const hadFact = !!original.ultima_factura?.startsWith?.('data:');
       const hasFact = !!data.ultima_factura?.startsWith?.('data:');
       if (hadFact !== hasFact) changes.push({ campo: 'FACTURA', de: hadFact ? 'Con archivo' : 'Sin archivo', a: hasFact ? 'Con archivo' : 'Sin archivo' });
+      const hadCifAut = !!original.cif_autonomo_url?.startsWith?.('data:');
+      const hasCifAut = !!data.cif_autonomo_url?.startsWith?.('data:');
+      if (hadCifAut !== hasCifAut) changes.push({ campo: 'CIF AUTÓNOMO', de: hadCifAut ? 'Con archivo' : 'Sin archivo', a: hasCifAut ? 'Con archivo' : 'Sin archivo' });
+      const hadJustoT = !!original.justo_titulo_url?.startsWith?.('data:');
+      const hasJustoT = !!data.justo_titulo_url?.startsWith?.('data:');
+      if (hadJustoT !== hasJustoT) changes.push({ campo: 'JUSTO TÍTULO', de: hadJustoT ? 'Con archivo' : 'Sin archivo', a: hasJustoT ? 'Con archivo' : 'Sin archivo' });
+      const hadFactB2b = !!original.factura_b2b_url?.startsWith?.('data:');
+      const hasFactB2b = !!data.factura_b2b_url?.startsWith?.('data:');
+      if (hadFactB2b !== hasFactB2b) changes.push({ campo: 'FACTURA B2B', de: hadFactB2b ? 'Con archivo' : 'Sin archivo', a: hasFactB2b ? 'Con archivo' : 'Sin archivo' });
     }
 
     const updateObj = {
@@ -336,8 +352,11 @@ export function DataProvider({ children }) {
       fecha_firma:       data.fecha_firma       !== undefined ? data.fecha_firma       : original?.fecha_firma,
       fecha_formalizada: data.fecha_formalizada !== undefined ? data.fecha_formalizada : original?.fecha_formalizada,
       comercial:         data.agente_gestor     !== undefined ? data.agente_gestor     : original?.comercial,
-      ...(data.dni_escaneado  !== undefined && { dni_escaneado:  data.dni_escaneado  }),
-      ...(data.ultima_factura !== undefined && { ultima_factura: data.ultima_factura }),
+      ...(data.dni_escaneado    !== undefined && { dni_escaneado:    data.dni_escaneado    }),
+      ...(data.ultima_factura   !== undefined && { ultima_factura:   data.ultima_factura   }),
+      ...(data.cif_autonomo_url !== undefined && { cif_autonomo_url: data.cif_autonomo_url }),
+      ...(data.justo_titulo_url !== undefined && { justo_titulo_url: data.justo_titulo_url }),
+      ...(data.factura_b2b_url  !== undefined && { factura_b2b_url:  data.factura_b2b_url  }),
     };
 
     setClientes(prev => prev.map(c => c.id === id ? { ...c, ...updateObj } : c));

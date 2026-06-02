@@ -93,6 +93,24 @@ function FileCell({ value, clientName }) {
   );
 }
 
+function DocIcon({ value, label, clientName }) {
+  if (!value) return null;
+  if (value.startsWith('data:')) {
+    return (
+      <button onClick={() => downloadBase64File(value, clientName)}
+        className="p-1 rounded hover:bg-indigo-50 transition-colors" title={label}>
+        <Eye size={15} className="text-indigo-400 hover:text-indigo-600" />
+      </button>
+    );
+  }
+  return (
+    <a href={value} target="_blank" rel="noopener noreferrer"
+      className="p-1 rounded hover:bg-indigo-50 transition-colors" title={label}>
+      <Eye size={15} className="text-indigo-400 hover:text-indigo-600" />
+    </a>
+  );
+}
+
 export default function AltaClientes({ tipo }) {
   const isB2B = tipo === 'B2B';
   const { clientes: allClientes, clientesB2C, clientesB2B, addCliente, updateCliente, firmarContrato, formalizarContrato, deleteCliente, rankingComerciales } = useData();
@@ -101,7 +119,7 @@ export default function AltaClientes({ tipo }) {
     () => new Set(allClientes.map(c => (c.cups || '').toUpperCase().trim()).filter(Boolean)),
     [allClientes]
   );
-  const { currentUser } = useAuth();
+  const { currentUser, users } = useAuth();
   const clientes = isB2B ? clientesB2B : clientesB2C;
 
   const [showModal,        setShowModal]        = useState(false);
@@ -110,6 +128,8 @@ export default function AltaClientes({ tipo }) {
   const [firmaTarget,      setFirmaTarget]       = useState(null);
   const [formalizarTarget, setFormalizarTarget]  = useState(null);
   const [search,           setSearch]            = useState('');
+  const [searchNombre,     setSearchNombre]      = useState('');
+  const [filterComercial,  setFilterComercial]   = useState('');
   const [timeFilter,       setTimeFilter]        = useState('');
   const [dateFilter,       setDateFilter]        = useState('');
   const [sortField,        setSortField]         = useState('fecha_tramitacion');
@@ -119,7 +139,13 @@ export default function AltaClientes({ tipo }) {
   const [currentPage, setCurrentPage] = useState(1);
   const tableScrollRef = useRef(null);
 
-  useEffect(() => { setCurrentPage(1); }, [search, dateFilter, timeFilter]);
+  const comercialesDisponibles = useMemo(() => {
+    const fromUsers = users.map(u => u.username);
+    const fromData  = clientes.map(c => c.comercial).filter(Boolean);
+    return [...new Set([...fromUsers, ...fromData])].sort();
+  }, [users, clientes]);
+
+  useEffect(() => { setCurrentPage(1); }, [search, searchNombre, filterComercial, dateFilter, timeFilter]);
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
@@ -167,10 +193,13 @@ export default function AltaClientes({ tipo }) {
 
   const filtered = getTimeFilteredList(baseClientes, timeFilter)
     .filter((c) => {
-      const q = search.toLowerCase();
-      const matchSearch = !search || (c.cups || '').toLowerCase().includes(q) || (c.cif_dni || '').toLowerCase().includes(q);
-      const matchDate   = !dateFilter || c.fecha_tramitacion === dateFilter;
-      return matchSearch && matchDate;
+      const q  = search.toLowerCase();
+      const qn = searchNombre.toLowerCase();
+      const matchSearch    = !search          || (c.cups || '').toLowerCase().includes(q) || (c.cif_dni || '').toLowerCase().includes(q);
+      const matchNombre    = !searchNombre    || (c.nombre || '').toLowerCase().includes(qn);
+      const matchComercial = !filterComercial || c.comercial === filterComercial;
+      const matchDate      = !dateFilter      || c.fecha_tramitacion === dateFilter;
+      return matchSearch && matchNombre && matchComercial && matchDate;
     })
     .sort((a, b) => {
       let va = a[sortField] ?? '';
@@ -264,6 +293,7 @@ export default function AltaClientes({ tipo }) {
 
       {/* Filters bar */}
       <div className="card px-5 py-4 space-y-3">
+        {/* Fila 1: buscador CUPS / DNI-CIF */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[200px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray" />
@@ -276,6 +306,37 @@ export default function AltaClientes({ tipo }) {
             )}
           </div>
         </div>
+
+        {/* Fila 2 (solo B2B): buscador por nombre + filtro por comercial */}
+        {isB2B && (
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray" />
+              <input type="text" placeholder="Buscar por nombre..." value={searchNombre}
+                onChange={(e) => setSearchNombre(e.target.value)} className="input-field pl-9 h-9" />
+              {searchNombre && (
+                <button onClick={() => setSearchNombre('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-google-gray hover:text-google-dark">
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <select value={filterComercial} onChange={(e) => setFilterComercial(e.target.value)}
+                className="input-field h-9 min-w-[180px] text-sm">
+                <option value="">Filtrar por comercial...</option>
+                {comercialesDisponibles.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              {filterComercial && (
+                <button onClick={() => setFilterComercial('')}
+                  className="p-1 rounded text-google-gray hover:text-red-500 hover:bg-red-50 transition-colors" title="Quitar filtro">
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Fila 3: filtros de tramitación */}
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-google-gray mr-1">Tramitación:</span>
           <FilterPill label="Todo"                              active={timeFilter === ''}             onClick={() => setTimeFilter('')}            />
@@ -321,7 +382,7 @@ export default function AltaClientes({ tipo }) {
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('fecha_tramitacion')}><div className="flex items-center gap-1">F. Tramitación <SortIcon field="fecha_tramitacion" /></div></th>
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('fecha_formalizada')}><div className="flex items-center gap-1">F. Formalizada <SortIcon field="fecha_formalizada" /></div></th>
                 <th className="table-header">Estado</th>
-                <th className="table-header">DNI/CIF Esc.</th>
+                <th className="table-header">{isB2B ? 'Docs' : 'DNI/CIF Esc.'}</th>
                 <th className="table-header">Últ. Factura</th>
                 <th className="table-header">Descripción</th>
                 <th className="table-header">Acciones</th>
@@ -364,7 +425,21 @@ export default function AltaClientes({ tipo }) {
                         : <span className="text-google-gray italic">—</span>}
                     </td>
                     <td className="table-cell"><StatusBadge estado={c.estado} /></td>
-                    <td className="table-cell text-center"><FileCell value={c.dni_escaneado} clientName={`DNI_${c.nombre}`} /></td>
+                    <td className="table-cell text-center">
+                      {isB2B ? (
+                        <div className="flex items-center justify-center gap-0.5">
+                          <DocIcon value={c.cif_autonomo_url} label="Ver CIF / Autónomo" clientName={`CIF_${c.nombre}`} />
+                          <DocIcon value={c.dni_escaneado}    label="Ver DNI"            clientName={`DNI_${c.nombre}`} />
+                          <DocIcon value={c.factura_b2b_url}  label="Ver Factura"        clientName={`Factura_${c.nombre}`} />
+                          <DocIcon value={c.justo_titulo_url} label="Ver Justo Título"   clientName={`JustoTitulo_${c.nombre}`} />
+                          {!c.cif_autonomo_url && !c.dni_escaneado && !c.factura_b2b_url && !c.justo_titulo_url && (
+                            <span className="text-google-gray">—</span>
+                          )}
+                        </div>
+                      ) : (
+                        <FileCell value={c.dni_escaneado} clientName={`DNI_${c.nombre}`} />
+                      )}
+                    </td>
                     <td className="table-cell text-center"><FileCell value={c.ultima_factura} clientName={`Factura_${c.nombre}`} /></td>
                     <td className="table-cell text-google-gray text-xs max-w-[180px] truncate" title={c.descripcion || ''}>{c.descripcion || '—'}</td>
                     <td className="table-cell text-center">
@@ -460,7 +535,9 @@ export default function AltaClientes({ tipo }) {
             mail:              editClient.mail             || '',
             cuenta_bancaria:   editClient.cuenta_bancaria  || '',
             dni_escaneado:     editClient.dni_escaneado    || '',
-            ultima_factura:    editClient.ultima_factura   || '',
+            cif_autonomo_url:  editClient.cif_autonomo_url || '',
+            justo_titulo_url:  editClient.justo_titulo_url  || '',
+            factura_b2b_url:   editClient.factura_b2b_url   || '',
             fecha_tramitacion: editClient.fecha_tramitacion || '',
             agente_gestor:     editClient.comercial        || '',
             fecha_firma:       editClient.fecha_firma       ?? null,

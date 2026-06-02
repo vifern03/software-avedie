@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { Landmark, Plus, CalendarDays, Users, Search, Trash2, Pencil, CheckCircle, X, FileSpreadsheet, Camera, ExternalLink, Loader2 } from 'lucide-react';
@@ -32,7 +32,9 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername }) {
   const [form, setForm] = useState({
     fecha:              initialData?.fecha              || todayStr(),
     hora:               initialData?.hora               || nowTime(),
+    nombre_empresa:     initialData?.nombre_empresa     || '',
     persona_autorizada: initialData?.persona_autorizada || '',
+    ubicacion:          initialData?.ubicacion          || '',
     telefono_cliente:   initialData?.telefono_contacto_cliente  || '',
     correo_cliente:     initialData?.correo_electronico_cliente || '',
     comentarios:        initialData?.comentarios_visita         || '',
@@ -62,6 +64,7 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername }) {
     const e = {};
     if (!form.fecha.trim())              e.fecha              = true;
     if (!form.hora.trim())               e.hora               = true;
+    if (!form.nombre_empresa.trim())     e.nombre_empresa     = true;
     if (!form.persona_autorizada.trim()) e.persona_autorizada = true;
     if (!fotoFile && !fotoPreview)       e.foto               = true;
     setErrors(e);
@@ -120,6 +123,15 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername }) {
             <label className="block text-xs font-medium text-google-gray mb-1.5">Registrado por</label>
             <input type="text" value={currentUsername} disabled
               className="input-field bg-gray-50 text-google-gray cursor-not-allowed" />
+          </div>
+
+          {/* Nombre Empresa */}
+          <div>
+            <label className="block text-xs font-medium text-google-gray mb-1.5">Nombre Empresa *</label>
+            <input type="text" placeholder="Ej: Cafetería La Central S.L."
+              value={form.nombre_empresa} onChange={e => set('nombre_empresa', e.target.value)}
+              className={ic('nombre_empresa')} />
+            {errors.nombre_empresa && <p className="text-red-500 text-xs mt-1">Obligatorio</p>}
           </div>
 
           {/* Persona Autorizada */}
@@ -209,6 +221,14 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername }) {
             )}
           </div>
 
+          {/* Ubicación */}
+          <div>
+            <label className="block text-xs font-medium text-google-gray mb-1.5">Ubicación <span className="font-normal text-google-gray">(Opcional)</span></label>
+            <input type="text" placeholder="Ej: Valladolid"
+              value={form.ubicacion} onChange={e => set('ubicacion', e.target.value)}
+              className="input-field" />
+          </div>
+
           {/* Comentarios */}
           <div>
             <label className="block text-xs font-medium text-google-gray mb-1.5">Comentarios de la visita</label>
@@ -253,19 +273,26 @@ export default function RegistroVisitasPymes() {
   const isAdmin      = currentUser?.role === 'admin';
   const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'manager';
 
-  const [showModal,    setShowModal]    = useState(false);
-  const [editVisita,   setEditVisita]   = useState(null);
-  const [deleteTarget, setDeleteTarget] = useState(null);
-  const [search,       setSearch]       = useState('');
-  const [timeFilter,   setTimeFilter]   = useState('');
-  const [fechaDesde,   setFechaDesde]   = useState('');
-  const [fechaHasta,   setFechaHasta]   = useState('');
+  const [showModal,       setShowModal]       = useState(false);
+  const [editVisita,      setEditVisita]      = useState(null);
+  const [deleteTarget,    setDeleteTarget]    = useState(null);
+  const [search,          setSearch]          = useState('');
+  const [filterUbicacion, setFilterUbicacion] = useState('');
+  const [filterComercial, setFilterComercial] = useState('');
+  const [timeFilter,      setTimeFilter]      = useState('');
+  const [fechaDesde,      setFechaDesde]      = useState('');
+  const [fechaHasta,      setFechaHasta]      = useState('');
 
   const ITEMS_PER_PAGE = 15;
   const [currentPage, setCurrentPage] = useState(1);
   const tableScrollRef = useRef(null);
 
-  useEffect(() => { setCurrentPage(1); }, [search, timeFilter, fechaDesde, fechaHasta]);
+  const comercialesDisponibles = useMemo(() => {
+    const names = visitasPymes.map(v => v.registrado_por).filter(Boolean);
+    return [...new Set(names)].sort();
+  }, [visitasPymes]);
+
+  useEffect(() => { setCurrentPage(1); }, [search, filterUbicacion, filterComercial, timeFilter, fechaDesde, fechaHasta]);
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
@@ -290,11 +317,9 @@ export default function RegistroVisitasPymes() {
   const filtered = visitasPymes
     .filter(v => {
       const q = search.toLowerCase();
-      const matchSearch = !search
-        || v.persona_autorizada?.toLowerCase().includes(q)
-        || v.registrado_por?.toLowerCase().includes(q)
-        || v.telefono_contacto_cliente?.toLowerCase().includes(q)
-        || v.correo_electronico_cliente?.toLowerCase().includes(q);
+      const matchSearch    = !search          || (v.nombre_empresa?.toLowerCase().includes(q));
+      const matchUbicacion = !filterUbicacion || (v.ubicacion?.toLowerCase().includes(filterUbicacion.toLowerCase()));
+      const matchComercial = !filterComercial || v.registrado_por === filterComercial;
       const matchTime =
           timeFilter === 'hoy'          ? v.fecha === todayISO
         : timeFilter === 'mes_actual'   ? v.fecha.startsWith(monthPrefix)
@@ -302,7 +327,7 @@ export default function RegistroVisitasPymes() {
         : true;
       const matchFechaDesde = !fechaDesde || v.fecha >= fechaDesde;
       const matchFechaHasta = !fechaHasta || v.fecha <= fechaHasta;
-      return matchSearch && matchTime && matchFechaDesde && matchFechaHasta;
+      return matchSearch && matchUbicacion && matchComercial && matchTime && matchFechaDesde && matchFechaHasta;
     })
     .sort((a, b) => (a.fecha + a.hora < b.fecha + b.hora ? 1 : -1));
 
@@ -437,7 +462,7 @@ export default function RegistroVisitasPymes() {
         <div className="flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-[180px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray" />
-            <input type="text" placeholder="Buscar por persona, comercial o teléfono..." value={search}
+            <input type="text" placeholder="Buscar por nombre empresa..." value={search}
               onChange={e => setSearch(e.target.value)} className="input-field pl-9 h-9 w-full" />
             {search && (
               <button onClick={() => setSearch('')}
@@ -475,6 +500,34 @@ export default function RegistroVisitasPymes() {
             </button>
           )}
         </div>
+
+        {/* Nueva fila: filtro por ubicación + filtro por comercial */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[180px]">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray" />
+            <input type="text" placeholder="Filtrar por ubicación..." value={filterUbicacion}
+              onChange={e => setFilterUbicacion(e.target.value)} className="input-field pl-9 h-9 w-full" />
+            {filterUbicacion && (
+              <button onClick={() => setFilterUbicacion('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-google-gray hover:text-google-dark">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            <select value={filterComercial} onChange={e => setFilterComercial(e.target.value)}
+              className="input-field h-9 min-w-[180px] text-sm">
+              <option value="">Filtrar por comercial...</option>
+              {comercialesDisponibles.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            {filterComercial && (
+              <button onClick={() => setFilterComercial('')}
+                className="p-1 rounded text-google-gray hover:text-red-500 hover:bg-red-50 transition-colors" title="Quitar filtro">
+                <X size={13} />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Table */}
@@ -489,6 +542,8 @@ export default function RegistroVisitasPymes() {
                 <th className="table-header">Fecha</th>
                 <th className="table-header">Hora</th>
                 <th className="table-header">Registrado por</th>
+                <th className="table-header">Nombre Empresa</th>
+                <th className="table-header">Ubicación</th>
                 <th className="table-header">Persona Autorizada</th>
                 <th className="table-header">Tel. Cliente</th>
                 <th className="table-header">Correo Cliente</th>
@@ -500,7 +555,7 @@ export default function RegistroVisitasPymes() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="text-center py-10 text-google-gray text-sm">
+                  <td colSpan={11} className="text-center py-10 text-google-gray text-sm">
                     {visitasPymes.length === 0
                       ? 'No hay visitas PYME registradas. Pulsa "+ Nueva Visita PYME" para empezar.'
                       : 'No se encontraron resultados con los filtros aplicados'}
@@ -512,7 +567,9 @@ export default function RegistroVisitasPymes() {
                     <td className="table-cell tabular-nums text-xs text-google-gray">{v.fecha}</td>
                     <td className="table-cell tabular-nums text-xs text-google-gray">{v.hora}</td>
                     <td className="table-cell text-google-gray text-xs">{v.registrado_por}</td>
-                    <td className="table-cell font-medium text-google-dark whitespace-nowrap">{v.persona_autorizada}</td>
+                    <td className="table-cell font-medium text-google-dark whitespace-nowrap">{v.nombre_empresa || '—'}</td>
+                    <td className="table-cell text-google-gray text-xs max-w-[150px] truncate" title={v.ubicacion || ''}>{v.ubicacion || '—'}</td>
+                    <td className="table-cell text-google-gray text-xs whitespace-nowrap">{v.persona_autorizada}</td>
                     <td className="table-cell text-google-gray">{v.telefono_contacto_cliente || '—'}</td>
                     <td className="table-cell text-google-gray text-xs">{v.correo_electronico_cliente || '—'}</td>
                     <td className="table-cell text-center">

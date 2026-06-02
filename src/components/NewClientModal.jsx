@@ -51,19 +51,30 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
   const [saved,        setSaved]        = useState(false);
   const [cupsDbError,  setCupsDbError]  = useState(null);
 
-  const existingFactura = initialData?.ultima_factura || '';
-  const [facturaBase64,   setFacturaBase64]   = useState(existingFactura);
-  const [facturaFileName, setFacturaFileName] = useState(existingFactura && existingFactura.startsWith('data:') ? 'Archivo existente' : '');
-
   const [dniBase64,   setDniBase64]   = useState(initialData?.dni_escaneado || '');
   const [dniFileName, setDniFileName] = useState(
     initialData?.dni_escaneado?.startsWith?.('data:') ? 'Archivo existente' : ''
   );
 
-  const dniInputRef     = useRef(null);
-  const facturaInputRef = useRef(null);
+  const [cifAutonomoBase64,   setCifAutonomoBase64]   = useState(initialData?.cif_autonomo_url || '');
+  const [cifAutonomoFileName, setCifAutonomoFileName] = useState(
+    initialData?.cif_autonomo_url?.startsWith?.('data:') ? 'Archivo existente' : ''
+  );
+  const [justoTituloBase64,   setJustoTituloBase64]   = useState(initialData?.justo_titulo_url || '');
+  const [justoTituloFileName, setJustoTituloFileName] = useState(
+    initialData?.justo_titulo_url?.startsWith?.('data:') ? 'Archivo existente' : ''
+  );
+  const [facturaB2bBase64,   setFacturaB2bBase64]   = useState(initialData?.factura_b2b_url || '');
+  const [facturaB2bFileName, setFacturaB2bFileName] = useState(
+    initialData?.factura_b2b_url?.startsWith?.('data:') ? 'Archivo existente' : ''
+  );
+
+  const dniInputRef          = useRef(null);
+  const cifAutonomoInputRef  = useRef(null);
+  const justoTituloInputRef  = useRef(null);
+  const facturaB2bInputRef   = useRef(null);
   // M-1: bandera de control para bloquear doble envío antes del re-render
-  const submittingRef   = useRef(false);
+  const submittingRef        = useRef(false);
 
   const set = (field, value) => {
     setForm((f) => {
@@ -125,6 +136,9 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
       e.fecha_formalizada = true;
     if (form.agente_gestor === '__otro__' && !agenteGestorOtro.trim())
       e.agente_gestor_otro = true;
+    if (isB2B && !isEdit && !cifAutonomoBase64) e.cif_autonomo  = true;
+    if (isB2B && !isEdit && !dniBase64)         e.dni_b2b       = true;
+    if (isB2B && !isEdit && !facturaB2bBase64)  e.factura_b2b   = true;
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -139,10 +153,12 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
     const efectiveAgenteGestor = form.agente_gestor === '__otro__' ? agenteGestorOtro.trim() : form.agente_gestor;
     const result = await onSave({
       ...form,
-      agente_gestor:  efectiveAgenteGestor,
+      agente_gestor:    efectiveAgenteGestor,
       tipo,
-      dni_escaneado:  dniBase64,
-      ultima_factura: facturaBase64,
+      dni_escaneado:    dniBase64,
+      cif_autonomo_url: cifAutonomoBase64,
+      justo_titulo_url: justoTituloBase64,
+      factura_b2b_url:  facturaB2bBase64,
     });
 
     submittingRef.current = false;
@@ -462,35 +478,95 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
           <div className="pt-2 border-t border-google-border space-y-3">
             <p className="text-xs font-semibold text-google-gray uppercase tracking-wide">Documentos adjuntos</p>
 
-            <div>
-              <label className="block text-xs font-medium text-google-gray mb-1.5">
-                Escanear DNI/CIF <span className="font-normal">(Opcional)</span>
-              </label>
-              <input ref={dniInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
-                onChange={(e) => handleFileChange(e, setDniFileName, setDniBase64)} />
-              <button type="button" onClick={() => dniInputRef.current?.click()}
-                className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
-                  dniFileName ? 'border-green-300 bg-green-50 text-green-700'
-                  : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
-                <Upload size={14} className="flex-shrink-0" />
-                <span className="truncate">{dniFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
-              </button>
-            </div>
+            {isB2B ? (
+              <>
+                {/* CIF / Recibo Autónomos — OBLIGATORIO en nuevas altas B2B */}
+                <div>
+                  <label className="block text-xs font-medium text-google-gray mb-1.5">
+                    CIF / Recibo Autónomos <span className="text-red-500 font-semibold">*</span>
+                  </label>
+                  <input ref={cifAutonomoInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
+                    onChange={(e) => handleFileChange(e, setCifAutonomoFileName, setCifAutonomoBase64)} />
+                  <button type="button" onClick={() => cifAutonomoInputRef.current?.click()}
+                    className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
+                      cifAutonomoFileName ? 'border-green-300 bg-green-50 text-green-700'
+                      : errors.cif_autonomo ? 'border-red-300 bg-red-50 text-red-600'
+                      : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
+                    <Upload size={14} className="flex-shrink-0" />
+                    <span className="truncate">{cifAutonomoFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
+                  </button>
+                  {errors.cif_autonomo && <p className="text-red-500 text-xs mt-1">Este documento es obligatorio</p>}
+                </div>
 
-            <div>
-              <label className="block text-xs font-medium text-google-gray mb-1.5">
-                Subir Última Factura Anterior <span className="font-normal">(Opcional)</span>
-              </label>
-              <input ref={facturaInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
-                onChange={(e) => handleFileChange(e, setFacturaFileName, setFacturaBase64)} />
-              <button type="button" onClick={() => facturaInputRef.current?.click()}
-                className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
-                  facturaFileName ? 'border-green-300 bg-green-50 text-green-700'
-                  : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
-                <Upload size={14} className="flex-shrink-0" />
-                <span className="truncate">{facturaFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
-              </button>
-            </div>
+                {/* DNI — OBLIGATORIO en nuevas altas B2B */}
+                <div>
+                  <label className="block text-xs font-medium text-google-gray mb-1.5">
+                    DNI <span className="text-red-500 font-semibold">*</span>
+                  </label>
+                  <input ref={dniInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
+                    onChange={(e) => handleFileChange(e, setDniFileName, setDniBase64)} />
+                  <button type="button" onClick={() => dniInputRef.current?.click()}
+                    className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
+                      dniFileName ? 'border-green-300 bg-green-50 text-green-700'
+                      : errors.dni_b2b ? 'border-red-300 bg-red-50 text-red-600'
+                      : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
+                    <Upload size={14} className="flex-shrink-0" />
+                    <span className="truncate">{dniFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
+                  </button>
+                  {errors.dni_b2b && <p className="text-red-500 text-xs mt-1">Este documento es obligatorio</p>}
+                </div>
+
+                {/* Factura — OBLIGATORIO en nuevas altas B2B */}
+                <div>
+                  <label className="block text-xs font-medium text-google-gray mb-1.5">
+                    Factura <span className="text-red-500 font-semibold">*</span>
+                  </label>
+                  <input ref={facturaB2bInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
+                    onChange={(e) => handleFileChange(e, setFacturaB2bFileName, setFacturaB2bBase64)} />
+                  <button type="button" onClick={() => facturaB2bInputRef.current?.click()}
+                    className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
+                      facturaB2bFileName ? 'border-green-300 bg-green-50 text-green-700'
+                      : errors.factura_b2b ? 'border-red-300 bg-red-50 text-red-600'
+                      : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
+                    <Upload size={14} className="flex-shrink-0" />
+                    <span className="truncate">{facturaB2bFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
+                  </button>
+                  {errors.factura_b2b && <p className="text-red-500 text-xs mt-1">Este documento es obligatorio</p>}
+                </div>
+
+                {/* Justo Título — OPCIONAL */}
+                <div>
+                  <label className="block text-xs font-medium text-google-gray mb-1.5">
+                    Justo Título <span className="font-normal text-google-gray">(Opcional)</span>
+                  </label>
+                  <input ref={justoTituloInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
+                    onChange={(e) => handleFileChange(e, setJustoTituloFileName, setJustoTituloBase64)} />
+                  <button type="button" onClick={() => justoTituloInputRef.current?.click()}
+                    className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
+                      justoTituloFileName ? 'border-green-300 bg-green-50 text-green-700'
+                      : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
+                    <Upload size={14} className="flex-shrink-0" />
+                    <span className="truncate">{justoTituloFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* B2C: DNI/CIF único opcional */
+              <div>
+                <label className="block text-xs font-medium text-google-gray mb-1.5">
+                  Escanear DNI/CIF <span className="font-normal">(Opcional)</span>
+                </label>
+                <input ref={dniInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
+                  onChange={(e) => handleFileChange(e, setDniFileName, setDniBase64)} />
+                <button type="button" onClick={() => dniInputRef.current?.click()}
+                  className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
+                    dniFileName ? 'border-green-300 bg-green-50 text-green-700'
+                    : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
+                  <Upload size={14} className="flex-shrink-0" />
+                  <span className="truncate">{dniFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Banner error base de datos (p.ej. CUPS duplicado que pasó el pre-check) */}
