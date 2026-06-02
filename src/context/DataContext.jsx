@@ -107,18 +107,9 @@ export function DataProvider({ children }) {
     return supabase.storage.from('visitas-dni').getPublicUrl(fileName).data.publicUrl;
   };
 
-  const _serializeDniUrls = (urls) => {
-    const clean = urls.filter(Boolean);
-    if (clean.length === 0) return '';
-    if (clean.length === 1) return clean[0];
-    return JSON.stringify(clean);
-  };
-
   const addVisita = async (data, dniAnverso, dniReverso) => {
-    const urls = [];
-    if (dniAnverso) { const u = await _uploadDniFile(dniAnverso); if (u) urls.push(u); }
-    if (dniReverso) { const u = await _uploadDniFile(dniReverso); if (u) urls.push(u); }
-    const dni_cif_escaneado_url = _serializeDniUrls(urls);
+    const dni_cif_escaneado_url = dniAnverso ? (await _uploadDniFile(dniAnverso)) || '' : '';
+    const dni_cif_reverso_url   = dniReverso ? (await _uploadDniFile(dniReverso)) || '' : '';
     const newVisita = {
       id:                   Date.now(),
       fecha:                data.fecha,
@@ -132,6 +123,7 @@ export function DataProvider({ children }) {
       punto_venta:          data.punto_venta || '',
       registrado_por:       currentUser?.username || 'Sistema',
       dni_cif_escaneado_url,
+      dni_cif_reverso_url,
     };
     setVisitas(prev => [newVisita, ...prev]);
     const { error } = await supabase.from('visitas').insert([newVisita]);
@@ -148,19 +140,14 @@ export function DataProvider({ children }) {
     return { error: null };
   };
 
-  const updateVisita = async (id, data, dniAnverso, dniReverso, existingDniUrl) => {
-    // Parse existing stored URLs to preserve whichever side isn't being replaced
-    let existing = [];
-    if (existingDniUrl) {
-      try { const a = JSON.parse(existingDniUrl); if (Array.isArray(a)) existing = a; } catch {}
-      if (!existing.length) existing = [existingDniUrl];
-    }
-    let finalAnverso = existing[0] || '';
-    let finalReverso = existing[1] || '';
-    if (dniAnverso) { const u = await _uploadDniFile(dniAnverso); if (u) finalAnverso = u; }
-    if (dniReverso) { const u = await _uploadDniFile(dniReverso); if (u) finalReverso = u; }
-    const dni_cif_escaneado_url = _serializeDniUrls([finalAnverso, finalReverso]);
-    const updateObj = { ...data, dni_cif_escaneado_url };
+  const updateVisita = async (id, data, dniAnverso, dniReverso, existingAnverso, existingReverso) => {
+    const dni_cif_escaneado_url = dniAnverso
+      ? (await _uploadDniFile(dniAnverso)) || existingAnverso || ''
+      : (existingAnverso || '');
+    const dni_cif_reverso_url = dniReverso
+      ? (await _uploadDniFile(dniReverso)) || existingReverso || ''
+      : (existingReverso || '');
+    const updateObj = { ...data, dni_cif_escaneado_url, dni_cif_reverso_url };
     setVisitas(prev => prev.map(v => v.id === id ? { ...v, ...updateObj } : v));
     const { error } = await supabase.from('visitas').update(updateObj).eq('id', id);
     if (error) { console.error('updateVisita:', error); return { error }; }

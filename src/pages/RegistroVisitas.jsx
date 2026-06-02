@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { Store, Plus, CalendarDays, Users, Briefcase, Search, Trash2, Pencil, CheckCircle, X, FileSpreadsheet, Camera, Loader2 } from 'lucide-react';
+import { Store, Plus, CalendarDays, Users, Briefcase, Search, Trash2, Pencil, CheckCircle, X, FileSpreadsheet, Camera, Loader2, Eye } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
@@ -17,6 +17,7 @@ const TIPOS_GESTION = [
 ];
 
 const PUNTOS_VENTA = ['Valladolid', 'Palencia'];
+
 
 const _d    = new Date();
 const _YEAR = _d.getFullYear();
@@ -48,18 +49,10 @@ function VisitaModal({ onClose, onSave, initialData }) {
   const [errors,  setErrors]  = useState({});
   const [saved,   setSaved]   = useState(false);
   const [saving,  setSaving]  = useState(false);
-
-  // Parsear URLs existentes (formato antiguo: string simple; nuevo: JSON array)
-  const _existingUrls = (() => {
-    const val = initialData?.dni_cif_escaneado_url || '';
-    if (!val) return ['', ''];
-    try { const a = JSON.parse(val); if (Array.isArray(a)) return [a[0]||'', a[1]||'']; } catch {}
-    return [val, ''];
-  })();
   const [dniAnverso,        setDniAnverso]        = useState(null);
-  const [dniAnversoPreview, setDniAnversoPreview] = useState(_existingUrls[0]);
+  const [dniAnversoPreview, setDniAnversoPreview] = useState(initialData?.dni_cif_escaneado_url || '');
   const [dniReverso,        setDniReverso]        = useState(null);
-  const [dniReversoPreview, setDniReversoPreview] = useState(_existingUrls[1]);
+  const [dniReversoPreview, setDniReversoPreview] = useState(initialData?.dni_cif_reverso_url   || '');
   const dniAnversoRef = useRef(null);
   const dniReversoRef = useRef(null);
 
@@ -95,7 +88,11 @@ function VisitaModal({ onClose, onSave, initialData }) {
     e.preventDefault();
     if (!validate()) return;
     setSaving(true);
-    const result = await onSave(form, dniAnverso, dniReverso, initialData?.dni_cif_escaneado_url || '');
+    const result = await onSave(
+      form, dniAnverso, dniReverso,
+      initialData?.dni_cif_escaneado_url || '',
+      initialData?.dni_cif_reverso_url   || ''
+    );
     if (result?.error) { setSaving(false); return; }
     setSaved(true);
     setTimeout(() => onClose(), 800);
@@ -272,6 +269,9 @@ function VisitaModal({ onClose, onSave, initialData }) {
               </div>
 
             </div>
+            <p className="text-xs text-google-gray/70 italic mt-1">
+              Si el documento es PDF, basta con adjuntarlo en el Anverso. Si son fotos, rogamos adjuntar ambas caras.
+            </p>
           </div>
 
           {/* Actions */}
@@ -374,8 +374,8 @@ export default function RegistroVisitas() {
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const handleSave = async (data, dniAnverso, dniReverso, existingDniUrl) => {
-    if (editVisita) return await updateVisita(editVisita.id, data, dniAnverso, dniReverso, existingDniUrl);
+  const handleSave = async (data, dniAnverso, dniReverso, existingAnverso, existingReverso) => {
+    if (editVisita) return await updateVisita(editVisita.id, data, dniAnverso, dniReverso, existingAnverso, existingReverso);
     return await addVisita(data, dniAnverso, dniReverso);
   };
 
@@ -610,13 +610,14 @@ export default function RegistroVisitas() {
                 <th className="table-header">Descripción</th>
                 <th className="table-header">Punto de Venta</th>
                 <th className="table-header">Registrado por</th>
+                <th className="table-header">Docs</th>
                 <th className="table-header">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="text-center py-10 text-google-gray text-sm">
+                  <td colSpan={12} className="text-center py-10 text-google-gray text-sm">
                     {visitas.length === 0
                       ? 'No hay visitas registradas. Pulsa "+ Nueva Visita" para empezar.'
                       : 'No se encontraron resultados con los filtros aplicados'}
@@ -652,6 +653,24 @@ export default function RegistroVisitas() {
                     </td>
                     <td className="table-cell text-google-gray text-xs">{v.registrado_por}</td>
                     <td className="table-cell text-center">
+                      {[v.dni_cif_escaneado_url, v.dni_cif_reverso_url].some(Boolean) ? (
+                        <div className="flex items-center justify-center gap-1">
+                          {[
+                            { url: v.dni_cif_escaneado_url, label: 'Ver Anverso' },
+                            { url: v.dni_cif_reverso_url,   label: 'Ver Reverso' },
+                          ].filter(e => e.url).map((e, i) => (
+                            <a key={i} href={e.url} target="_blank" rel="noopener noreferrer"
+                              className="p-1 rounded hover:bg-slate-100 transition-colors"
+                              title={e.label}>
+                              <Eye size={15} className="text-slate-500 hover:text-google-blue" />
+                            </a>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-google-gray">—</span>
+                      )}
+                    </td>
+                    <td className="table-cell text-center">
                       <div className="flex items-center justify-center gap-1">
                         {(isPrivileged || v.registrado_por === currentUser?.username) ? (
                           <>
@@ -686,6 +705,7 @@ export default function RegistroVisitas() {
 
       {(showModal || editVisita) && (
         <VisitaModal
+          key={editVisita?.id ?? 'new'}
           onClose={() => { setShowModal(false); setEditVisita(null); }}
           onSave={handleSave}
           initialData={editVisita || null}
