@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { X, User, Building2, Phone, Zap, FileText, CheckCircle, AlertCircle, Mail, CreditCard, Upload, Pencil, Calendar, UserCheck, Briefcase, Hash, AlignLeft } from 'lucide-react';
+import { X, User, Building2, Phone, Zap, FileText, CheckCircle, AlertCircle, Mail, CreditCard, Upload, Pencil, Calendar, UserCheck, Briefcase, Hash, AlignLeft, BarChart2 } from 'lucide-react';
 import DateInput from './DateInput';
 import { useAuth } from '../context/AuthContext';
 
@@ -20,8 +20,9 @@ const todayStr = () => new Date().toISOString().split('T')[0];
 
 export default function NewClientModal({ tipo, onClose, onSave, initialData, existingCups, editId }) {
   const { currentUser, users } = useAuth();
-  const isB2B = tipo === 'B2B';
-  const isEdit = !!initialData;
+  const isB2B       = tipo === 'B2B';
+  const isEdit      = !!initialData;
+  const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'manager';
 
   const initialAgenteGestorValue = initialData?.agente_gestor || currentUser?.username || '';
   const isKnownUser = !initialAgenteGestorValue || users.some(u => u.username === initialAgenteGestorValue);
@@ -38,6 +39,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
     id_producto:       initialData?.id_producto       || '',
     creado_por:        initialData?.creado_por        || '',
     descripcion:       initialData?.descripcion       || '',
+    consumo_anual_est: initialData?.consumo_anual_est != null ? String(initialData.consumo_anual_est) : '',
     estado:            initialData?.estado            || 'Pendiente Firma',
     mail:              initialData?.mail              || '',
     cuenta_bancaria:   initialData?.cuenta_bancaria   || '',
@@ -473,6 +475,34 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
               className="input-field resize-none"
             />
           </div>
+
+          {/* Consumo Anual Estimado — solo B2B, bloqueado para comerciales */}
+          {isB2B && (
+            <div>
+              <label className="block text-xs font-medium text-google-gray mb-1.5 flex items-center gap-1.5">
+                <BarChart2 size={13} /> Consumo Anual Estimado (kWh)
+              </label>
+              {isPrivileged ? (
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="Ej: 45000"
+                  value={form.consumo_anual_est}
+                  onChange={(e) => set('consumo_anual_est', e.target.value)}
+                  className="input-field"
+                />
+              ) : (
+                <input
+                  type="text"
+                  value="—"
+                  disabled
+                  className="input-field bg-gray-50 text-gray-400 cursor-not-allowed"
+                />
+              )}
+              <p className="text-xs text-google-gray mt-1">Solo visible y editable para Admins y Managers</p>
+            </div>
+          )}
 
           {/* Documentos adjuntos */}
           <div className="pt-2 border-t border-google-border space-y-3">

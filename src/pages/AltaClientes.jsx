@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Plus, FileCheck, Clock, AlertCircle, Trophy, Search, ChevronUp, ChevronDown, Trash2, Pencil, PenTool, X, Eye, FileText } from 'lucide-react';
+import { Plus, FileCheck, Clock, AlertCircle, Trophy, Search, ChevronUp, ChevronDown, Trash2, Pencil, PenTool, X, Eye, FileText, BarChart2, CheckCircle } from 'lucide-react';
 import NewClientModal from '../components/NewClientModal';
 import DeleteConfirmModal from '../components/DeleteConfirmModal';
 import ConfirmActionModal from '../components/ConfirmActionModal';
@@ -111,9 +111,104 @@ function DocIcon({ value, label, clientName }) {
   );
 }
 
+function ConsumoModal({ cliente, onClose, onSave }) {
+  const [valor,  setValor]  = useState('');
+  const [error,  setError]  = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved,  setSaved]  = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const handleGuardar = async () => {
+    const num = Number(valor);
+    if (!valor.trim() || isNaN(num) || num <= 0) { setError(true); return; }
+    setSaving(true);
+    await onSave(cliente.id, num);
+    setSaved(true);
+    setTimeout(() => onClose(), 700);
+  };
+
+  const handleKey = (e) => {
+    if (e.key === 'Enter') handleGuardar();
+    if (e.key === 'Escape') onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 modal-backdrop">
+      <div className="bg-white rounded-2xl shadow-google w-full max-w-xs mx-4 overflow-hidden">
+
+        {/* Cabecera */}
+        <div className="px-5 py-4 flex items-center justify-between border-b border-google-border bg-blue-50">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-google-blue flex items-center justify-center flex-shrink-0">
+              <BarChart2 size={15} className="text-white" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-google-dark">Consumo Anual Estimado</h2>
+              <p className="text-xs text-google-gray mt-0.5 leading-snug max-w-[200px]">
+                Por favor, introduzca el consumo estimado para el cálculo de comisiones.
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-google-gray hover:text-google-dark transition-colors flex-shrink-0 ml-2">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Cuerpo */}
+        <div className="px-5 py-5 space-y-3">
+          <p className="text-xs text-google-gray font-medium">
+            Cliente: <span className="text-google-dark font-semibold">{cliente.nombre}</span>
+          </p>
+          <div>
+            <div className="flex items-center gap-2">
+              <input
+                ref={inputRef}
+                type="number"
+                min="1"
+                step="1"
+                placeholder="Ej: 45000"
+                value={valor}
+                onChange={e => { setValor(e.target.value); setError(false); }}
+                onKeyDown={handleKey}
+                className={`input-field flex-1 text-right tabular-nums text-base font-semibold ${error ? '!border-red-400 focus:!ring-red-300' : ''}`}
+              />
+              <span className="text-sm font-semibold text-google-gray whitespace-nowrap">kWh</span>
+            </div>
+            {error && (
+              <p className="text-red-500 text-xs mt-1.5 flex items-center gap-1">
+                <AlertCircle size={12} /> Introduce un número mayor que cero
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-google-border bg-google-bg flex items-center justify-end gap-2">
+          <button onClick={onClose} disabled={saving} className="btn-secondary text-sm px-4 py-1.5">
+            Cancelar
+          </button>
+          <button
+            onClick={handleGuardar}
+            disabled={saving || saved}
+            className={`btn-primary text-sm px-4 py-1.5 flex items-center gap-1.5 ${saved ? 'bg-green-500 hover:bg-green-500' : ''}`}
+          >
+            {saved
+              ? <><CheckCircle size={14} /><span>Guardado</span></>
+              : saving
+                ? <span>Guardando...</span>
+                : <span>Guardar Consumo</span>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AltaClientes({ tipo }) {
   const isB2B = tipo === 'B2B';
-  const { clientes: allClientes, clientesB2C, clientesB2B, addCliente, updateCliente, firmarContrato, formalizarContrato, deleteCliente, rankingComerciales } = useData();
+  const { clientes: allClientes, clientesB2C, clientesB2B, addCliente, updateCliente, setConsumoAnualEst, firmarContrato, formalizarContrato, deleteCliente, rankingComerciales } = useData();
 
   const allCups = useMemo(
     () => new Set(allClientes.map(c => (c.cups || '').toUpperCase().trim()).filter(Boolean)),
@@ -214,7 +309,8 @@ export default function AltaClientes({ tipo }) {
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const TOTAL_COLS = 21;
+  const TOTAL_COLS = isB2B ? 22 : 21;
+  const [consumoTarget, setConsumoTarget] = useState(null);
 
   const subtipo = (c) => c.subtipo === 'Otro' ? (c.subtipo_otro || 'Otro') : (c.subtipo || '—');
 
@@ -385,6 +481,7 @@ export default function AltaClientes({ tipo }) {
                 <th className="table-header">{isB2B ? 'Docs' : 'DNI/CIF Esc.'}</th>
                 <th className="table-header">Últ. Factura</th>
                 <th className="table-header">Descripción</th>
+                {isB2B && <th className="table-header">Consumo Anual Est.</th>}
                 <th className="table-header">Acciones</th>
               </tr>
             </thead>
@@ -442,6 +539,24 @@ export default function AltaClientes({ tipo }) {
                     </td>
                     <td className="table-cell text-center"><FileCell value={c.ultima_factura} clientName={`Factura_${c.nombre}`} /></td>
                     <td className="table-cell text-google-gray text-xs max-w-[180px] truncate" title={c.descripcion || ''}>{c.descripcion || '—'}</td>
+                    {isB2B && (
+                      <td className="table-cell text-center">
+                        {!isPrivileged ? (
+                          <span className="text-google-gray">—</span>
+                        ) : c.consumo_anual_est != null && c.consumo_anual_est !== '' ? (
+                          <span className="text-xs font-medium text-google-dark tabular-nums whitespace-nowrap">
+                            {Number(c.consumo_anual_est).toLocaleString('es-ES')} kWh
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => setConsumoTarget(c)}
+                            className="px-2 py-0.5 rounded border border-blue-300 bg-blue-50 text-blue-700 text-xs font-medium hover:bg-blue-100 transition-colors whitespace-nowrap"
+                          >
+                            Rellenar
+                          </button>
+                        )}
+                      </td>
+                    )}
                     <td className="table-cell text-center">
                       <div className="flex items-center justify-center gap-1">
                         {c.estado === 'Pendiente Firma' && (
@@ -511,6 +626,14 @@ export default function AltaClientes({ tipo }) {
         />
       )}
 
+      {consumoTarget && (
+        <ConsumoModal
+          cliente={consumoTarget}
+          onClose={() => setConsumoTarget(null)}
+          onSave={async (id, val) => { setConsumoAnualEst(id, val); }}
+        />
+      )}
+
       {(showModal || editClient) && (
         <NewClientModal
           key={editClient?.id ?? 'new'}
@@ -531,6 +654,7 @@ export default function AltaClientes({ tipo }) {
             id_producto:       editClient.id_producto      || '',
             creado_por:        editClient.creado_por       || '',
             descripcion:       editClient.descripcion      || '',
+            consumo_anual_est: editClient.consumo_anual_est != null ? editClient.consumo_anual_est : '',
             estado:            editClient.estado,
             mail:              editClient.mail             || '',
             cuenta_bancaria:   editClient.cuenta_bancaria  || '',

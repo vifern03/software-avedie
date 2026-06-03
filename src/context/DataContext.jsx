@@ -158,7 +158,15 @@ export function DataProvider({ children }) {
 
   // ── Visitas PYMES ────────────────────────────────────────────────────────────
 
-  const addVisitaPyme = async (data, fotoFile) => {
+  const _uploadPymeDoc = async (file, prefix) => {
+    const ext      = (file.name.split('.').pop() || 'pdf').toLowerCase();
+    const fileName = `${prefix}_${Date.now()}_${currentUser?.username || 'anon'}.${ext}`;
+    const { error } = await supabase.storage.from('pymes-fotos').upload(fileName, file, { upsert: false });
+    if (error) { console.error('_uploadPymeDoc:', error); return null; }
+    return supabase.storage.from('pymes-fotos').getPublicUrl(fileName).data.publicUrl;
+  };
+
+  const addVisitaPyme = async (data, fotoFile, facturaFile, comparativaFile) => {
     let foto_url = '';
     if (fotoFile) {
       const ext      = fotoFile.name.split('.').pop() || 'jpg';
@@ -173,19 +181,27 @@ export function DataProvider({ children }) {
         console.error('addVisitaPyme upload:', upErr);
       }
     }
+    const factura_url    = facturaFile    ? (await _uploadPymeDoc(facturaFile,    'factura'))    || '' : '';
+    const comparativa_url = comparativaFile ? (await _uploadPymeDoc(comparativaFile, 'comparativa')) || '' : '';
+
     const newVisita = {
-      id:                         Date.now(),
-      fecha:                      data.fecha,
-      hora:                       data.hora,
-      persona_autorizada:         data.persona_autorizada,
-      correo:                     data.correo_persona            || '',
-      telefono_contacto_cliente:  data.telefono_cliente          || '',
-      correo_electronico_cliente: data.correo_cliente            || '',
-      foto_negocio_url:           foto_url,
-      comentarios_visita:         data.comentarios               || '',
-      registrado_por:             currentUser?.username          || 'Sistema',
-      nombre_empresa:             data.nombre_empresa            || '',
-      ubicacion:                  data.ubicacion                 || '',
+      id:                           Date.now(),
+      fecha:                        data.fecha,
+      hora:                         data.hora,
+      persona_autorizada:           data.persona_autorizada,
+      correo:                       data.correo_persona            || '',
+      telefono_contacto_cliente:    data.telefono_cliente          || '',
+      correo_electronico_cliente:   data.correo_cliente            || '',
+      foto_negocio_url:             foto_url,
+      comentarios_visita:           data.comentarios               || '',
+      registrado_por:               currentUser?.username          || 'Sistema',
+      nombre_empresa:               data.nombre_empresa            || '',
+      ubicacion:                    data.ubicacion                 || '',
+      estado:                       data.estado                    || 'Solicitado Factura',
+      fecha_enviada_comparativa:    data.fecha_enviada_comparativa || null,
+      fecha_resolucion:             data.fecha_resolucion          || null,
+      factura_url,
+      comparativa_url,
     };
     setVisitasPymes(prev => [newVisita, ...prev]);
     const { error } = await supabase.from('visitas_pymes').insert([newVisita]);
@@ -202,7 +218,7 @@ export function DataProvider({ children }) {
     return { error: null };
   };
 
-  const updateVisitaPyme = async (id, data, fotoFile, existingFotoUrl) => {
+  const updateVisitaPyme = async (id, data, fotoFile, existingFotoUrl, facturaFile, comparativaFile) => {
     let foto_url = existingFotoUrl || '';
     if (fotoFile) {
       const ext      = fotoFile.name.split('.').pop() || 'jpg';
@@ -217,21 +233,53 @@ export function DataProvider({ children }) {
         console.error('updateVisitaPyme upload:', upErr);
       }
     }
+    const factura_url    = facturaFile    ? (await _uploadPymeDoc(facturaFile,    'factura'))    || data.factura_url    || '' : (data.factura_url    || '');
+    const comparativa_url = comparativaFile ? (await _uploadPymeDoc(comparativaFile, 'comparativa')) || data.comparativa_url || '' : (data.comparativa_url || '');
+
     const updateObj = {
-      fecha:                      data.fecha,
-      hora:                       data.hora,
-      persona_autorizada:         data.persona_autorizada,
-      correo:                     data.correo_persona            || '',
-      telefono_contacto_cliente:  data.telefono_cliente          || '',
-      correo_electronico_cliente: data.correo_cliente            || '',
-      foto_negocio_url:           foto_url,
-      comentarios_visita:         data.comentarios               || '',
-      nombre_empresa:             data.nombre_empresa            || '',
-      ubicacion:                  data.ubicacion                 || '',
+      fecha:                        data.fecha,
+      hora:                         data.hora,
+      persona_autorizada:           data.persona_autorizada,
+      correo:                       data.correo_persona            || '',
+      telefono_contacto_cliente:    data.telefono_cliente          || '',
+      correo_electronico_cliente:   data.correo_cliente            || '',
+      foto_negocio_url:             foto_url,
+      comentarios_visita:           data.comentarios               || '',
+      nombre_empresa:               data.nombre_empresa            || '',
+      ubicacion:                    data.ubicacion                 || '',
+      factura_url,
+      comparativa_url,
+      ...(data.estado                    !== undefined && { estado:                    data.estado                    }),
+      ...(data.fecha_enviada_comparativa !== undefined && { fecha_enviada_comparativa: data.fecha_enviada_comparativa }),
+      ...(data.fecha_resolucion          !== undefined && { fecha_resolucion:          data.fecha_resolucion          }),
     };
     setVisitasPymes(prev => prev.map(v => v.id === id ? { ...v, ...updateObj } : v));
     const { error } = await supabase.from('visitas_pymes').update(updateObj).eq('id', id);
     if (error) { console.error('updateVisitaPyme error:', error.message, error.details); return { error }; }
+    return { error: null };
+  };
+
+  const updateEstadoVisitaPyme = async (id, nuevoEstado, extraFields = {}) => {
+    const updateObj = { estado: nuevoEstado, ...extraFields };
+    setVisitasPymes(prev => prev.map(v => v.id === id ? { ...v, ...updateObj } : v));
+    const { error } = await supabase.from('visitas_pymes').update(updateObj).eq('id', id);
+    if (error) { console.error('updateEstadoVisitaPyme:', error); return { error }; }
+    return { error: null };
+  };
+
+  const transicionEstadoPyme = async (id, nuevoEstado, extraFields = {}, facturaFile = null, comparativaFile = null) => {
+    const updateObj = { estado: nuevoEstado, ...extraFields };
+    if (facturaFile) {
+      const url = await _uploadPymeDoc(facturaFile, 'factura');
+      if (url) updateObj.factura_url = url;
+    }
+    if (comparativaFile) {
+      const url = await _uploadPymeDoc(comparativaFile, 'comparativa');
+      if (url) updateObj.comparativa_url = url;
+    }
+    setVisitasPymes(prev => prev.map(v => v.id === id ? { ...v, ...updateObj } : v));
+    const { error } = await supabase.from('visitas_pymes').update(updateObj).eq('id', id);
+    if (error) { console.error('transicionEstadoPyme:', error); return { error }; }
     return { error: null };
   };
 
@@ -271,6 +319,9 @@ export function DataProvider({ children }) {
       cif_autonomo_url: data.cif_autonomo_url || '',
       justo_titulo_url: data.justo_titulo_url  || '',
       factura_b2b_url:  data.factura_b2b_url   || '',
+      consumo_anual_est: (data.consumo_anual_est !== '' && data.consumo_anual_est != null)
+        ? Number(data.consumo_anual_est)
+        : null,
     };
     setClientes(prev => [newCliente, ...prev]);
     const { error } = await supabase.from('clientes').insert([newCliente]);
@@ -357,6 +408,11 @@ export function DataProvider({ children }) {
       ...(data.cif_autonomo_url !== undefined && { cif_autonomo_url: data.cif_autonomo_url }),
       ...(data.justo_titulo_url !== undefined && { justo_titulo_url: data.justo_titulo_url }),
       ...(data.factura_b2b_url  !== undefined && { factura_b2b_url:  data.factura_b2b_url  }),
+      ...(data.consumo_anual_est !== undefined && {
+        consumo_anual_est: (data.consumo_anual_est === '' || data.consumo_anual_est === null)
+          ? null
+          : Number(data.consumo_anual_est),
+      }),
     };
 
     setClientes(prev => prev.map(c => c.id === id ? { ...c, ...updateObj } : c));
@@ -373,6 +429,13 @@ export function DataProvider({ children }) {
         })
       : `${currentUser?.username} ha revisado el expediente de ${clientName}`;
     addActivity('Actualización', desc, currentUser?.username);
+  };
+
+  const setConsumoAnualEst = (id, valor) => {
+    const v = (valor === '' || valor == null) ? null : Number(valor);
+    setClientes(prev => prev.map(c => c.id === id ? { ...c, consumo_anual_est: v } : c));
+    supabase.from('clientes').update({ consumo_anual_est: v }).eq('id', id)
+      .then(({ error }) => { if (error) console.error('setConsumoAnualEst:', error); });
   };
 
   const firmarContrato = (id) => {
@@ -477,6 +540,7 @@ export function DataProvider({ children }) {
       isLoading,
       addCliente,
       updateCliente,
+      setConsumoAnualEst,
       firmarContrato,
       formalizarContrato,
       renovarContrato,
@@ -488,6 +552,8 @@ export function DataProvider({ children }) {
       deleteVisita,
       addVisitaPyme,
       updateVisitaPyme,
+      updateEstadoVisitaPyme,
+      transicionEstadoPyme,
       deleteVisitaPyme,
     }}>
       {children}

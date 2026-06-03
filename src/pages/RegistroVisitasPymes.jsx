@@ -1,49 +1,379 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { Landmark, Plus, CalendarDays, Users, Search, Trash2, Pencil, CheckCircle, X, FileSpreadsheet, Camera, ExternalLink, Loader2 } from 'lucide-react';
+import {
+  Landmark, Plus, CalendarDays, Users, Search, Trash2, Pencil, CheckCircle,
+  X, FileSpreadsheet, Camera, ExternalLink, Loader2, ArrowRight, Check, Minus, Eye,
+  Clock,
+} from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
 import DeleteConfirmModal from '../components/DeleteConfirmModal';
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 const isMobileDevice = () => {
   const ua = navigator.userAgent || navigator.vendor || '';
   return /android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua);
 };
-
 const todayStr = () => new Date().toISOString().split('T')[0];
 const nowTime  = () => {
   const n = new Date();
   return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
 };
-
-const _d    = new Date();
-const _YEAR = _d.getFullYear();
-const _MON  = _d.getMonth();
+const _d = new Date(), _YEAR = _d.getFullYear(), _MON = _d.getMonth();
 const monthName = (offset) => {
   const m = new Date(_YEAR, _MON + offset, 1).toLocaleString('es-ES', { month: 'long' });
   return m.charAt(0).toUpperCase() + m.slice(1);
 };
+const toDatetimeLocal = (isoStr) => {
+  if (!isoStr) return '';
+  try { return new Date(isoStr).toISOString().slice(0, 16); } catch { return ''; }
+};
+const fmtFechaHora = (isoStr) => {
+  if (!isoStr) return '—';
+  const d = new Date(isoStr);
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+const nowLocal = () => new Date().toISOString().slice(0, 16);
 
-function VisitaPymeModal({ onClose, onSave, initialData, currentUsername }) {
-  const isEdit   = !!initialData;
-  const isMobile = isMobileDevice();
+// ── Constantes ────────────────────────────────────────────────────────────────
+
+const ESTADOS = ['Solicitado Factura', 'Enviada Comparativa', 'Aceptado', 'Rechazado', 'Valorando'];
+const ESTADOS_CON_DOCS = ['Enviada Comparativa', 'Aceptado', 'Rechazado', 'Valorando'];
+
+// ── EstadoBadge ───────────────────────────────────────────────────────────────
+
+function EstadoBadge({ estado }) {
+  const cfg = {
+    'Solicitado Factura':  { bg: 'bg-blue-50',   border: 'border-blue-300',   text: 'text-blue-700'   },
+    'Enviada Comparativa': { bg: 'bg-blue-50',   border: 'border-blue-300',   text: 'text-blue-700'   },
+    'Aceptado':            { bg: 'bg-green-50',  border: 'border-green-300',  text: 'text-green-700'  },
+    'Rechazado':           { bg: 'bg-red-50',    border: 'border-red-300',    text: 'text-red-700'    },
+    'Valorando':           { bg: 'bg-orange-50', border: 'border-orange-300', text: 'text-orange-700' },
+  };
+  const s = cfg[estado] || { bg: 'bg-gray-50', border: 'border-gray-300', text: 'text-gray-600' };
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded border text-xs font-medium whitespace-nowrap ${s.bg} ${s.border} ${s.text}`}>
+      {estado || '—'}
+    </span>
+  );
+}
+
+// ── AccionEstado ──────────────────────────────────────────────────────────────
+
+function AccionEstado({ visita, onTransicion }) {
+  if (visita.estado === 'Solicitado Factura') {
+    return (
+      <button
+        onClick={() => onTransicion(visita, 'Enviada Comparativa')}
+        title="Avanzar a Enviada Comparativa"
+        className="p-1.5 rounded-lg bg-indigo-100 hover:bg-indigo-200 text-indigo-700 transition-colors"
+      >
+        <ArrowRight size={14} />
+      </button>
+    );
+  }
+  if (visita.estado === 'Enviada Comparativa') {
+    return (
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => { if (window.confirm("¿Marcar esta visita como 'Aceptado'?")) onTransicion(visita, 'Aceptado'); }}
+          title="Aceptado"
+          className="w-6 h-6 rounded-full flex items-center justify-center bg-green-100 hover:bg-green-200 text-green-700 transition-colors"
+        >
+          <Check size={12} strokeWidth={3} />
+        </button>
+        <button
+          onClick={() => { if (window.confirm("¿Marcar esta visita como 'Rechazado'?")) onTransicion(visita, 'Rechazado'); }}
+          title="Rechazado"
+          className="w-6 h-6 rounded-full flex items-center justify-center bg-red-100 hover:bg-red-200 text-red-700 transition-colors"
+        >
+          <X size={12} strokeWidth={3} />
+        </button>
+        <button
+          onClick={() => { if (window.confirm("¿Marcar esta visita como 'Valorando'?")) onTransicion(visita, 'Valorando'); }}
+          title="Valorando"
+          className="w-6 h-6 rounded-full flex items-center justify-center bg-orange-100 hover:bg-orange-200 text-orange-700 transition-colors"
+        >
+          <Minus size={12} strokeWidth={3} />
+        </button>
+      </div>
+    );
+  }
+  return null;
+}
+
+// ── TransicionEstadoModal ─────────────────────────────────────────────────────
+
+function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar }) {
+  // Qué campos necesita cada transición
+  const needsFechaEnviada    = targetEstado === 'Enviada Comparativa' ||
+                               (targetEstado === 'Valorando' && !visita.fecha_enviada_comparativa);
+  const needsFechaResolucion = targetEstado === 'Aceptado' || targetEstado === 'Rechazado';
+  const needsComentarios     = targetEstado === 'Rechazado';
+  // Docs: obligatorios si no existen aún
+  const needsFactura         = !visita.factura_url;
+  const needsComparativa     = !visita.comparativa_url;
+
   const [form, setForm] = useState({
-    fecha:              initialData?.fecha              || todayStr(),
-    hora:               initialData?.hora               || nowTime(),
-    nombre_empresa:     initialData?.nombre_empresa     || '',
-    persona_autorizada: initialData?.persona_autorizada || '',
-    ubicacion:          initialData?.ubicacion          || '',
-    telefono_cliente:   initialData?.telefono_contacto_cliente  || '',
-    correo_cliente:     initialData?.correo_electronico_cliente || '',
-    comentarios:        initialData?.comentarios_visita         || '',
+    fecha_enviada_comparativa: toDatetimeLocal(visita.fecha_enviada_comparativa) || '',
+    fecha_resolucion:          '',
+    comentarios:               '',
   });
-  const [fotoFile,    setFotoFile]    = useState(null);
-  const [fotoPreview, setFotoPreview] = useState(initialData?.foto_negocio_url || '');
-  const [errors,      setErrors]      = useState({});
-  const [saving,      setSaving]      = useState(false);
-  const [saved,       setSaved]       = useState(false);
+  const [facturaFile,     setFacturaFile]     = useState(null);
+  const [comparativaFile, setComparativaFile] = useState(null);
+  const [errors,          setErrors]          = useState({});
+  const [saving,          setSaving]          = useState(false);
+  const [saved,           setSaved]           = useState(false);
+
+  const set = (field, value) => {
+    setForm(f => ({ ...f, [field]: value }));
+    setErrors(e => ({ ...e, [field]: false }));
+  };
+
+  const validate = () => {
+    const e = {};
+    if (needsFechaEnviada    && !form.fecha_enviada_comparativa) e.fecha_enviada_comparativa = true;
+    if (needsFechaResolucion && !form.fecha_resolucion)          e.fecha_resolucion          = true;
+    if (needsFactura    && !facturaFile)     e.factura     = true;
+    if (needsComparativa && !comparativaFile) e.comparativa = true;
+    if (needsComentarios && !form.comentarios.trim())            e.comentarios               = true;
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const handleConfirmar = async () => {
+    if (!validate()) return;
+    setSaving(true);
+
+    const toISO = (dtl) => dtl ? new Date(dtl).toISOString() : null;
+
+    // Auto-prefijo "Rechazado por..."
+    let comentariosFinales = form.comentarios.trim();
+    if (needsComentarios && comentariosFinales && !comentariosFinales.toLowerCase().startsWith('rechazado por')) {
+      comentariosFinales = `Rechazado por ${comentariosFinales}`;
+    }
+
+    const extraFields = {
+      ...(needsFechaEnviada    && form.fecha_enviada_comparativa && { fecha_enviada_comparativa: toISO(form.fecha_enviada_comparativa) }),
+      ...(needsFechaResolucion && form.fecha_resolucion          && { fecha_resolucion:          toISO(form.fecha_resolucion) }),
+      ...(needsComentarios     && comentariosFinales             && { comentarios_visita:        comentariosFinales }),
+    };
+
+    const result = await onConfirmar(visita.id, targetEstado, extraFields, facturaFile || null, comparativaFile || null);
+    if (result?.error) { setSaving(false); return; }
+    setSaved(true);
+    setTimeout(() => onClose(), 900);
+  };
+
+  const ic = (f) => errors[f] ? '!border-red-400 focus:!ring-red-300' : '';
+
+  // Etiqueta de la flecha en el título
+  const labelEstado = {
+    'Enviada Comparativa': 'Enviada Comparativa',
+    'Valorando':           'Valorando',
+    'Aceptado':            'Aceptado',
+    'Rechazado':           'Rechazado',
+  }[targetEstado] || targetEstado;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-google w-full max-w-sm mx-4 flex flex-col overflow-hidden">
+
+        {/* Cabecera */}
+        <div className="px-5 py-4 bg-indigo-50 border-b border-indigo-100 flex items-start justify-between gap-3 flex-shrink-0">
+          <div>
+            <h2 className="text-sm font-semibold text-indigo-900 leading-snug">
+              Para pasar al siguiente estado, rellene estos campos
+            </h2>
+            <div className="flex items-center gap-1.5 mt-1.5">
+              <EstadoBadge estado={visita.estado} />
+              <ArrowRight size={13} className="text-indigo-400 flex-shrink-0" />
+              <EstadoBadge estado={targetEstado} />
+            </div>
+          </div>
+          <button onClick={onClose} disabled={saving}
+            className="text-indigo-400 hover:text-indigo-700 transition-colors flex-shrink-0 mt-0.5">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Cuerpo */}
+        <div className="px-5 py-5 space-y-4 overflow-y-auto max-h-[70vh]">
+
+          {/* ── Fechas ── */}
+          {(needsFechaEnviada || needsFechaResolucion) && (
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-indigo-700">
+                Por favor, especifique la fecha exacta del proceso
+              </p>
+
+              {needsFechaEnviada && (
+                <div>
+                  <label className={`block text-xs font-medium mb-1.5 ${errors.fecha_enviada_comparativa ? 'text-red-500' : 'text-google-gray'}`}>
+                    Fecha Enviada Comparativa *
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={form.fecha_enviada_comparativa}
+                    onChange={e => set('fecha_enviada_comparativa', e.target.value)}
+                    className={`input-field ${ic('fecha_enviada_comparativa')}`}
+                  />
+                  {errors.fecha_enviada_comparativa && <p className="text-red-500 text-xs mt-1">Obligatorio</p>}
+                </div>
+              )}
+
+              {needsFechaResolucion && (
+                <div>
+                  <label className={`block text-xs font-medium mb-1.5 ${errors.fecha_resolucion ? 'text-red-500' : 'text-google-gray'}`}>
+                    {targetEstado === 'Aceptado' ? 'Fecha Aceptado *' : 'Fecha Rechazado *'}
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="datetime-local"
+                      value={form.fecha_resolucion}
+                      onChange={e => set('fecha_resolucion', e.target.value)}
+                      className={`input-field flex-1 ${ic('fecha_resolucion')}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => set('fecha_resolucion', nowLocal())}
+                      className="flex-shrink-0 inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 transition-colors font-medium whitespace-nowrap"
+                    >
+                      <Clock size={12} />
+                      Fijar fecha y hora actual
+                    </button>
+                  </div>
+                  {errors.fecha_resolucion && <p className="text-red-500 text-xs mt-1">Obligatorio</p>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Documentación ── */}
+          {(needsFactura || needsComparativa || visita.factura_url || visita.comparativa_url) && (
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-indigo-700">Documentación obligatoria</p>
+
+              {/* Factura */}
+              <div>
+                <label className={`block text-xs font-medium mb-1.5 ${errors.factura ? 'text-red-500' : 'text-google-gray'}`}>
+                  Adjuntar Factura {needsFactura ? '*' : ''}
+                </label>
+                {visita.factura_url && !facturaFile && (
+                  <a href={visita.factura_url} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 hover:underline mb-1.5">
+                    <Eye size={12} /> Ver factura actual
+                  </a>
+                )}
+                <input
+                  type="file"
+                  accept=".pdf,image/*"
+                  onChange={e => { setFacturaFile(e.target.files?.[0] || null); setErrors(er => ({ ...er, factura: false })); }}
+                  className={`input-field text-xs py-1.5 cursor-pointer ${ic('factura')}`}
+                />
+                {facturaFile && <p className="text-xs text-emerald-700 mt-1">Nuevo: {facturaFile.name}</p>}
+                {errors.factura && <p className="text-red-500 text-xs mt-1">Debes adjuntar la factura</p>}
+              </div>
+
+              {/* Comparativa */}
+              <div>
+                <label className={`block text-xs font-medium mb-1.5 ${errors.comparativa ? 'text-red-500' : 'text-google-gray'}`}>
+                  Adjuntar Comparativa {needsComparativa ? '*' : ''}
+                </label>
+                {visita.comparativa_url && !comparativaFile && (
+                  <a href={visita.comparativa_url} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 hover:underline mb-1.5">
+                    <Eye size={12} /> Ver comparativa actual
+                  </a>
+                )}
+                <input
+                  type="file"
+                  accept=".pdf,image/*"
+                  onChange={e => { setComparativaFile(e.target.files?.[0] || null); setErrors(er => ({ ...er, comparativa: false })); }}
+                  className={`input-field text-xs py-1.5 cursor-pointer ${ic('comparativa')}`}
+                />
+                {comparativaFile && <p className="text-xs text-emerald-700 mt-1">Nuevo: {comparativaFile.name}</p>}
+                {errors.comparativa && <p className="text-red-500 text-xs mt-1">Debes adjuntar la comparativa</p>}
+              </div>
+            </div>
+          )}
+
+          {/* ── Comentarios (solo Rechazado) ── */}
+          {needsComentarios && (
+            <div>
+              <label className={`block text-xs font-medium mb-1.5 ${errors.comentarios ? 'text-red-500' : 'text-google-gray'}`}>
+                Comentarios de la visita *
+              </label>
+              <textarea
+                rows={3}
+                placeholder="Ej: Rechazado por precio de potencia elevado / permanencia con la compañía actual."
+                value={form.comentarios}
+                onChange={e => set('comentarios', e.target.value)}
+                className={`input-field resize-none ${ic('comentarios')}`}
+              />
+              {errors.comentarios && <p className="text-red-500 text-xs mt-1">Obligatorio en estado Rechazado</p>}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-google-border bg-gray-50 flex items-center justify-end gap-3 flex-shrink-0">
+          <button type="button" onClick={onClose} disabled={saving} className="btn-secondary">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirmar}
+            disabled={saving || saved}
+            className={`btn-primary flex items-center gap-2 ${saved ? 'bg-green-500 hover:bg-green-500' : ''}`}
+          >
+            {saved
+              ? <><CheckCircle size={15} /><span>¡Cambio guardado!</span></>
+              : saving
+                ? <><Loader2 size={15} className="animate-spin" /><span>Guardando...</span></>
+                : <span>Confirmar Cambio</span>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── VisitaPymeModal (formulario completo de alta/edición) ─────────────────────
+
+function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPrivileged }) {
+  const isEdit        = !!initialData;
+  const isMobile      = isMobileDevice();
+  const canUseDesktop = isPrivileged;
+  const canSubmit     = isMobile || canUseDesktop;
+
+  const [form, setForm] = useState({
+    fecha:                     initialData?.fecha                     || todayStr(),
+    hora:                      initialData?.hora                      || nowTime(),
+    nombre_empresa:            initialData?.nombre_empresa            || '',
+    persona_autorizada:        initialData?.persona_autorizada        || '',
+    ubicacion:                 initialData?.ubicacion                 || '',
+    telefono_cliente:          initialData?.telefono_contacto_cliente  || '',
+    correo_cliente:            initialData?.correo_electronico_cliente || '',
+    comentarios:               initialData?.comentarios_visita         || '',
+    estado:                    initialData?.estado                     || 'Solicitado Factura',
+    fecha_enviada_comparativa: toDatetimeLocal(initialData?.fecha_enviada_comparativa),
+    fecha_resolucion:          toDatetimeLocal(initialData?.fecha_resolucion),
+    factura_url:               initialData?.factura_url               || '',
+    comparativa_url:           initialData?.comparativa_url           || '',
+  });
+
+  const [fotoFile,        setFotoFile]        = useState(null);
+  const [fotoPreview,     setFotoPreview]     = useState(initialData?.foto_negocio_url || '');
+  const [facturaFile,     setFacturaFile]     = useState(null);
+  const [comparativaFile, setComparativaFile] = useState(null);
+  const [errors,          setErrors]          = useState({});
+  const [saving,          setSaving]          = useState(false);
+  const [saved,           setSaved]           = useState(false);
   const fileInputRef = useRef(null);
 
   const set = (field, value) => {
@@ -60,6 +390,12 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername }) {
     reader.readAsDataURL(file);
   };
 
+  const showDocsSection     = ESTADOS_CON_DOCS.includes(form.estado);
+  const showFechaEnviada    = form.estado === 'Enviada Comparativa' ||
+                              (form.estado === 'Valorando' && !initialData?.fecha_enviada_comparativa);
+  const showFechaResolucion = form.estado === 'Aceptado' || form.estado === 'Rechazado';
+  const showFechaSection    = showFechaEnviada || showFechaResolucion;
+
   const validate = () => {
     const e = {};
     if (!form.fecha.trim())              e.fecha              = true;
@@ -67,26 +403,47 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername }) {
     if (!form.nombre_empresa.trim())     e.nombre_empresa     = true;
     if (!form.persona_autorizada.trim()) e.persona_autorizada = true;
     if (!fotoFile && !fotoPreview)       e.foto               = true;
+    if (showDocsSection) {
+      if (!facturaFile && !form.factura_url)         e.factura     = true;
+      if (!comparativaFile && !form.comparativa_url) e.comparativa = true;
+    }
+    if (showFechaEnviada    && !form.fecha_enviada_comparativa)  e.fecha_enviada_comparativa = true;
+    if (showFechaResolucion && !form.fecha_resolucion)           e.fecha_resolucion          = true;
+    if (form.estado === 'Rechazado' && !form.comentarios.trim()) e.comentarios               = true;
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (ev) => {
+    ev.preventDefault();
     if (!validate()) return;
     setSaving(true);
-    const result = await onSave(form, fotoFile, initialData?.foto_negocio_url || '');
+    const toISO = (dtl) => dtl ? new Date(dtl).toISOString() : null;
+    let comentarios = form.comentarios;
+    if (form.estado === 'Rechazado' && comentarios.trim()) {
+      const t = comentarios.trim();
+      if (!t.toLowerCase().startsWith('rechazado por')) comentarios = `Rechazado por ${t}`;
+    }
+    const formToSave = {
+      ...form,
+      comentarios,
+      fecha_enviada_comparativa: toISO(form.fecha_enviada_comparativa),
+      fecha_resolucion:          toISO(form.fecha_resolucion),
+    };
+    const result = await onSave(formToSave, fotoFile, initialData?.foto_negocio_url || '', facturaFile, comparativaFile);
     if (result?.error) { setSaving(false); return; }
     setSaved(true);
     setTimeout(() => onClose(), 800);
   };
 
   const ic = (f) => `input-field ${errors[f] ? '!border-red-400 focus:!ring-red-300' : ''}`;
+  const comentariosPlaceholder = form.estado === 'Rechazado'
+    ? 'Ej: Rechazado por precio de potencia elevado / permanencia con la compañía actual.'
+    : 'Ej: Oferta económica presentada, tarifa de luz/gas enviada y nombre de la comercializadora actual.';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center modal-backdrop bg-black/30">
       <div className="bg-white rounded-2xl shadow-google w-full max-w-md mx-4 flex flex-col max-h-[92vh] overflow-hidden">
-
         <div className="px-6 py-5 flex items-center justify-between border-b border-google-border bg-emerald-50 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-emerald-600 flex items-center justify-center">
@@ -107,43 +464,30 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername }) {
         </div>
 
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4 overflow-y-auto">
-
-          {/* Bloqueo escritorio */}
-          {!isMobile && (
+          {!isMobile && !canUseDesktop && (
             <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
               <span className="text-lg leading-none mt-0.5 flex-shrink-0">⚠️</span>
               <p className="text-sm font-medium text-amber-800">
-                Por seguridad, el Registro de PYMEs solo puede completarse desde un teléfono móvil (se requiere foto en vivo del negocio).
+                Por seguridad, el Registro de PYMEs solo puede completarse desde un teléfono móvil.
               </p>
             </div>
           )}
-
-          {/* Registrado por */}
           <div>
             <label className="block text-xs font-medium text-google-gray mb-1.5">Registrado por</label>
-            <input type="text" value={currentUsername} disabled
-              className="input-field bg-gray-50 text-google-gray cursor-not-allowed" />
+            <input type="text" value={currentUsername} disabled className="input-field bg-gray-50 text-google-gray cursor-not-allowed" />
           </div>
-
-          {/* Nombre Empresa */}
           <div>
             <label className="block text-xs font-medium text-google-gray mb-1.5">Nombre Empresa *</label>
             <input type="text" placeholder="Ej: Cafetería La Central S.L."
-              value={form.nombre_empresa} onChange={e => set('nombre_empresa', e.target.value)}
-              className={ic('nombre_empresa')} />
+              value={form.nombre_empresa} onChange={e => set('nombre_empresa', e.target.value)} className={ic('nombre_empresa')} />
             {errors.nombre_empresa && <p className="text-red-500 text-xs mt-1">Obligatorio</p>}
           </div>
-
-          {/* Persona Autorizada */}
           <div>
             <label className="block text-xs font-medium text-google-gray mb-1.5">Persona Autorizada *</label>
             <input type="text" placeholder="Nombre del representante / responsable"
-              value={form.persona_autorizada} onChange={e => set('persona_autorizada', e.target.value)}
-              className={ic('persona_autorizada')} />
+              value={form.persona_autorizada} onChange={e => set('persona_autorizada', e.target.value)} className={ic('persona_autorizada')} />
             {errors.persona_autorizada && <p className="text-red-500 text-xs mt-1">Obligatorio</p>}
           </div>
-
-          {/* Fecha y Hora */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-google-gray mb-1.5">Fecha *</label>
@@ -156,97 +500,141 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername }) {
               {errors.hora && <p className="text-red-500 text-xs mt-1">Obligatorio</p>}
             </div>
           </div>
-
-          {/* Teléfono cliente */}
           <div>
             <label className="block text-xs font-medium text-google-gray mb-1.5">Teléfono de contacto cliente</label>
             <input type="tel" placeholder="Ej: 612 345 678"
-              value={form.telefono_cliente} onChange={e => set('telefono_cliente', e.target.value)}
-              className="input-field" />
+              value={form.telefono_cliente} onChange={e => set('telefono_cliente', e.target.value)} className="input-field" />
           </div>
-
-          {/* Correo cliente */}
           <div>
             <label className="block text-xs font-medium text-google-gray mb-1.5">Correo Electrónico Cliente</label>
             <input type="email" placeholder="cliente@empresa.com"
-              value={form.correo_cliente} onChange={e => set('correo_cliente', e.target.value)}
-              className="input-field" />
+              value={form.correo_cliente} onChange={e => set('correo_cliente', e.target.value)} className="input-field" />
           </div>
-
-          {/* Foto del negocio — OBLIGATORIA, solo cámara trasera */}
           <div>
-            <label className="block text-xs font-medium text-google-gray mb-1.5">
-              Foto del Negocio *
-            </label>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handleFotoChange}
-              className="hidden"
-              disabled={!isMobile}
-            />
-            <button
-              type="button"
-              onClick={() => isMobile && fileInputRef.current?.click()}
-              disabled={!isMobile}
+            <label className="block text-xs font-medium text-google-gray mb-1.5">Foto del Negocio *</label>
+            <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
+              onChange={handleFotoChange} className="hidden" disabled={!canSubmit} />
+            <button type="button" onClick={() => canSubmit && fileInputRef.current?.click()} disabled={!canSubmit}
               className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed transition-colors text-sm ${
-                !isMobile
-                  ? 'border-amber-300 bg-amber-50 text-amber-600 cursor-not-allowed opacity-70'
-                  : errors.foto
-                    ? 'border-red-400 bg-red-50 text-red-600 hover:border-red-500 hover:bg-red-100'
-                    : fotoPreview
-                      ? 'border-emerald-400 bg-emerald-50 text-emerald-700 hover:border-emerald-500'
-                      : 'border-google-border text-google-gray hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700'
+                !canSubmit ? 'border-amber-300 bg-amber-50 text-amber-600 cursor-not-allowed opacity-70'
+                : errors.foto ? 'border-red-400 bg-red-50 text-red-600'
+                : fotoPreview ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
+                : 'border-google-border text-google-gray hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700'
               }`}>
               <Camera size={18} />
-              <span>
-                {!isMobile
-                  ? 'Solo disponible desde el móvil'
-                  : fotoFile
-                    ? fotoFile.name
-                    : fotoPreview && isEdit
-                      ? 'Cambiar foto del negocio'
-                      : 'Hacer Foto al Negocio (Obligatorio)'}
-              </span>
+              <span>{!canSubmit ? 'Solo disponible desde el móvil' : fotoFile ? fotoFile.name : fotoPreview && isEdit ? 'Cambiar foto del negocio' : 'Hacer Foto al Negocio (Obligatorio)'}</span>
             </button>
-            {errors.foto && !fotoPreview && (
-              <p className="text-red-500 text-xs mt-1">Debes hacer una foto del negocio para continuar</p>
-            )}
+            {errors.foto && !fotoPreview && <p className="text-red-500 text-xs mt-1">Debes hacer una foto del negocio</p>}
             {fotoPreview && (
               <div className="mt-2 rounded-lg overflow-hidden border border-emerald-200">
                 <img src={fotoPreview} alt="Foto del negocio" className="w-full h-36 object-cover" />
               </div>
             )}
           </div>
-
-          {/* Ubicación */}
           <div>
-            <label className="block text-xs font-medium text-google-gray mb-1.5">Ubicación <span className="font-normal text-google-gray">(Opcional)</span></label>
+            <label className="block text-xs font-medium text-google-gray mb-1.5">
+              Ubicación <span className="font-normal text-google-gray">(Opcional)</span>
+            </label>
             <input type="text" placeholder="Ej: Valladolid"
-              value={form.ubicacion} onChange={e => set('ubicacion', e.target.value)}
-              className="input-field" />
+              value={form.ubicacion} onChange={e => set('ubicacion', e.target.value)} className="input-field" />
           </div>
-
-          {/* Comentarios */}
           <div>
-            <label className="block text-xs font-medium text-google-gray mb-1.5">Comentarios de la visita</label>
-            <textarea rows={3} placeholder="Observaciones, acuerdos, próximos pasos..."
-              value={form.comentarios} onChange={e => set('comentarios', e.target.value)}
-              className="input-field resize-none" />
+            <label className="block text-xs font-medium text-google-gray mb-1.5">Estado</label>
+            <select value={form.estado} onChange={e => set('estado', e.target.value)} className="input-field">
+              {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
           </div>
 
-          {/* Actions */}
+          {/* Sección dinámica: Fechas + Documentos */}
+          {(showFechaSection || showDocsSection) && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4 space-y-4">
+              {showFechaSection && (
+                <>
+                  <p className="text-xs font-semibold text-blue-700">Por favor, especifique la fecha exacta del proceso</p>
+                  {showFechaEnviada && (
+                    <div>
+                      <label className={`block text-xs font-medium mb-1.5 ${errors.fecha_enviada_comparativa ? 'text-red-500' : 'text-google-gray'}`}>
+                        Fecha Enviada Comparativa *
+                      </label>
+                      <input type="datetime-local" value={form.fecha_enviada_comparativa}
+                        onChange={e => set('fecha_enviada_comparativa', e.target.value)}
+                        className={`input-field ${errors.fecha_enviada_comparativa ? '!border-red-400' : ''}`} />
+                      {errors.fecha_enviada_comparativa && <p className="text-red-500 text-xs mt-1">Obligatorio</p>}
+                    </div>
+                  )}
+                  {showFechaResolucion && (
+                    <div>
+                      <label className={`block text-xs font-medium mb-1.5 ${errors.fecha_resolucion ? 'text-red-500' : 'text-google-gray'}`}>
+                        {form.estado === 'Aceptado' ? 'Fecha Aceptado *' : 'Fecha Rechazado *'}
+                      </label>
+                      <div className="flex gap-2">
+                        <input type="datetime-local" value={form.fecha_resolucion}
+                          onChange={e => set('fecha_resolucion', e.target.value)}
+                          className={`input-field flex-1 ${errors.fecha_resolucion ? '!border-red-400' : ''}`} />
+                        <button type="button" onClick={() => set('fecha_resolucion', nowLocal())}
+                          className="flex-shrink-0 inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-white border border-blue-300 text-blue-700 hover:bg-blue-100 transition-colors whitespace-nowrap font-medium">
+                          <Clock size={12} /> Fijar fecha y hora actual
+                        </button>
+                      </div>
+                      {errors.fecha_resolucion && <p className="text-red-500 text-xs mt-1">Obligatorio</p>}
+                    </div>
+                  )}
+                </>
+              )}
+              {showFechaSection && showDocsSection && <div className="border-t border-blue-200" />}
+              {showDocsSection && (
+                <>
+                  <p className="text-xs font-semibold text-blue-700">Documentación obligatoria</p>
+                  <div>
+                    <label className={`block text-xs font-medium mb-1.5 ${errors.factura ? 'text-red-500' : 'text-google-gray'}`}>Adjuntar Factura *</label>
+                    <input type="file" accept=".pdf,image/*"
+                      onChange={e => { setFacturaFile(e.target.files?.[0] || null); setErrors(er => ({ ...er, factura: false })); }}
+                      className={`input-field text-xs py-1.5 cursor-pointer ${errors.factura ? '!border-red-400' : ''}`} />
+                    {form.factura_url && !facturaFile && (
+                      <a href={form.factura_url} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-emerald-600 hover:underline mt-1 inline-flex items-center gap-1">
+                        <ExternalLink size={11} /> Ver factura adjunta actual
+                      </a>
+                    )}
+                    {facturaFile && <p className="text-xs text-emerald-700 mt-1">Nuevo: {facturaFile.name}</p>}
+                    {errors.factura && <p className="text-red-500 text-xs mt-1">Debes adjuntar la factura</p>}
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-medium mb-1.5 ${errors.comparativa ? 'text-red-500' : 'text-google-gray'}`}>Adjuntar Comparativa *</label>
+                    <input type="file" accept=".pdf,image/*"
+                      onChange={e => { setComparativaFile(e.target.files?.[0] || null); setErrors(er => ({ ...er, comparativa: false })); }}
+                      className={`input-field text-xs py-1.5 cursor-pointer ${errors.comparativa ? '!border-red-400' : ''}`} />
+                    {form.comparativa_url && !comparativaFile && (
+                      <a href={form.comparativa_url} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-emerald-600 hover:underline mt-1 inline-flex items-center gap-1">
+                        <ExternalLink size={11} /> Ver comparativa adjunta actual
+                      </a>
+                    )}
+                    {comparativaFile && <p className="text-xs text-emerald-700 mt-1">Nuevo: {comparativaFile.name}</p>}
+                    {errors.comparativa && <p className="text-red-500 text-xs mt-1">Debes adjuntar la comparativa</p>}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          <div>
+            <label className={`block text-xs font-medium mb-1.5 ${errors.comentarios ? 'text-red-500' : 'text-google-gray'}`}>
+              Comentarios de la visita{form.estado === 'Rechazado' ? ' *' : ''}
+            </label>
+            <textarea rows={3} placeholder={comentariosPlaceholder}
+              value={form.comentarios} onChange={e => set('comentarios', e.target.value)}
+              className={`input-field resize-none ${errors.comentarios ? '!border-red-400' : ''}`} />
+            {errors.comentarios && <p className="text-red-500 text-xs mt-1">Obligatorio en estado Rechazado</p>}
+          </div>
+
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-google-border">
             <button type="button" onClick={onClose} disabled={saving} className="btn-secondary">Cancelar</button>
-            <button type="submit" disabled={saving || saved || !isMobile}
-              className={`btn-primary flex items-center gap-2 ${saved ? 'bg-green-500 hover:bg-green-500' : ''} ${!isMobile ? 'opacity-50 cursor-not-allowed' : ''}`}>
-              {saved
-                ? <><CheckCircle size={15} /><span>Guardado</span></>
-                : saving
-                  ? <><Loader2 size={15} className="animate-spin" /><span>Guardando...</span></>
-                  : <span>{isEdit ? 'Guardar Cambios' : 'Registrar Visita'}</span>}
+            <button type="submit" disabled={saving || saved || !canSubmit}
+              className={`btn-primary flex items-center gap-2 ${saved ? 'bg-green-500 hover:bg-green-500' : ''} ${!canSubmit ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              {saved ? <><CheckCircle size={15} /><span>Guardado</span></>
+                : saving ? <><Loader2 size={15} className="animate-spin" /><span>Guardando...</span></>
+                : <span>{isEdit ? 'Guardar Cambios' : 'Registrar Visita'}</span>}
             </button>
           </div>
         </form>
@@ -254,6 +642,8 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername }) {
     </div>
   );
 }
+
+// ── FilterPill ────────────────────────────────────────────────────────────────
 
 const FilterPill = ({ label, active, onClick }) => (
   <button onClick={onClick}
@@ -266,19 +656,22 @@ const FilterPill = ({ label, active, onClick }) => (
   </button>
 );
 
+// ── Página principal ──────────────────────────────────────────────────────────
+
 export default function RegistroVisitasPymes() {
-  const { visitasPymes, addVisitaPyme, updateVisitaPyme, deleteVisitaPyme } = useData();
+  const { visitasPymes, addVisitaPyme, updateVisitaPyme, transicionEstadoPyme, deleteVisitaPyme } = useData();
   const { currentUser } = useAuth();
 
-  const isAdmin      = currentUser?.role === 'admin';
   const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'manager';
 
   const [showModal,       setShowModal]       = useState(false);
   const [editVisita,      setEditVisita]      = useState(null);
+  const [transicion,      setTransicion]      = useState(null); // { visita, targetEstado }
   const [deleteTarget,    setDeleteTarget]    = useState(null);
   const [search,          setSearch]          = useState('');
   const [filterUbicacion, setFilterUbicacion] = useState('');
   const [filterComercial, setFilterComercial] = useState('');
+  const [filterEstado,    setFilterEstado]    = useState('');
   const [timeFilter,      setTimeFilter]      = useState('');
   const [fechaDesde,      setFechaDesde]      = useState('');
   const [fechaHasta,      setFechaHasta]      = useState('');
@@ -292,7 +685,8 @@ export default function RegistroVisitasPymes() {
     return [...new Set(names)].sort();
   }, [visitasPymes]);
 
-  useEffect(() => { setCurrentPage(1); }, [search, filterUbicacion, filterComercial, timeFilter, fechaDesde, fechaHasta]);
+  useEffect(() => { setCurrentPage(1); },
+    [search, filterUbicacion, filterComercial, filterEstado, timeFilter, fechaDesde, fechaHasta]);
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
@@ -306,7 +700,7 @@ export default function RegistroVisitasPymes() {
   const prevMonthPrefix = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;
   const mesNombre       = now.toLocaleString('es-ES', { month: 'long' }).replace(/^\w/, c => c.toUpperCase());
 
-  const pymesBase    = isPrivileged
+  const pymesBase  = isPrivileged
     ? visitasPymes
     : visitasPymes.filter(v => v.registrado_por === currentUser?.username);
 
@@ -317,9 +711,10 @@ export default function RegistroVisitasPymes() {
   const filtered = visitasPymes
     .filter(v => {
       const q = search.toLowerCase();
-      const matchSearch    = !search          || (v.nombre_empresa?.toLowerCase().includes(q));
-      const matchUbicacion = !filterUbicacion || (v.ubicacion?.toLowerCase().includes(filterUbicacion.toLowerCase()));
+      const matchSearch    = !search          || v.nombre_empresa?.toLowerCase().includes(q);
+      const matchUbicacion = !filterUbicacion || v.ubicacion?.toLowerCase().includes(filterUbicacion.toLowerCase());
       const matchComercial = !filterComercial || v.registrado_por === filterComercial;
+      const matchEstado    = !filterEstado    || v.estado === filterEstado;
       const matchTime =
           timeFilter === 'hoy'          ? v.fecha === todayISO
         : timeFilter === 'mes_actual'   ? v.fecha.startsWith(monthPrefix)
@@ -327,70 +722,73 @@ export default function RegistroVisitasPymes() {
         : true;
       const matchFechaDesde = !fechaDesde || v.fecha >= fechaDesde;
       const matchFechaHasta = !fechaHasta || v.fecha <= fechaHasta;
-      return matchSearch && matchUbicacion && matchComercial && matchTime && matchFechaDesde && matchFechaHasta;
+      return matchSearch && matchUbicacion && matchComercial && matchEstado && matchTime && matchFechaDesde && matchFechaHasta;
     })
     .sort((a, b) => (a.fecha + a.hora < b.fecha + b.hora ? 1 : -1));
 
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const handleSave = async (data, fotoFile, existingFotoUrl) => {
-    if (editVisita) return await updateVisitaPyme(editVisita.id, data, fotoFile, existingFotoUrl);
-    return await addVisitaPyme(data, fotoFile);
+  const handleSave = async (data, fotoFile, existingFotoUrl, facturaFile, comparativaFile) => {
+    if (editVisita) return await updateVisitaPyme(editVisita.id, data, fotoFile, existingFotoUrl, facturaFile, comparativaFile);
+    return await addVisitaPyme(data, fotoFile, facturaFile, comparativaFile);
   };
 
   const exportToXLSX = async (data, suffix = '') => {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'CRM Grupo Avedie';
     workbook.created = new Date();
-
     const sheet = workbook.addWorksheet('Visitas PYMES');
     sheet.columns = [
-      { header: 'Fecha',              key: 'fecha',              width: 14 },
-      { header: 'Hora',               key: 'hora',               width: 10 },
-      { header: 'Registrado por',     key: 'registrado_por',     width: 20 },
-      { header: 'Persona Autorizada', key: 'persona_autorizada', width: 28 },
-      { header: 'Correo Persona',     key: 'correo',                      width: 28 },
-      { header: 'Tel. Cliente',       key: 'telefono_contacto_cliente',  width: 18, style: { numFmt: '@' } },
-      { header: 'Correo Cliente',     key: 'correo_electronico_cliente', width: 28 },
-      { header: 'Foto (URL)',         key: 'foto_negocio_url',           width: 40 },
-      { header: 'Comentarios',        key: 'comentarios_visita',         width: 40 },
+      { header: 'Fecha',                  key: 'fecha',                    width: 14 },
+      { header: 'Hora',                   key: 'hora',                     width: 10 },
+      { header: 'Registrado por',         key: 'registrado_por',           width: 20 },
+      { header: 'Persona Autorizada',     key: 'persona_autorizada',       width: 28 },
+      { header: 'Tel. Cliente',           key: 'telefono_contacto_cliente', width: 18, style: { numFmt: '@' } },
+      { header: 'Correo Cliente',         key: 'correo_electronico_cliente', width: 28 },
+      { header: 'Foto (URL)',             key: 'foto_negocio_url',          width: 40 },
+      { header: 'Estado',                 key: 'estado',                    width: 22 },
+      { header: 'Fecha Env. Comparativa', key: 'fecha_enviada_comparativa', width: 24 },
+      { header: 'Fecha Resolución',       key: 'fecha_resolucion',          width: 24 },
+      { header: 'Factura (URL)',          key: 'factura_url',               width: 40 },
+      { header: 'Comparativa (URL)',      key: 'comparativa_url',           width: 40 },
+      { header: 'Comentarios',            key: 'comentarios_visita',        width: 40 },
     ];
-
     const hBorder = { style: 'thin', color: { argb: 'FFBDBDBD' } };
-    sheet.getRow(1).eachCell((cell) => {
+    sheet.getRow(1).eachCell(cell => {
       cell.font      = { bold: true, color: { argb: 'FF1B5E20' }, size: 11 };
       cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F5E9' } };
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
       cell.border    = { top: hBorder, left: hBorder, bottom: hBorder, right: hBorder };
     });
     sheet.getRow(1).height = 22;
-
     const dBorder = { style: 'thin', color: { argb: 'FFE0E0E0' } };
-    data.forEach((v) => {
+    data.forEach(v => {
       const row = sheet.addRow({
-        fecha:              v.fecha              || '',
-        hora:               v.hora               || '',
-        registrado_por:     v.registrado_por     || '',
-        persona_autorizada: v.persona_autorizada || '',
-        correo:                      v.correo                      || '',
-        telefono_contacto_cliente:  String(v.telefono_contacto_cliente  || ''),
+        fecha:                    v.fecha                    || '',
+        hora:                     v.hora                     || '',
+        registrado_por:           v.registrado_por           || '',
+        persona_autorizada:       v.persona_autorizada       || '',
+        telefono_contacto_cliente: String(v.telefono_contacto_cliente || ''),
         correo_electronico_cliente: v.correo_electronico_cliente || '',
-        foto_negocio_url:           v.foto_negocio_url           || '',
-        comentarios_visita:         v.comentarios_visita         || '',
+        foto_negocio_url:         v.foto_negocio_url         || '',
+        estado:                   v.estado                   || 'Solicitado Factura',
+        fecha_enviada_comparativa: v.fecha_enviada_comparativa ? fmtFechaHora(v.fecha_enviada_comparativa) : '',
+        fecha_resolucion:         v.fecha_resolucion         ? fmtFechaHora(v.fecha_resolucion) : '',
+        factura_url:              v.factura_url              || '',
+        comparativa_url:          v.comparativa_url          || '',
+        comentarios_visita:       v.comentarios_visita       || '',
       });
       row.eachCell({ includeEmpty: true }, (cell, colNum) => {
         cell.border    = { top: dBorder, left: dBorder, bottom: dBorder, right: dBorder };
         cell.alignment = { vertical: 'middle' };
-        if (colNum === 6) {
+        if (colNum === 5) {
           cell.numFmt = '@';
           if (typeof cell.value !== 'string') cell.value = String(cell.value ?? '');
         }
       });
     });
-
-    const d   = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
+    const d = new Date(), pad = n => String(n).padStart(2, '0');
     const datePart = `${d.getFullYear()}_${pad(d.getMonth() + 1)}_${pad(d.getDate())}`;
     const buffer = await workbook.xlsx.writeBuffer();
     saveAs(
@@ -412,12 +810,10 @@ export default function RegistroVisitasPymes() {
           <p className="text-sm text-google-gray mt-1">Control de visitas a clientes empresa y autónomos</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={() => exportToXLSX(visitasPymes, 'Completo')}
-            className="btn-secondary flex items-center gap-2">
+          <button onClick={() => exportToXLSX(visitasPymes, 'Completo')} className="btn-secondary flex items-center gap-2">
             <FileSpreadsheet size={15} /><span>Exportar Todo</span>
           </button>
-          <button onClick={() => exportToXLSX(filtered, 'Vista')}
-            className="btn-secondary flex items-center gap-2">
+          <button onClick={() => exportToXLSX(filtered, 'Vista')} className="btn-secondary flex items-center gap-2">
             <FileSpreadsheet size={15} /><span>Exportar Vista Actual</span>
           </button>
           <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-2">
@@ -426,7 +822,7 @@ export default function RegistroVisitasPymes() {
         </div>
       </div>
 
-      {/* Counter cards */}
+      {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="card p-5 flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-emerald-600 flex items-center justify-center flex-shrink-0">
@@ -457,7 +853,7 @@ export default function RegistroVisitasPymes() {
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Filtros */}
       <div className="card px-5 py-4 space-y-3">
         <div className="flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-[180px]">
@@ -465,64 +861,64 @@ export default function RegistroVisitasPymes() {
             <input type="text" placeholder="Buscar por nombre empresa..." value={search}
               onChange={e => setSearch(e.target.value)} className="input-field pl-9 h-9 w-full" />
             {search && (
-              <button onClick={() => setSearch('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-google-gray hover:text-google-dark">
+              <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-google-gray hover:text-google-dark">
                 <X size={14} />
               </button>
             )}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <FilterPill label="Todo"                           active={timeFilter === ''}           onClick={() => setTimeFilter('')} />
-          <FilterPill label="Hoy"                            active={timeFilter === 'hoy'}        onClick={() => { setTimeFilter('hoy'); setFechaDesde(''); setFechaHasta(''); }} />
-          <FilterPill label={`Este Mes (${monthName(0)})`}   active={timeFilter === 'mes_actual'}   onClick={() => { setTimeFilter('mes_actual'); setFechaDesde(''); setFechaHasta(''); }} />
+          <FilterPill label="Todo"                              active={timeFilter === ''}             onClick={() => setTimeFilter('')} />
+          <FilterPill label="Hoy"                               active={timeFilter === 'hoy'}          onClick={() => { setTimeFilter('hoy');          setFechaDesde(''); setFechaHasta(''); }} />
+          <FilterPill label={`Este Mes (${monthName(0)})`}      active={timeFilter === 'mes_actual'}   onClick={() => { setTimeFilter('mes_actual');   setFechaDesde(''); setFechaHasta(''); }} />
           <FilterPill label={`Mes Anterior (${monthName(-1)})`} active={timeFilter === 'mes_anterior'} onClick={() => { setTimeFilter('mes_anterior'); setFechaDesde(''); setFechaHasta(''); }} />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-google-gray w-full sm:w-auto">Fecha visita:</span>
           <div className="flex items-center gap-1">
             <label className="text-xs text-google-gray whitespace-nowrap">Desde</label>
-            <input type="date" value={fechaDesde}
-              onChange={e => { setFechaDesde(e.target.value); setTimeFilter(''); }}
-              className="input-field h-7 text-xs px-2 w-36" />
+            <input type="date" value={fechaDesde} onChange={e => { setFechaDesde(e.target.value); setTimeFilter(''); }} className="input-field h-7 text-xs px-2 w-36" />
           </div>
           <div className="flex items-center gap-1">
             <label className="text-xs text-google-gray whitespace-nowrap">Hasta</label>
-            <input type="date" value={fechaHasta}
-              onChange={e => { setFechaHasta(e.target.value); setTimeFilter(''); }}
-              className="input-field h-7 text-xs px-2 w-36" />
+            <input type="date" value={fechaHasta} onChange={e => { setFechaHasta(e.target.value); setTimeFilter(''); }} className="input-field h-7 text-xs px-2 w-36" />
           </div>
           {(fechaDesde || fechaHasta) && (
             <button onClick={() => { setFechaDesde(''); setFechaHasta(''); }}
-              className="p-1 rounded text-google-gray hover:text-red-500 hover:bg-red-50 transition-colors"
-              title="Limpiar rango de fechas">
+              className="p-1 rounded text-google-gray hover:text-red-500 hover:bg-red-50 transition-colors" title="Limpiar rango de fechas">
               <X size={13} />
             </button>
           )}
         </div>
-
-        {/* Nueva fila: filtro por ubicación + filtro por comercial */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[180px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray" />
             <input type="text" placeholder="Filtrar por ubicación..." value={filterUbicacion}
               onChange={e => setFilterUbicacion(e.target.value)} className="input-field pl-9 h-9 w-full" />
             {filterUbicacion && (
-              <button onClick={() => setFilterUbicacion('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-google-gray hover:text-google-dark">
+              <button onClick={() => setFilterUbicacion('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-google-gray hover:text-google-dark">
                 <X size={14} />
               </button>
             )}
           </div>
           <div className="flex items-center gap-1">
-            <select value={filterComercial} onChange={e => setFilterComercial(e.target.value)}
-              className="input-field h-9 min-w-[180px] text-sm">
+            <select value={filterComercial} onChange={e => setFilterComercial(e.target.value)} className="input-field h-9 min-w-[180px] text-sm">
               <option value="">Filtrar por comercial...</option>
               {comercialesDisponibles.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
             {filterComercial && (
-              <button onClick={() => setFilterComercial('')}
-                className="p-1 rounded text-google-gray hover:text-red-500 hover:bg-red-50 transition-colors" title="Quitar filtro">
+              <button onClick={() => setFilterComercial('')} className="p-1 rounded text-google-gray hover:text-red-500 hover:bg-red-50 transition-colors" title="Quitar filtro">
+                <X size={13} />
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            <select value={filterEstado} onChange={e => setFilterEstado(e.target.value)} className="input-field h-9 min-w-[200px] text-sm">
+              <option value="">Filtrar por estado...</option>
+              {ESTADOS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            {filterEstado && (
+              <button onClick={() => setFilterEstado('')} className="p-1 rounded text-google-gray hover:text-red-500 hover:bg-red-50 transition-colors" title="Quitar filtro">
                 <X size={13} />
               </button>
             )}
@@ -530,7 +926,7 @@ export default function RegistroVisitasPymes() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Tabla */}
       <div className="card overflow-hidden">
         <div className="px-5 py-4 border-b border-google-border">
           <h2 className="text-sm font-semibold text-google-dark">Visitas PYMES Registradas</h2>
@@ -548,6 +944,10 @@ export default function RegistroVisitasPymes() {
                 <th className="table-header">Tel. Cliente</th>
                 <th className="table-header">Correo Cliente</th>
                 <th className="table-header">Foto</th>
+                <th className="table-header">Estado</th>
+                <th className="table-header">Fecha Env. Comparativa</th>
+                <th className="table-header">Fecha Resolución</th>
+                <th className="table-header">Docs</th>
                 <th className="table-header">Comentarios</th>
                 <th className="table-header">Acciones</th>
               </tr>
@@ -555,7 +955,7 @@ export default function RegistroVisitasPymes() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="text-center py-10 text-google-gray text-sm">
+                  <td colSpan={15} className="text-center py-10 text-google-gray text-sm">
                     {visitasPymes.length === 0
                       ? 'No hay visitas PYME registradas. Pulsa "+ Nueva Visita PYME" para empezar.'
                       : 'No se encontraron resultados con los filtros aplicados'}
@@ -580,6 +980,34 @@ export default function RegistroVisitasPymes() {
                           </a>
                         : <span className="text-google-gray">—</span>}
                     </td>
+                    <td className="table-cell">
+                      <EstadoBadge estado={v.estado || 'Solicitado Factura'} />
+                    </td>
+                    <td className="table-cell text-google-gray text-xs whitespace-nowrap tabular-nums">
+                      {fmtFechaHora(v.fecha_enviada_comparativa)}
+                    </td>
+                    <td className="table-cell text-google-gray text-xs whitespace-nowrap tabular-nums">
+                      {fmtFechaHora(v.fecha_resolucion)}
+                    </td>
+                    <td className="table-cell text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        {v.factura_url
+                          ? <a href={v.factura_url} target="_blank" rel="noopener noreferrer"
+                              title="Ver Factura PYME"
+                              className="text-indigo-500 hover:text-indigo-800 transition-colors">
+                              <Eye size={15} />
+                            </a>
+                          : null}
+                        {v.comparativa_url
+                          ? <a href={v.comparativa_url} target="_blank" rel="noopener noreferrer"
+                              title="Ver Comparativa PYME"
+                              className="text-indigo-500 hover:text-indigo-800 transition-colors">
+                              <Eye size={15} />
+                            </a>
+                          : null}
+                        {!v.factura_url && !v.comparativa_url && <span className="text-google-gray">—</span>}
+                      </div>
+                    </td>
                     <td className="table-cell text-google-gray text-xs max-w-[200px]">
                       <span className="line-clamp-2" title={v.comentarios_visita || ''}>
                         {v.comentarios_visita || '—'}
@@ -589,14 +1017,20 @@ export default function RegistroVisitasPymes() {
                       <div className="flex items-center justify-center gap-1">
                         {(isPrivileged || v.registrado_por === currentUser?.username) ? (
                           <>
+                            <AccionEstado
+                              visita={v}
+                              onTransicion={(vis, target) => setTransicion({ visita: vis, targetEstado: target })}
+                            />
                             <button onClick={() => setEditVisita(v)}
                               className="p-1 rounded hover:bg-blue-50 transition-colors" title="Editar">
                               <Pencil size={15} className="text-google-blue" />
                             </button>
-                            <button onClick={() => setDeleteTarget(v)}
-                              className="p-1 rounded hover:bg-red-50 transition-colors" title="Eliminar">
-                              <Trash2 size={15} className="text-red-500" />
-                            </button>
+                            {isPrivileged && (
+                              <button onClick={() => setDeleteTarget(v)}
+                                className="p-1 rounded hover:bg-red-50 transition-colors" title="Eliminar">
+                                <Trash2 size={15} className="text-red-500" />
+                              </button>
+                            )}
                           </>
                         ) : (
                           <span className="text-xs text-google-gray">—</span>
@@ -618,12 +1052,24 @@ export default function RegistroVisitasPymes() {
         </div>
       </div>
 
+      {/* Modal de transición de estado (nuevo, exclusivo) */}
+      {transicion && (
+        <TransicionEstadoModal
+          visita={transicion.visita}
+          targetEstado={transicion.targetEstado}
+          onClose={() => setTransicion(null)}
+          onConfirmar={transicionEstadoPyme}
+        />
+      )}
+
+      {/* Modal completo de alta / edición */}
       {(showModal || editVisita) && (
         <VisitaPymeModal
           onClose={() => { setShowModal(false); setEditVisita(null); }}
           onSave={handleSave}
           initialData={editVisita || null}
           currentUsername={currentUser?.username || ''}
+          isPrivileged={isPrivileged}
         />
       )}
 
