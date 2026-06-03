@@ -4,7 +4,7 @@ import { saveAs } from 'file-saver';
 import {
   Landmark, Plus, CalendarDays, Users, Search, Trash2, Pencil, CheckCircle,
   X, FileSpreadsheet, Camera, ExternalLink, Loader2, ArrowRight, Check, Minus, Eye,
-  Clock,
+  Clock, TrendingUp, FileText,
 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
@@ -113,7 +113,7 @@ function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar }) {
   const needsFechaEnviada    = targetEstado === 'Enviada Comparativa' ||
                                (targetEstado === 'Valorando' && !visita.fecha_enviada_comparativa);
   const needsFechaResolucion = targetEstado === 'Aceptado' || targetEstado === 'Rechazado';
-  const needsComentarios     = targetEstado === 'Rechazado';
+  const needsComentarios     = targetEstado === 'Rechazado' || targetEstado === 'Aceptado';
   // Docs: obligatorios si no existen aún
   const needsFactura         = !visita.factura_url;
   const needsComparativa     = !visita.comparativa_url;
@@ -151,10 +151,12 @@ function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar }) {
 
     const toISO = (dtl) => dtl ? new Date(dtl).toISOString() : null;
 
-    // Auto-prefijo "Rechazado por..."
+    // Auto-prefijo según estado
     let comentariosFinales = form.comentarios.trim();
-    if (needsComentarios && comentariosFinales && !comentariosFinales.toLowerCase().startsWith('rechazado por')) {
+    if (targetEstado === 'Rechazado' && comentariosFinales && !comentariosFinales.toLowerCase().startsWith('rechazado por')) {
       comentariosFinales = `Rechazado por ${comentariosFinales}`;
+    } else if (targetEstado === 'Aceptado' && comentariosFinales && !comentariosFinales.toLowerCase().startsWith('aceptado - suministros')) {
+      comentariosFinales = `Aceptado - Suministros contratados: ${comentariosFinales}`;
     }
 
     const extraFields = {
@@ -258,6 +260,31 @@ function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar }) {
             <div className="space-y-3">
               <p className="text-xs font-semibold text-indigo-700">Documentación obligatoria</p>
 
+              {/* Aviso multi-suministro */}
+              <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5 space-y-2">
+                <p className="text-xs text-blue-700 leading-snug">
+                  ℹ️ Si el cliente tiene varios suministros, puede subir un único archivo ZIP que contenga todas las facturas o comparativas.
+                </p>
+                <div className="flex flex-wrap gap-x-3 gap-y-1">
+                  <a
+                    href="https://www.ilovepdf.com/es/unir_pdf"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                  >
+                    🔗 Herramienta para Unir PDFs
+                  </a>
+                  <a
+                    href="https://freetoolonline.com/zip-tools/zip-file.html"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                  >
+                    🔗 Herramienta para Crear ZIP
+                  </a>
+                </div>
+              </div>
+
               {/* Factura */}
               <div>
                 <label className={`block text-xs font-medium mb-1.5 ${errors.factura ? 'text-red-500' : 'text-google-gray'}`}>
@@ -266,12 +293,12 @@ function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar }) {
                 {visita.factura_url && !facturaFile && (
                   <a href={visita.factura_url} target="_blank" rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 hover:underline mb-1.5">
-                    <Eye size={12} /> Ver factura actual
+                    <Eye size={12} /> Ver factura actual{visita.factura_url.toLowerCase().endsWith('.zip') ? ' (ZIP)' : ''}
                   </a>
                 )}
                 <input
                   type="file"
-                  accept=".pdf,image/*"
+                  accept=".pdf,.zip,image/*"
                   onChange={e => { setFacturaFile(e.target.files?.[0] || null); setErrors(er => ({ ...er, factura: false })); }}
                   className={`input-field text-xs py-1.5 cursor-pointer ${ic('factura')}`}
                 />
@@ -287,12 +314,12 @@ function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar }) {
                 {visita.comparativa_url && !comparativaFile && (
                   <a href={visita.comparativa_url} target="_blank" rel="noopener noreferrer"
                     className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 hover:underline mb-1.5">
-                    <Eye size={12} /> Ver comparativa actual
+                    <Eye size={12} /> Ver comparativa actual{visita.comparativa_url.toLowerCase().endsWith('.zip') ? ' (ZIP)' : ''}
                   </a>
                 )}
                 <input
                   type="file"
-                  accept=".pdf,image/*"
+                  accept=".pdf,.zip,image/*"
                   onChange={e => { setComparativaFile(e.target.files?.[0] || null); setErrors(er => ({ ...er, comparativa: false })); }}
                   className={`input-field text-xs py-1.5 cursor-pointer ${ic('comparativa')}`}
                 />
@@ -302,20 +329,33 @@ function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar }) {
             </div>
           )}
 
-          {/* ── Comentarios (solo Rechazado) ── */}
+          {/* ── Comentarios (Aceptado y Rechazado) ── */}
           {needsComentarios && (
             <div>
+              {targetEstado === 'Aceptado' && (
+                <p className="text-xs font-semibold text-green-700 mb-2">
+                  Por favor, indique el número de suministros aceptados de este cliente y los detalles del contrato.
+                </p>
+              )}
               <label className={`block text-xs font-medium mb-1.5 ${errors.comentarios ? 'text-red-500' : 'text-google-gray'}`}>
                 Comentarios de la visita *
               </label>
               <textarea
                 rows={3}
-                placeholder="Ej: Rechazado por precio de potencia elevado / permanencia con la compañía actual."
+                placeholder={
+                  targetEstado === 'Aceptado'
+                    ? 'Ej: 3 suministros eléctricos, tarifa 3.0TD, comercializadora actual Endesa...'
+                    : 'Ej: Rechazado por precio de potencia elevado / permanencia con la compañía actual.'
+                }
                 value={form.comentarios}
                 onChange={e => set('comentarios', e.target.value)}
                 className={`input-field resize-none ${ic('comentarios')}`}
               />
-              {errors.comentarios && <p className="text-red-500 text-xs mt-1">Obligatorio en estado Rechazado</p>}
+              {errors.comentarios && (
+                <p className="text-red-500 text-xs mt-1">
+                  {targetEstado === 'Aceptado' ? 'Obligatorio: indica los suministros aceptados' : 'Obligatorio en estado Rechazado'}
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -708,6 +748,12 @@ export default function RegistroVisitasPymes() {
   const visitasMes   = pymesBase.filter(v => v.fecha.startsWith(monthPrefix)).length;
   const totalVisitas = pymesBase.length;
 
+  // Métricas de estado del mes actual (respetan el filtro de rol de pymesBase)
+  const mesPymes          = pymesBase.filter(v => v.fecha.startsWith(monthPrefix));
+  const mesAceptadas      = mesPymes.filter(v => v.estado === 'Aceptado').length;
+  const mesEnviadaComp    = mesPymes.filter(v => v.estado === 'Enviada Comparativa' || v.estado === 'Valorando').length;
+  const mesSolicitadoFact = mesPymes.filter(v => v.estado === 'Solicitado Factura').length;
+
   const filtered = visitasPymes
     .filter(v => {
       const q = search.toLowerCase();
@@ -853,6 +899,37 @@ export default function RegistroVisitasPymes() {
         </div>
       </div>
 
+      {/* KPIs — estados del mes actual */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="card p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-green-600 flex items-center justify-center flex-shrink-0">
+            <CheckCircle size={22} className="text-white" />
+          </div>
+          <div>
+            <p className="text-3xl font-bold text-google-dark">{mesAceptadas}</p>
+            <p className="text-sm text-google-gray">Aceptadas ({mesNombre})</p>
+          </div>
+        </div>
+        <div className="card p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center flex-shrink-0">
+            <TrendingUp size={22} className="text-white" />
+          </div>
+          <div>
+            <p className="text-3xl font-bold text-google-dark">{mesEnviadaComp}</p>
+            <p className="text-sm text-google-gray">Enviada Comparativa ({mesNombre})</p>
+          </div>
+        </div>
+        <div className="card p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center flex-shrink-0">
+            <FileText size={22} className="text-white" />
+          </div>
+          <div>
+            <p className="text-3xl font-bold text-google-dark">{mesSolicitadoFact}</p>
+            <p className="text-sm text-google-gray">Solicitado Factura ({mesNombre})</p>
+          </div>
+        </div>
+      </div>
+
       {/* Filtros */}
       <div className="card px-5 py-4 space-y-3">
         <div className="flex flex-wrap gap-3">
@@ -992,16 +1069,24 @@ export default function RegistroVisitasPymes() {
                     <td className="table-cell text-center">
                       <div className="flex items-center justify-center gap-2">
                         {v.factura_url
-                          ? <a href={v.factura_url} target="_blank" rel="noopener noreferrer"
-                              title="Ver Factura PYME"
-                              className="text-indigo-500 hover:text-indigo-800 transition-colors">
+                          ? <a
+                              href={v.factura_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={v.factura_url.toLowerCase().endsWith('.zip') ? 'Descargar Factura PYME (ZIP)' : 'Ver Factura PYME'}
+                              className="text-indigo-500 hover:text-indigo-800 transition-colors"
+                            >
                               <Eye size={15} />
                             </a>
                           : null}
                         {v.comparativa_url
-                          ? <a href={v.comparativa_url} target="_blank" rel="noopener noreferrer"
-                              title="Ver Comparativa PYME"
-                              className="text-indigo-500 hover:text-indigo-800 transition-colors">
+                          ? <a
+                              href={v.comparativa_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={v.comparativa_url.toLowerCase().endsWith('.zip') ? 'Descargar Comparativa PYME (ZIP)' : 'Ver Comparativa PYME'}
+                              className="text-indigo-500 hover:text-indigo-800 transition-colors"
+                            >
                               <Eye size={15} />
                             </a>
                           : null}
