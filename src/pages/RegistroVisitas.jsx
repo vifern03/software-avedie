@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { Store, Plus, CalendarDays, Users, Briefcase, Search, Trash2, Pencil, CheckCircle, X, FileSpreadsheet, Camera, Loader2, Eye } from 'lucide-react';
@@ -313,19 +313,25 @@ export default function RegistroVisitas() {
   const [showModal,    setShowModal]    = useState(false);
   const [editVisita,   setEditVisita]   = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [search,          setSearch]          = useState('');
-  const [searchDesc,      setSearchDesc]      = useState('');
-  const [timeFilter,      setTimeFilter]      = useState('');
-  const [filterTipo,      setFilterTipo]      = useState('');
-  const [filterUbicacion, setFilterUbicacion] = useState('');
-  const [fechaDesde,      setFechaDesde]      = useState('');
-  const [fechaHasta,      setFechaHasta]      = useState('');
+  const [search,           setSearch]          = useState('');
+  const [searchDesc,       setSearchDesc]      = useState('');
+  const [timeFilter,       setTimeFilter]      = useState('');
+  const [filterTipo,       setFilterTipo]      = useState('');
+  const [filterUbicacion,  setFilterUbicacion] = useState('');
+  const [filterComercial,  setFilterComercial] = useState('');
+  const [fechaDesde,       setFechaDesde]      = useState('');
+  const [fechaHasta,       setFechaHasta]      = useState('');
 
   const ITEMS_PER_PAGE = 15;
   const [currentPage, setCurrentPage] = useState(1);
   const tableScrollRef = useRef(null);
 
-  useEffect(() => { setCurrentPage(1); }, [search, searchDesc, timeFilter, filterTipo, filterUbicacion, fechaDesde, fechaHasta]);
+  const comercialesDisponibles = useMemo(() => {
+    const names = visitas.map(v => v.registrado_por).filter(Boolean);
+    return [...new Set(names)].sort();
+  }, [visitas]);
+
+  useEffect(() => { setCurrentPage(1); }, [search, searchDesc, timeFilter, filterTipo, filterUbicacion, filterComercial, fechaDesde, fechaHasta]);
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
@@ -359,11 +365,12 @@ export default function RegistroVisitas() {
                         : timeFilter === 'mes_actual'   ? v.fecha.startsWith(monthPrefix)
                         : timeFilter === 'mes_anterior' ? v.fecha.startsWith(prevMonthPrefix)
                         : true;
-      const matchTipo       = !filterTipo      || v.tipo        === filterTipo;
-      const matchUbicacion  = !filterUbicacion || v.punto_venta === filterUbicacion;
+      const matchTipo       = !filterTipo       || v.tipo           === filterTipo;
+      const matchUbicacion  = !filterUbicacion  || v.punto_venta   === filterUbicacion;
+      const matchComercial  = !filterComercial  || v.registrado_por === filterComercial;
       const matchFechaDesde = !fechaDesde || v.fecha >= fechaDesde;
       const matchFechaHasta = !fechaHasta || v.fecha <= fechaHasta;
-      return matchSearch && matchDesc && matchTime && matchTipo && matchUbicacion && matchFechaDesde && matchFechaHasta;
+      return matchSearch && matchDesc && matchTime && matchTipo && matchUbicacion && matchComercial && matchFechaDesde && matchFechaHasta;
     })
     .sort((a, b) => {
       const da = a.fecha + a.hora;
@@ -537,7 +544,7 @@ export default function RegistroVisitas() {
             )}
           </div>
         </div>
-        {/* Fila 2: select tipo + select ubicación */}
+        {/* Fila 2: select tipo + select ubicación + select comercial (solo privilegiados) */}
         <div className="flex flex-wrap gap-3">
           <select value={filterTipo} onChange={e => setFilterTipo(e.target.value)}
             className="input-field h-9 text-xs min-w-[160px] flex-shrink-0">
@@ -550,6 +557,22 @@ export default function RegistroVisitas() {
             <option value="Palencia">Palencia</option>
             <option value="Valladolid">Valladolid</option>
           </select>
+          {isPrivileged && (
+            <div className="flex items-center gap-1">
+              <select value={filterComercial} onChange={e => setFilterComercial(e.target.value)}
+                className="input-field h-9 text-xs min-w-[180px] flex-shrink-0">
+                <option value="">Registrado por...</option>
+                {comercialesDisponibles.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              {filterComercial && (
+                <button onClick={() => setFilterComercial('')}
+                  className="p-1 rounded text-google-gray hover:text-red-500 hover:bg-red-50 transition-colors"
+                  title="Quitar filtro">
+                  <X size={13} />
+                </button>
+              )}
+            </div>
+          )}
         </div>
         {/* Fila 2: pills de rango rápido */}
         <div className="flex flex-wrap gap-2">
