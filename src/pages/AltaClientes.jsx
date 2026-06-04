@@ -659,6 +659,7 @@ export default function AltaClientes({ tipo }) {
             mail:              editClient.mail             || '',
             cuenta_bancaria:   editClient.cuenta_bancaria  || '',
             dni_escaneado:     editClient.dni_escaneado    || '',
+            ultima_factura:    editClient.ultima_factura   || '',
             cif_autonomo_url:  editClient.cif_autonomo_url || '',
             justo_titulo_url:  editClient.justo_titulo_url  || '',
             factura_b2b_url:   editClient.factura_b2b_url   || '',

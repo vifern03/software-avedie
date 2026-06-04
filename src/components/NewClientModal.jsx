@@ -71,10 +71,16 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
     initialData?.factura_b2b_url?.startsWith?.('data:') ? 'Archivo existente' : ''
   );
 
-  const dniInputRef          = useRef(null);
-  const cifAutonomoInputRef  = useRef(null);
-  const justoTituloInputRef  = useRef(null);
-  const facturaB2bInputRef   = useRef(null);
+  const [ultimaFacturaBase64,   setUltimaFacturaBase64]   = useState(initialData?.ultima_factura || '');
+  const [ultimaFacturaFileName, setUltimaFacturaFileName] = useState(
+    initialData?.ultima_factura?.startsWith?.('data:') ? 'Archivo existente' : ''
+  );
+
+  const dniInputRef           = useRef(null);
+  const cifAutonomoInputRef   = useRef(null);
+  const justoTituloInputRef   = useRef(null);
+  const facturaB2bInputRef    = useRef(null);
+  const ultimaFacturaInputRef = useRef(null);
   // M-1: bandera de control para bloquear doble envío antes del re-render
   const submittingRef        = useRef(false);
 
@@ -158,6 +164,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
       agente_gestor:    efectiveAgenteGestor,
       tipo,
       dni_escaneado:    dniBase64,
+      ultima_factura:   ultimaFacturaBase64 || null,
       cif_autonomo_url: cifAutonomoBase64,
       justo_titulo_url: justoTituloBase64,
       factura_b2b_url:  facturaB2bBase64,
@@ -581,21 +588,38 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
                 </div>
               </>
             ) : (
-              /* B2C: DNI/CIF único opcional */
-              <div>
-                <label className="block text-xs font-medium text-google-gray mb-1.5">
-                  Escanear DNI/CIF <span className="font-normal">(Opcional)</span>
-                </label>
-                <input ref={dniInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
-                  onChange={(e) => handleFileChange(e, setDniFileName, setDniBase64)} />
-                <button type="button" onClick={() => dniInputRef.current?.click()}
-                  className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
-                    dniFileName ? 'border-green-300 bg-green-50 text-green-700'
-                    : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
-                  <Upload size={14} className="flex-shrink-0" />
-                  <span className="truncate">{dniFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
-                </button>
-              </div>
+              /* B2C: DNI/CIF + Última Factura, ambos opcionales */
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-google-gray mb-1.5">
+                    Escanear DNI/CIF <span className="font-normal">(Opcional)</span>
+                  </label>
+                  <input ref={dniInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
+                    onChange={(e) => handleFileChange(e, setDniFileName, setDniBase64)} />
+                  <button type="button" onClick={() => dniInputRef.current?.click()}
+                    className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
+                      dniFileName ? 'border-green-300 bg-green-50 text-green-700'
+                      : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
+                    <Upload size={14} className="flex-shrink-0" />
+                    <span className="truncate">{dniFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-google-gray mb-1.5">
+                    Adjuntar Última Factura <span className="font-normal">(Opcional)</span>
+                  </label>
+                  <input ref={ultimaFacturaInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
+                    onChange={(e) => handleFileChange(e, setUltimaFacturaFileName, setUltimaFacturaBase64)} />
+                  <button type="button" onClick={() => ultimaFacturaInputRef.current?.click()}
+                    className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
+                      ultimaFacturaFileName ? 'border-green-300 bg-green-50 text-green-700'
+                      : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
+                    <Upload size={14} className="flex-shrink-0" />
+                    <span className="truncate">{ultimaFacturaFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
+                  </button>
+                </div>
+              </>
             )}
           </div>
 
