@@ -357,16 +357,17 @@ export default function GestionUsuarios() {
     if (type === 'toggle') {
       const { roleId, pageId } = pendingAction;
       if (roleId === 'admin') return;
+      const currentEffective = !!(permissions[roleId]?.[pageId] ?? DEFAULT_PERMISSIONS[roleId]?.[pageId]);
       updatePermissions({
         ...permissions,
-        [roleId]: { ...permissions[roleId], [pageId]: !permissions[roleId]?.[pageId] },
+        [roleId]: { ...permissions[roleId], [pageId]: !currentEffective },
       });
       showFlash('saved');
 
     } else if (type === 'toggleUser') {
       const { username, pageId, newValue } = pendingAction;
       const targetUser  = users.find((u) => u.username === username);
-      const roleDefault = !!(permissions[targetUser?.role]?.[pageId]);
+      const roleDefault = !!(permissions[targetUser?.role]?.[pageId] ?? DEFAULT_PERMISSIONS[targetUser?.role]?.[pageId]);
       if (newValue === roleDefault) {
         removeUserPermission(username, pageId);
       } else {
