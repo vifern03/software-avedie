@@ -314,11 +314,11 @@ export function DataProvider({ children }) {
       fecha_tramitacion: tramitacion,
       fecha_firma:       data.fecha_firma       || null,
       fecha_formalizada: data.fecha_formalizada || null,
-      dni_escaneado:    data.dni_escaneado    || '',
-      ultima_factura:   data.ultima_factura   || '',
-      cif_autonomo_url: data.cif_autonomo_url || '',
-      justo_titulo_url: data.justo_titulo_url  || '',
-      factura_b2b_url:  data.factura_b2b_url   || '',
+      ...(data.dni_escaneado    ? { dni_escaneado:    data.dni_escaneado    } : {}),
+      ...(data.ultima_factura   ? { ultima_factura:   data.ultima_factura   } : {}),
+      ...(data.cif_autonomo_url ? { cif_autonomo_url: data.cif_autonomo_url } : {}),
+      ...(data.justo_titulo_url ? { justo_titulo_url: data.justo_titulo_url } : {}),
+      ...(data.factura_b2b_url  ? { factura_b2b_url:  data.factura_b2b_url  } : {}),
       consumo_anual_est: (data.consumo_anual_est !== '' && data.consumo_anual_est != null)
         ? Number(data.consumo_anual_est)
         : null,
@@ -403,11 +403,11 @@ export function DataProvider({ children }) {
       fecha_firma:       data.fecha_firma       !== undefined ? data.fecha_firma       : original?.fecha_firma,
       fecha_formalizada: data.fecha_formalizada !== undefined ? data.fecha_formalizada : original?.fecha_formalizada,
       comercial:         data.agente_gestor     !== undefined ? data.agente_gestor     : original?.comercial,
-      ...(data.dni_escaneado    !== undefined && { dni_escaneado:    data.dni_escaneado    }),
-      ...(data.ultima_factura   !== undefined && { ultima_factura:   data.ultima_factura   }),
-      ...(data.cif_autonomo_url !== undefined && { cif_autonomo_url: data.cif_autonomo_url }),
-      ...(data.justo_titulo_url !== undefined && { justo_titulo_url: data.justo_titulo_url }),
-      ...(data.factura_b2b_url  !== undefined && { factura_b2b_url:  data.factura_b2b_url  }),
+      ...(data.dni_escaneado    ? { dni_escaneado:    data.dni_escaneado    } : {}),
+      ...(data.ultima_factura   ? { ultima_factura:   data.ultima_factura   } : {}),
+      ...(data.cif_autonomo_url ? { cif_autonomo_url: data.cif_autonomo_url } : {}),
+      ...(data.justo_titulo_url ? { justo_titulo_url: data.justo_titulo_url } : {}),
+      ...(data.factura_b2b_url  ? { factura_b2b_url:  data.factura_b2b_url  } : {}),
       ...(data.consumo_anual_est !== undefined && {
         consumo_anual_est: (data.consumo_anual_est === '' || data.consumo_anual_est === null)
           ? null

@@ -55,8 +55,13 @@ CREATE TABLE IF NOT EXISTS clientes (
 ALTER TABLE clientes DISABLE ROW LEVEL SECURITY;
 
 -- MIGRACIÓN para bases de datos existentes (ejecutar si la tabla ya existe):
--- ALTER TABLE clientes ADD COLUMN IF NOT EXISTS renovado         BOOLEAN DEFAULT FALSE;
--- ALTER TABLE clientes ADD COLUMN IF NOT EXISTS fecha_renovacion TEXT;
+-- ALTER TABLE clientes ADD COLUMN IF NOT EXISTS renovado          BOOLEAN DEFAULT FALSE;
+-- ALTER TABLE clientes ADD COLUMN IF NOT EXISTS fecha_renovacion  TEXT;
+-- ALTER TABLE clientes ADD COLUMN IF NOT EXISTS ultima_factura    TEXT;
+-- ALTER TABLE clientes ADD COLUMN IF NOT EXISTS cif_autonomo_url  TEXT;
+-- ALTER TABLE clientes ADD COLUMN IF NOT EXISTS justo_titulo_url  TEXT;
+-- ALTER TABLE clientes ADD COLUMN IF NOT EXISTS factura_b2b_url   TEXT;
+-- ALTER TABLE clientes ADD COLUMN IF NOT EXISTS consumo_anual_est NUMERIC;
 
 -- MIGRACIÓN — restricción UNIQUE en CUPS (BD ya existente):
 -- Paso 1: comprobar si hay CUPS duplicados (limpiar antes de continuar si hay resultados):

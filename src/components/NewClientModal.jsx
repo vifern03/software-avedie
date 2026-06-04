@@ -144,6 +144,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
       e.fecha_formalizada = true;
     if (form.agente_gestor === '__otro__' && !agenteGestorOtro.trim())
       e.agente_gestor_otro = true;
+    if (!isB2B && !isEdit && !dniBase64)         e.dni_b2c       = true;
     if (isB2B && !isEdit && !cifAutonomoBase64) e.cif_autonomo  = true;
     if (isB2B && !isEdit && !dniBase64)         e.dni_b2b       = true;
     if (isB2B && !isEdit && !facturaB2bBase64)  e.factura_b2b   = true;
@@ -592,22 +593,24 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
               <>
                 <div>
                   <label className="block text-xs font-medium text-google-gray mb-1.5">
-                    Escanear DNI/CIF <span className="font-normal">(Opcional)</span>
+                    Escanear DNI/CIF <span className="text-red-500 font-semibold">*</span>
                   </label>
                   <input ref={dniInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
                     onChange={(e) => handleFileChange(e, setDniFileName, setDniBase64)} />
                   <button type="button" onClick={() => dniInputRef.current?.click()}
                     className={`w-full flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
                       dniFileName ? 'border-green-300 bg-green-50 text-green-700'
+                      : errors.dni_b2c ? 'border-red-300 bg-red-50 text-red-600'
                       : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
                     <Upload size={14} className="flex-shrink-0" />
                     <span className="truncate">{dniFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
                   </button>
+                  {errors.dni_b2c && <p className="text-red-500 text-xs mt-1">Este documento es obligatorio</p>}
                 </div>
 
                 <div>
                   <label className="block text-xs font-medium text-google-gray mb-1.5">
-                    Adjuntar Última Factura <span className="font-normal">(Opcional)</span>
+                    Adjuntar Última Factura <span className="font-normal text-google-gray">(Opcional)</span>
                   </label>
                   <input ref={ultimaFacturaInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
                     onChange={(e) => handleFileChange(e, setUltimaFacturaFileName, setUltimaFacturaBase64)} />
