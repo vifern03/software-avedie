@@ -52,6 +52,7 @@ export function DataProvider({ children }) {
 
       if (filterByTeam) {
         clientesQuery = clientesQuery.eq('equipo', userEquipo);
+        visitasQuery  = visitasQuery.eq('punto_venta', userEquipo);
       }
 
       if (filterByOwn) {

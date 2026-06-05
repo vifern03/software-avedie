@@ -33,14 +33,15 @@ const nowTime  = () => {
   return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
 };
 
-function VisitaModal({ onClose, onSave, initialData }) {
+function VisitaModal({ onClose, onSave, initialData, userEquipo }) {
   const isEdit = !!initialData;
+  const sedeFija = ['Palencia', 'Valladolid'].includes(userEquipo) ? userEquipo : null;
   const [form, setForm] = useState({
     fecha:       initialData?.fecha       || todayStr(),
     hora:        initialData?.hora        || nowTime(),
     dni:         initialData?.dni         || '',
     nombre:      initialData?.nombre      || '',
-    punto_venta: initialData?.punto_venta || '',
+    punto_venta: initialData?.punto_venta || sedeFija || '',
     telefono:    initialData?.telefono    || '',
     mail:        initialData?.mail        || '',
     tipo:        initialData?.tipo        || '',
@@ -158,10 +159,17 @@ function VisitaModal({ onClose, onSave, initialData }) {
           {/* Ubicación */}
           <div>
             <label className="block text-xs font-medium text-google-gray mb-1.5">Ubicación (Punto de Venta) *</label>
-            <select value={form.punto_venta} onChange={e => set('punto_venta', e.target.value)} className={ic('punto_venta')}>
-              <option value="">Seleccionar ubicación...</option>
-              {PUNTOS_VENTA.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
+            {sedeFija ? (
+              <div className={`input-field flex items-center gap-2 bg-gray-50 text-google-dark ${errors.punto_venta ? '!border-red-400' : ''}`}>
+                <span className="text-xs font-medium">{sedeFija}</span>
+                <span className="ml-auto text-xs text-google-gray">(fijado por tu sede)</span>
+              </div>
+            ) : (
+              <select value={form.punto_venta} onChange={e => set('punto_venta', e.target.value)} className={ic('punto_venta')}>
+                <option value="">Seleccionar ubicación...</option>
+                {PUNTOS_VENTA.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            )}
             {errors.punto_venta && <p className="text-red-500 text-xs mt-1">Obligatorio</p>}
           </div>
 
@@ -544,35 +552,36 @@ export default function RegistroVisitas() {
             )}
           </div>
         </div>
-        {/* Fila 2: select tipo + select ubicación + select comercial (solo privilegiados) */}
-        <div className="flex flex-wrap gap-3">
+        {/* Fila 2: select tipo */}
+        <div>
           <select value={filterTipo} onChange={e => setFilterTipo(e.target.value)}
-            className="input-field h-9 text-xs min-w-[160px] flex-shrink-0">
+            className="input-field h-9 text-xs w-full">
             <option value="">Todos los tipos</option>
             {TIPOS_GESTION.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
+        </div>
+        {/* Fila 3: ubicación y comercial — 50% cada uno */}
+        <div className="flex gap-3">
           <select value={filterUbicacion} onChange={e => setFilterUbicacion(e.target.value)}
-            className="input-field h-9 text-xs min-w-[160px] flex-shrink-0">
+            className="input-field h-9 text-xs w-1/2">
             <option value="">Todas las ubicaciones</option>
             <option value="Palencia">Palencia</option>
             <option value="Valladolid">Valladolid</option>
           </select>
-          {isPrivileged && (
-            <div className="flex items-center gap-1">
-              <select value={filterComercial} onChange={e => setFilterComercial(e.target.value)}
-                className="input-field h-9 text-xs min-w-[180px] flex-shrink-0">
-                <option value="">Registrado por...</option>
-                {comercialesDisponibles.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              {filterComercial && (
-                <button onClick={() => setFilterComercial('')}
-                  className="p-1 rounded text-google-gray hover:text-red-500 hover:bg-red-50 transition-colors"
-                  title="Quitar filtro">
-                  <X size={13} />
-                </button>
-              )}
-            </div>
-          )}
+          <div className="flex items-center gap-1 w-1/2 min-w-0">
+            <select value={filterComercial} onChange={e => setFilterComercial(e.target.value)}
+              className="input-field h-9 text-xs flex-1 min-w-0">
+              <option value="">Registrado por</option>
+              {comercialesDisponibles.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            {filterComercial && (
+              <button onClick={() => setFilterComercial('')}
+                className="p-1 rounded text-google-gray hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
+                title="Quitar filtro">
+                <X size={13} />
+              </button>
+            )}
+          </div>
         </div>
         {/* Fila 2: pills de rango rápido */}
         <div className="flex flex-wrap gap-2">
@@ -732,6 +741,7 @@ export default function RegistroVisitas() {
           onClose={() => { setShowModal(false); setEditVisita(null); }}
           onSave={handleSave}
           initialData={editVisita || null}
+          userEquipo={currentUser?.equipo || 'Ambos'}
         />
       )}
 
