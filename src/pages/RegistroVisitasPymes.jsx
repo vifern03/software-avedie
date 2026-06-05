@@ -272,6 +272,8 @@ function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar }) {
   const [errors,          setErrors]          = useState({});
   const [saving,          setSaving]          = useState(false);
   const [saved,           setSaved]           = useState(false);
+  const facturaInputRefModal     = useRef(null);
+  const comparativaInputRefModal = useRef(null);
 
   const set = (field, value) => {
     setForm(f => ({ ...f, [field]: value }));
@@ -428,12 +430,22 @@ function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar }) {
                   </a>
                 )}
                 <input
+                  ref={facturaInputRefModal}
                   type="file"
                   accept=".pdf,.zip,image/*"
                   onChange={e => { setFacturaFile(e.target.files?.[0] || null); setErrors(er => ({ ...er, factura: false })); }}
                   className={`input-field text-xs py-1.5 cursor-pointer ${ic('factura')}`}
                 />
-                {facturaFile && <p className="text-xs text-emerald-700 mt-1">Nuevo: {facturaFile.name}</p>}
+                {facturaFile && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <p className="text-xs text-emerald-700 truncate">Nuevo: {facturaFile.name}</p>
+                    <button type="button" title="Eliminar archivo"
+                      onClick={() => { setFacturaFile(null); if (facturaInputRefModal.current) facturaInputRefModal.current.value = ''; }}
+                      className="p-1 rounded border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
+                      <X size={12} />
+                    </button>
+                  </div>
+                )}
                 {errors.factura && <p className="text-red-500 text-xs mt-1">Debes adjuntar la factura</p>}
               </div>
 
@@ -449,12 +461,22 @@ function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar }) {
                   </a>
                 )}
                 <input
+                  ref={comparativaInputRefModal}
                   type="file"
                   accept=".pdf,.zip,image/*"
                   onChange={e => { setComparativaFile(e.target.files?.[0] || null); setErrors(er => ({ ...er, comparativa: false })); }}
                   className={`input-field text-xs py-1.5 cursor-pointer ${ic('comparativa')}`}
                 />
-                {comparativaFile && <p className="text-xs text-emerald-700 mt-1">Nuevo: {comparativaFile.name}</p>}
+                {comparativaFile && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <p className="text-xs text-emerald-700 truncate">Nuevo: {comparativaFile.name}</p>
+                    <button type="button" title="Eliminar archivo"
+                      onClick={() => { setComparativaFile(null); if (comparativaInputRefModal.current) comparativaInputRefModal.current.value = ''; }}
+                      className="p-1 rounded border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
+                      <X size={12} />
+                    </button>
+                  </div>
+                )}
                 {errors.comparativa && <p className="text-red-500 text-xs mt-1">Debes adjuntar la comparativa</p>}
               </div>
             </div>
@@ -547,7 +569,9 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
   const [errors,          setErrors]          = useState({});
   const [saving,          setSaving]          = useState(false);
   const [saved,           setSaved]           = useState(false);
-  const fileInputRef = useRef(null);
+  const fileInputRef         = useRef(null);
+  const facturaInputRef      = useRef(null);
+  const comparativaInputRef  = useRef(null);
 
   const set = (field, value) => {
     setForm(f => ({ ...f, [field]: value }));
@@ -692,16 +716,25 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
             <label className="block text-xs font-medium text-google-gray mb-1.5">Foto del Negocio *</label>
             <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
               onChange={handleFotoChange} className="hidden" disabled={!canSubmit} />
-            <button type="button" onClick={() => canSubmit && fileInputRef.current?.click()} disabled={!canSubmit}
-              className={`w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed transition-colors text-sm ${
-                !canSubmit ? 'border-amber-300 bg-amber-50 text-amber-600 cursor-not-allowed opacity-70'
-                : errors.foto ? 'border-red-400 bg-red-50 text-red-600'
-                : fotoPreview ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
-                : 'border-google-border text-google-gray hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700'
-              }`}>
-              <Camera size={18} />
-              <span>{!canSubmit ? 'Solo disponible desde el móvil' : fotoFile ? fotoFile.name : fotoPreview && isEdit ? 'Cambiar foto del negocio' : 'Hacer Foto al Negocio (Obligatorio)'}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => canSubmit && fileInputRef.current?.click()} disabled={!canSubmit}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed transition-colors text-sm ${
+                  !canSubmit ? 'border-amber-300 bg-amber-50 text-amber-600 cursor-not-allowed opacity-70'
+                  : errors.foto ? 'border-red-400 bg-red-50 text-red-600'
+                  : fotoPreview ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
+                  : 'border-google-border text-google-gray hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700'
+                }`}>
+                <Camera size={18} />
+                <span>{!canSubmit ? 'Solo disponible desde el móvil' : fotoFile ? fotoFile.name : fotoPreview && isEdit ? 'Cambiar foto del negocio' : 'Hacer Foto al Negocio (Obligatorio)'}</span>
+              </button>
+              {(fotoFile || fotoPreview) && (
+                <button type="button" title="Eliminar foto"
+                  onClick={() => { setFotoFile(null); setFotoPreview(''); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                  className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
+                  <X size={13} />
+                </button>
+              )}
+            </div>
             {errors.foto && !fotoPreview && <p className="text-red-500 text-xs mt-1">Debes hacer una foto del negocio</p>}
             {fotoPreview && (
               <div className="mt-2 rounded-lg overflow-hidden border border-emerald-200">
@@ -766,7 +799,7 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
                   <AvisoDocumentacion />
                   <div>
                     <label className={`block text-xs font-medium mb-1.5 ${errors.factura ? 'text-red-500' : 'text-google-gray'}`}>Adjuntar Factura *</label>
-                    <input type="file" accept=".pdf,image/*"
+                    <input ref={facturaInputRef} type="file" accept=".pdf,image/*"
                       onChange={e => { setFacturaFile(e.target.files?.[0] || null); setClearFactura(false); setErrors(er => ({ ...er, factura: false })); }}
                       className={`input-field text-xs py-1.5 cursor-pointer ${errors.factura ? '!border-red-400' : ''}`} />
                     {form.factura_url && !facturaFile && !clearFactura && (
@@ -790,12 +823,21 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
                         </button>
                       </div>
                     )}
-                    {facturaFile && <p className="text-xs text-emerald-700 mt-1">Nuevo: {facturaFile.name}</p>}
+                    {facturaFile && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <p className="text-xs text-emerald-700 truncate">Nuevo: {facturaFile.name}</p>
+                        <button type="button" title="Eliminar archivo"
+                          onClick={() => { setFacturaFile(null); if (facturaInputRef.current) facturaInputRef.current.value = ''; }}
+                          className="p-1 rounded border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
+                          <X size={12} />
+                        </button>
+                      </div>
+                    )}
                     {errors.factura && <p className="text-red-500 text-xs mt-1">Debes adjuntar la factura</p>}
                   </div>
                   <div>
                     <label className={`block text-xs font-medium mb-1.5 ${errors.comparativa ? 'text-red-500' : 'text-google-gray'}`}>Adjuntar Comparativa *</label>
-                    <input type="file" accept=".pdf,image/*"
+                    <input ref={comparativaInputRef} type="file" accept=".pdf,image/*"
                       onChange={e => { setComparativaFile(e.target.files?.[0] || null); setClearComparativa(false); setErrors(er => ({ ...er, comparativa: false })); }}
                       className={`input-field text-xs py-1.5 cursor-pointer ${errors.comparativa ? '!border-red-400' : ''}`} />
                     {form.comparativa_url && !comparativaFile && !clearComparativa && (
@@ -819,7 +861,16 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
                         </button>
                       </div>
                     )}
-                    {comparativaFile && <p className="text-xs text-emerald-700 mt-1">Nuevo: {comparativaFile.name}</p>}
+                    {comparativaFile && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <p className="text-xs text-emerald-700 truncate">Nuevo: {comparativaFile.name}</p>
+                        <button type="button" title="Eliminar archivo"
+                          onClick={() => { setComparativaFile(null); if (comparativaInputRef.current) comparativaInputRef.current.value = ''; }}
+                          className="p-1 rounded border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
+                          <X size={12} />
+                        </button>
+                      </div>
+                    )}
                     {errors.comparativa && <p className="text-red-500 text-xs mt-1">Debes adjuntar la comparativa</p>}
                   </div>
                 </>

@@ -233,19 +233,28 @@ function VisitaModal({ onClose, onSave, initialData, userEquipo }) {
                 <p className="text-xs font-medium text-google-gray">Anverso <span className="font-normal">(cara principal)</span></p>
                 <input ref={dniAnversoRef} type="file" accept="image/*,application/pdf" className="hidden"
                   onChange={e => handleDniFile(e, setDniAnverso, setDniAnversoPreview)} />
-                <button type="button" onClick={() => dniAnversoRef.current?.click()}
-                  className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border-2 border-dashed transition-colors text-xs ${
-                    dniAnverso
-                      ? 'border-google-blue bg-blue-50 text-google-blue'
-                      : dniAnversoPreview
-                        ? 'border-green-400 bg-green-50 text-green-700'
-                        : 'border-google-border text-google-gray hover:border-google-blue hover:bg-blue-50 hover:text-google-blue'
-                  }`}>
-                  <Camera size={14} />
-                  <span className="truncate">
-                    {dniAnverso ? dniAnverso.name : dniAnversoPreview ? 'Cambiar' : 'Adjuntar'}
-                  </span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button type="button" onClick={() => dniAnversoRef.current?.click()}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border-2 border-dashed transition-colors text-xs ${
+                      dniAnverso
+                        ? 'border-google-blue bg-blue-50 text-google-blue'
+                        : dniAnversoPreview
+                          ? 'border-green-400 bg-green-50 text-green-700'
+                          : 'border-google-border text-google-gray hover:border-google-blue hover:bg-blue-50 hover:text-google-blue'
+                    }`}>
+                    <Camera size={14} />
+                    <span className="truncate">
+                      {dniAnverso ? dniAnverso.name : dniAnversoPreview ? 'Cambiar' : 'Adjuntar'}
+                    </span>
+                  </button>
+                  {(dniAnverso || dniAnversoPreview) && (
+                    <button type="button" title="Eliminar archivo"
+                      onClick={() => { setDniAnverso(null); setDniAnversoPreview(''); if (dniAnversoRef.current) dniAnversoRef.current.value = ''; }}
+                      className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
                 {dniAnversoPreview && dniAnversoPreview !== '__pdf__' && (
                   <img src={dniAnversoPreview} alt="Anverso" className="w-full h-20 object-cover rounded-lg border border-google-border" />
                 )}
@@ -257,19 +266,28 @@ function VisitaModal({ onClose, onSave, initialData, userEquipo }) {
                 <p className="text-xs font-medium text-google-gray">Reverso <span className="font-normal">(cara trasera, opcional)</span></p>
                 <input ref={dniReversoRef} type="file" accept="image/*,application/pdf" className="hidden"
                   onChange={e => handleDniFile(e, setDniReverso, setDniReversoPreview)} />
-                <button type="button" onClick={() => dniReversoRef.current?.click()}
-                  className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border-2 border-dashed transition-colors text-xs ${
-                    dniReverso
-                      ? 'border-google-blue bg-blue-50 text-google-blue'
-                      : dniReversoPreview
-                        ? 'border-green-400 bg-green-50 text-green-700'
-                        : 'border-google-border text-google-gray hover:border-google-blue hover:bg-blue-50 hover:text-google-blue'
-                  }`}>
-                  <Camera size={14} />
-                  <span className="truncate">
-                    {dniReverso ? dniReverso.name : dniReversoPreview ? 'Cambiar' : 'Adjuntar'}
-                  </span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button type="button" onClick={() => dniReversoRef.current?.click()}
+                    className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border-2 border-dashed transition-colors text-xs ${
+                      dniReverso
+                        ? 'border-google-blue bg-blue-50 text-google-blue'
+                        : dniReversoPreview
+                          ? 'border-green-400 bg-green-50 text-green-700'
+                          : 'border-google-border text-google-gray hover:border-google-blue hover:bg-blue-50 hover:text-google-blue'
+                    }`}>
+                    <Camera size={14} />
+                    <span className="truncate">
+                      {dniReverso ? dniReverso.name : dniReversoPreview ? 'Cambiar' : 'Adjuntar'}
+                    </span>
+                  </button>
+                  {(dniReverso || dniReversoPreview) && (
+                    <button type="button" title="Eliminar archivo"
+                      onClick={() => { setDniReverso(null); setDniReversoPreview(''); if (dniReversoRef.current) dniReversoRef.current.value = ''; }}
+                      className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
                 {dniReversoPreview && dniReversoPreview !== '__pdf__' && (
                   <img src={dniReversoPreview} alt="Reverso" className="w-full h-20 object-cover rounded-lg border border-google-border" />
                 )}
