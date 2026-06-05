@@ -83,6 +83,13 @@ export function AuthProvider({ children }) {
           if (!dbUser || dbUser.role !== stored.role) {
             localStorage.removeItem(SESSION_KEY);
             setCurrentUser(null);
+          } else {
+            // Sincronizar la sesión con los datos frescos de BD para que
+            // cambios en equipo/displayName/permisos tomen efecto sin re-login.
+            const normalized = dbToUser(dbUser);
+            const { password: _pw, ...freshSafe } = normalized;
+            setCurrentUser(freshSafe);
+            localStorage.setItem(SESSION_KEY, JSON.stringify(freshSafe));
           }
         } catch {
           localStorage.removeItem(SESSION_KEY);

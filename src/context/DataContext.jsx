@@ -52,7 +52,6 @@ export function DataProvider({ children }) {
 
       if (filterByTeam) {
         clientesQuery = clientesQuery.eq('equipo', userEquipo);
-        visitasQuery  = visitasQuery.eq('equipo', userEquipo);
       }
 
       if (filterByOwn) {
@@ -254,8 +253,8 @@ export function DataProvider({ children }) {
         console.error('updateVisitaPyme upload:', upErr);
       }
     }
-    const factura_url    = facturaFile    ? (await _uploadPymeDoc(facturaFile,    'factura'))    || data.factura_url    || '' : (data.factura_url    || '');
-    const comparativa_url = comparativaFile ? (await _uploadPymeDoc(comparativaFile, 'comparativa')) || data.comparativa_url || '' : (data.comparativa_url || '');
+    const factura_url    = facturaFile    ? (await _uploadPymeDoc(facturaFile,    'factura'))    || data.factura_url    || '' : (data.factura_url    === null ? null : (data.factura_url    || ''));
+    const comparativa_url = comparativaFile ? (await _uploadPymeDoc(comparativaFile, 'comparativa')) || data.comparativa_url || '' : (data.comparativa_url === null ? null : (data.comparativa_url || ''));
 
     const updateObj = {
       fecha:                        data.fecha,

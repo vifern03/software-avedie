@@ -366,7 +366,7 @@ export default function RegistroVisitas() {
                         : timeFilter === 'mes_anterior' ? v.fecha.startsWith(prevMonthPrefix)
                         : true;
       const matchTipo       = !filterTipo       || v.tipo           === filterTipo;
-      const matchUbicacion  = !filterUbicacion  || v.punto_venta   === filterUbicacion;
+      const matchUbicacion  = !filterUbicacion  || v.punto_venta === filterUbicacion;
       const matchComercial  = !filterComercial  || v.registrado_por === filterComercial;
       const matchFechaDesde = !fechaDesde || v.fecha >= fechaDesde;
       const matchFechaHasta = !fechaHasta || v.fecha <= fechaHasta;

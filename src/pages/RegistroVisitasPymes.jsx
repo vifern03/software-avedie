@@ -62,9 +62,42 @@ function EstadoBadge({ estado }) {
   );
 }
 
+// ── AvisoDocumentacion ───────────────────────────────────────────────────────
+
+function AvisoDocumentacion() {
+  return (
+    <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5 space-y-2">
+      <p className="text-xs text-blue-700 leading-snug">
+        ℹ️ Si el cliente tiene varios suministros, puede subir un único archivo ZIP que contenga todas las facturas o comparativas.
+      </p>
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+        <a
+          href="https://www.ilovepdf.com/es/unir_pdf"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
+        >
+          🔗 Herramienta para Unir PDFs
+        </a>
+        <a
+          href="https://freetoolonline.com/zip-tools/zip-file.html"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
+        >
+          🔗 Herramienta para Crear ZIP
+        </a>
+      </div>
+      <p className="text-xs text-blue-600 leading-snug border-t border-blue-200 pt-2">
+        💡 Consejo: Los archivos pesados se pueden subir más cómodamente desde el ordenador. Si estás con el móvil, simplemente deja registrada la visita con la foto en el estado &#39;Solicitado Factura&#39; y completa la subida de estos documentos más tarde desde tu ordenador para evitar fallos de conexión.
+      </p>
+    </div>
+  );
+}
+
 // ── AccionEstado ──────────────────────────────────────────────────────────────
 
-function AccionEstado({ visita, onTransicion }) {
+function AccionEstado({ visita, onTransicion, onAccionRapida }) {
   if (visita.estado === 'Solicitado Factura') {
     return (
       <button
@@ -80,21 +113,21 @@ function AccionEstado({ visita, onTransicion }) {
     return (
       <div className="flex items-center gap-1">
         <button
-          onClick={() => { if (window.confirm("¿Marcar esta visita como 'Aceptado'?")) onTransicion(visita, 'Aceptado'); }}
+          onClick={() => onAccionRapida(visita, 'Aceptado')}
           title="Aceptado"
           className="w-6 h-6 rounded-full flex items-center justify-center bg-green-100 hover:bg-green-200 text-green-700 transition-colors"
         >
           <Check size={12} strokeWidth={3} />
         </button>
         <button
-          onClick={() => { if (window.confirm("¿Marcar esta visita como 'Rechazado'?")) onTransicion(visita, 'Rechazado'); }}
+          onClick={() => onAccionRapida(visita, 'Rechazado')}
           title="Rechazado"
           className="w-6 h-6 rounded-full flex items-center justify-center bg-red-100 hover:bg-red-200 text-red-700 transition-colors"
         >
           <X size={12} strokeWidth={3} />
         </button>
         <button
-          onClick={() => { if (window.confirm("¿Marcar esta visita como 'Valorando'?")) onTransicion(visita, 'Valorando'); }}
+          onClick={() => onAccionRapida(visita, 'Valorando')}
           title="Valorando"
           className="w-6 h-6 rounded-full flex items-center justify-center bg-orange-100 hover:bg-orange-200 text-orange-700 transition-colors"
         >
@@ -106,9 +139,120 @@ function AccionEstado({ visita, onTransicion }) {
   return null;
 }
 
+// ── AccionRapidaModal ─────────────────────────────────────────────────────────
+
+function AccionRapidaModal({ visita, targetEstado, onClose, onConfirmar }) {
+  const [comentario, setComentario] = useState('');
+  const [hasError,   setHasError]   = useState(false);
+  const [saving,     setSaving]     = useState(false);
+  const [saved,      setSaved]      = useState(false);
+
+  const isRechazado = targetEstado === 'Rechazado';
+  const isAceptado  = targetEstado === 'Aceptado';
+  const isValorando = targetEstado === 'Valorando';
+
+  const handleConfirmar = async () => {
+    if (isRechazado && !comentario.trim()) { setHasError(true); return; }
+    setSaving(true);
+    const extraFields = {};
+    if (comentario.trim()) extraFields.comentarios_visita = comentario.trim();
+    if (isAceptado || isRechazado) extraFields.fecha_resolucion = new Date().toISOString();
+    const result = await onConfirmar(visita.id, targetEstado, extraFields);
+    if (result?.error) { setSaving(false); return; }
+    setSaved(true);
+    setTimeout(() => onClose(), 900);
+  };
+
+  const c = ({
+    'Aceptado':  { bar: 'bg-green-500',  ring: 'ring-green-100',  badge: 'bg-green-100 text-green-800',   btn: 'bg-green-600 hover:bg-green-700',   accent: 'text-green-700'  },
+    'Rechazado': { bar: 'bg-red-500',    ring: 'ring-red-100',    badge: 'bg-red-100 text-red-800',       btn: 'bg-red-600 hover:bg-red-700',       accent: 'text-red-700'    },
+    'Valorando': { bar: 'bg-orange-400', ring: 'ring-orange-100', badge: 'bg-orange-100 text-orange-800', btn: 'bg-orange-500 hover:bg-orange-600', accent: 'text-orange-700' },
+  })[targetEstado] || {};
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className={`bg-white rounded-2xl shadow-2xl w-full max-w-sm ring-1 ${c.ring} overflow-hidden`}>
+        <div className={`h-1.5 ${c.bar}`} />
+
+        {/* Cabecera */}
+        <div className="px-6 pt-5 pb-4 flex items-start justify-between gap-3">
+          <div>
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${c.badge} mb-2`}>
+              {targetEstado}
+            </span>
+            <h3 className="text-sm font-bold text-gray-900 leading-snug">
+              {isValorando
+                ? "¿Desea marcar esta visita en estado 'Valorando'?"
+                : isAceptado
+                  ? 'Confirmar cierre como Aceptado'
+                  : 'Confirmar rechazo de visita'}
+            </h3>
+            <p className="text-xs text-gray-400 mt-1 truncate max-w-[240px]">{visita.nombre_empresa}</p>
+          </div>
+          <button onClick={onClose} disabled={saving}
+            className="text-gray-300 hover:text-gray-600 transition-colors flex-shrink-0 mt-0.5">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Cuerpo — solo Aceptado / Rechazado */}
+        {!isValorando && (
+          <div className="px-6 pb-5 space-y-2">
+            {isRechazado && (
+              <p className={`text-xs font-medium ${c.accent}`}>
+                Motivo obligatorio — quedará registrado como comentario de la visita.
+              </p>
+            )}
+            {isAceptado && (
+              <p className={`text-xs font-medium ${c.accent}`}>
+                Añade los detalles del cierre (opcional).
+              </p>
+            )}
+            <textarea
+              rows={3}
+              autoFocus
+              placeholder={isRechazado
+                ? 'Rechazado por...'
+                : 'Indique el numero de suministros o diferentes detalles o algo del estilo'}
+              value={comentario}
+              onChange={e => { setComentario(e.target.value); setHasError(false); }}
+              className={`input-field resize-none ${hasError ? '!border-red-400 focus:!ring-red-300' : ''}`}
+            />
+            {hasError && (
+              <p className="text-red-500 text-xs">Campo obligatorio para el estado Rechazado</p>
+            )}
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-100 bg-gray-50 flex items-center justify-end gap-3">
+          <button type="button" onClick={onClose} disabled={saving}
+            className="px-4 py-2 rounded-lg text-sm font-medium text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 transition-colors">
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirmar}
+            disabled={saving || saved}
+            className={`inline-flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white transition-colors ${saved ? 'bg-green-500' : c.btn} disabled:opacity-80 disabled:cursor-not-allowed`}
+          >
+            {saved
+              ? <><CheckCircle size={15} /><span>¡Guardado!</span></>
+              : saving
+                ? <><Loader2 size={15} className="animate-spin" /><span>Guardando...</span></>
+                : <span>Confirmar</span>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── TransicionEstadoModal ─────────────────────────────────────────────────────
 
 function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar }) {
+  const isMobile = isMobileDevice() || window.innerWidth < 768;
+
   // Qué campos necesita cada transición
   const needsFechaEnviada    = targetEstado === 'Enviada Comparativa' ||
                                (targetEstado === 'Valorando' && !visita.fecha_enviada_comparativa);
@@ -206,6 +350,15 @@ function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar }) {
         {/* Cuerpo */}
         <div className="px-5 py-5 space-y-4 overflow-y-auto max-h-[70vh]">
 
+          {/* Banner alerta móvil */}
+          {isMobile && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+              <p className="text-xs font-bold text-red-600 leading-snug">
+                ⚠️ Atención: Este paso requiere adjuntar documentos. Puedes completar esta tramitación de forma más fácil y rápida desde el ordenador; no es obligatorio que subas los archivos ahora mismo con el móvil.
+              </p>
+            </div>
+          )}
+
           {/* ── Fechas ── */}
           {(needsFechaEnviada || needsFechaResolucion) && (
             <div className="space-y-3">
@@ -260,30 +413,8 @@ function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar }) {
             <div className="space-y-3">
               <p className="text-xs font-semibold text-indigo-700">Documentación obligatoria</p>
 
-              {/* Aviso multi-suministro */}
-              <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5 space-y-2">
-                <p className="text-xs text-blue-700 leading-snug">
-                  ℹ️ Si el cliente tiene varios suministros, puede subir un único archivo ZIP que contenga todas las facturas o comparativas.
-                </p>
-                <div className="flex flex-wrap gap-x-3 gap-y-1">
-                  <a
-                    href="https://www.ilovepdf.com/es/unir_pdf"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                  >
-                    🔗 Herramienta para Unir PDFs
-                  </a>
-                  <a
-                    href="https://freetoolonline.com/zip-tools/zip-file.html"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                  >
-                    🔗 Herramienta para Crear ZIP
-                  </a>
-                </div>
-              </div>
+              {/* Aviso multi-suministro + consejo ordenador */}
+              <AvisoDocumentacion />
 
               {/* Factura */}
               <div>
@@ -411,6 +542,8 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
   const [fotoPreview,     setFotoPreview]     = useState(initialData?.foto_negocio_url || '');
   const [facturaFile,     setFacturaFile]     = useState(null);
   const [comparativaFile, setComparativaFile] = useState(null);
+  const [clearFactura,     setClearFactura]     = useState(false);
+  const [clearComparativa, setClearComparativa] = useState(false);
   const [errors,          setErrors]          = useState({});
   const [saving,          setSaving]          = useState(false);
   const [saved,           setSaved]           = useState(false);
@@ -432,7 +565,7 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
 
   const showDocsSection     = ESTADOS_CON_DOCS.includes(form.estado);
   const showFechaEnviada    = form.estado === 'Enviada Comparativa' ||
-                              (form.estado === 'Valorando' && !initialData?.fecha_enviada_comparativa);
+                              (['Valorando', 'Aceptado', 'Rechazado'].includes(form.estado) && !initialData?.fecha_enviada_comparativa);
   const showFechaResolucion = form.estado === 'Aceptado' || form.estado === 'Rechazado';
   const showFechaSection    = showFechaEnviada || showFechaResolucion;
 
@@ -444,8 +577,8 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
     if (!form.persona_autorizada.trim()) e.persona_autorizada = true;
     if (!fotoFile && !fotoPreview)       e.foto               = true;
     if (showDocsSection) {
-      if (!facturaFile && !form.factura_url)         e.factura     = true;
-      if (!comparativaFile && !form.comparativa_url) e.comparativa = true;
+      if (!clearFactura    && !facturaFile    && !form.factura_url)    e.factura     = true;
+      if (!clearComparativa && !comparativaFile && !form.comparativa_url) e.comparativa = true;
     }
     if (showFechaEnviada    && !form.fecha_enviada_comparativa)  e.fecha_enviada_comparativa = true;
     if (showFechaResolucion && !form.fecha_resolucion)           e.fecha_resolucion          = true;
@@ -464,11 +597,16 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
       const t = comentarios.trim();
       if (!t.toLowerCase().startsWith('rechazado por')) comentarios = `Rechazado por ${t}`;
     }
+    const estadoFinal       = form.estado;
+    const needsResolucion   = estadoFinal === 'Aceptado' || estadoFinal === 'Rechazado';
+    const needsFechaEnviada = estadoFinal !== 'Solicitado Factura';
     const formToSave = {
       ...form,
       comentarios,
-      fecha_enviada_comparativa: toISO(form.fecha_enviada_comparativa),
-      fecha_resolucion:          toISO(form.fecha_resolucion),
+      fecha_enviada_comparativa: needsFechaEnviada ? toISO(form.fecha_enviada_comparativa) : null,
+      fecha_resolucion:          needsResolucion   ? toISO(form.fecha_resolucion)          : null,
+      factura_url:    clearFactura    && !facturaFile    ? null : form.factura_url,
+      comparativa_url: clearComparativa && !comparativaFile ? null : form.comparativa_url,
     };
     const result = await onSave(formToSave, fotoFile, initialData?.foto_negocio_url || '', facturaFile, comparativaFile);
     if (result?.error) { setSaving(false); return; }
@@ -625,16 +763,32 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
               {showDocsSection && (
                 <>
                   <p className="text-xs font-semibold text-blue-700">Documentación obligatoria</p>
+                  <AvisoDocumentacion />
                   <div>
                     <label className={`block text-xs font-medium mb-1.5 ${errors.factura ? 'text-red-500' : 'text-google-gray'}`}>Adjuntar Factura *</label>
                     <input type="file" accept=".pdf,image/*"
-                      onChange={e => { setFacturaFile(e.target.files?.[0] || null); setErrors(er => ({ ...er, factura: false })); }}
+                      onChange={e => { setFacturaFile(e.target.files?.[0] || null); setClearFactura(false); setErrors(er => ({ ...er, factura: false })); }}
                       className={`input-field text-xs py-1.5 cursor-pointer ${errors.factura ? '!border-red-400' : ''}`} />
-                    {form.factura_url && !facturaFile && (
-                      <a href={form.factura_url} target="_blank" rel="noopener noreferrer"
-                        className="text-xs text-emerald-600 hover:underline mt-1 inline-flex items-center gap-1">
-                        <ExternalLink size={11} /> Ver factura adjunta actual
-                      </a>
+                    {form.factura_url && !facturaFile && !clearFactura && (
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <a href={form.factura_url} target="_blank" rel="noopener noreferrer"
+                          className="text-xs text-emerald-600 hover:underline inline-flex items-center gap-1">
+                          <ExternalLink size={11} /> Ver factura adjunta actual
+                        </a>
+                        <button type="button" onClick={() => setClearFactura(true)}
+                          className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-2 py-0.5 rounded-md border border-red-200 transition-colors">
+                          <Trash2 size={10} /> Eliminar
+                        </button>
+                      </div>
+                    )}
+                    {clearFactura && !facturaFile && (
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <p className="text-xs text-red-600 font-medium">Archivo marcado para eliminar</p>
+                        <button type="button" onClick={() => setClearFactura(false)}
+                          className="text-xs text-gray-500 hover:text-gray-700 underline">
+                          Deshacer
+                        </button>
+                      </div>
                     )}
                     {facturaFile && <p className="text-xs text-emerald-700 mt-1">Nuevo: {facturaFile.name}</p>}
                     {errors.factura && <p className="text-red-500 text-xs mt-1">Debes adjuntar la factura</p>}
@@ -642,13 +796,28 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
                   <div>
                     <label className={`block text-xs font-medium mb-1.5 ${errors.comparativa ? 'text-red-500' : 'text-google-gray'}`}>Adjuntar Comparativa *</label>
                     <input type="file" accept=".pdf,image/*"
-                      onChange={e => { setComparativaFile(e.target.files?.[0] || null); setErrors(er => ({ ...er, comparativa: false })); }}
+                      onChange={e => { setComparativaFile(e.target.files?.[0] || null); setClearComparativa(false); setErrors(er => ({ ...er, comparativa: false })); }}
                       className={`input-field text-xs py-1.5 cursor-pointer ${errors.comparativa ? '!border-red-400' : ''}`} />
-                    {form.comparativa_url && !comparativaFile && (
-                      <a href={form.comparativa_url} target="_blank" rel="noopener noreferrer"
-                        className="text-xs text-emerald-600 hover:underline mt-1 inline-flex items-center gap-1">
-                        <ExternalLink size={11} /> Ver comparativa adjunta actual
-                      </a>
+                    {form.comparativa_url && !comparativaFile && !clearComparativa && (
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <a href={form.comparativa_url} target="_blank" rel="noopener noreferrer"
+                          className="text-xs text-emerald-600 hover:underline inline-flex items-center gap-1">
+                          <ExternalLink size={11} /> Ver comparativa adjunta actual
+                        </a>
+                        <button type="button" onClick={() => setClearComparativa(true)}
+                          className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-2 py-0.5 rounded-md border border-red-200 transition-colors">
+                          <Trash2 size={10} /> Eliminar
+                        </button>
+                      </div>
+                    )}
+                    {clearComparativa && !comparativaFile && (
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <p className="text-xs text-red-600 font-medium">Archivo marcado para eliminar</p>
+                        <button type="button" onClick={() => setClearComparativa(false)}
+                          className="text-xs text-gray-500 hover:text-gray-700 underline">
+                          Deshacer
+                        </button>
+                      </div>
                     )}
                     {comparativaFile && <p className="text-xs text-emerald-700 mt-1">Nuevo: {comparativaFile.name}</p>}
                     {errors.comparativa && <p className="text-red-500 text-xs mt-1">Debes adjuntar la comparativa</p>}
@@ -707,6 +876,7 @@ export default function RegistroVisitasPymes() {
   const [showModal,       setShowModal]       = useState(false);
   const [editVisita,      setEditVisita]      = useState(null);
   const [transicion,      setTransicion]      = useState(null); // { visita, targetEstado }
+  const [accionRapida,    setAccionRapida]    = useState(null); // { visita, targetEstado }
   const [deleteTarget,    setDeleteTarget]    = useState(null);
   const [search,          setSearch]          = useState('');
   const [filterUbicacion, setFilterUbicacion] = useState('');
@@ -1105,6 +1275,7 @@ export default function RegistroVisitasPymes() {
                             <AccionEstado
                               visita={v}
                               onTransicion={(vis, target) => setTransicion({ visita: vis, targetEstado: target })}
+                              onAccionRapida={(vis, target) => setAccionRapida({ visita: vis, targetEstado: target })}
                             />
                             <button onClick={() => setEditVisita(v)}
                               className="p-1 rounded hover:bg-blue-50 transition-colors" title="Editar">
@@ -1137,12 +1308,22 @@ export default function RegistroVisitasPymes() {
         </div>
       </div>
 
-      {/* Modal de transición de estado (nuevo, exclusivo) */}
+      {/* Modal de transición de estado (ArrowRight: Solicitado → Enviada Comparativa) */}
       {transicion && (
         <TransicionEstadoModal
           visita={transicion.visita}
           targetEstado={transicion.targetEstado}
           onClose={() => setTransicion(null)}
+          onConfirmar={transicionEstadoPyme}
+        />
+      )}
+
+      {/* Modal de acción rápida — reemplaza window.confirm */}
+      {accionRapida && (
+        <AccionRapidaModal
+          visita={accionRapida.visita}
+          targetEstado={accionRapida.targetEstado}
+          onClose={() => setAccionRapida(null)}
           onConfirmar={transicionEstadoPyme}
         />
       )}
