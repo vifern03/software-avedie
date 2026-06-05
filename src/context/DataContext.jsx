@@ -553,8 +553,8 @@ export function DataProvider({ children }) {
   return (
     <DataContext.Provider value={{
       clientes,
-      clientesB2C: clientes.filter(c => c.tipo === 'B2C'),
-      clientesB2B: clientes.filter(c => c.tipo === 'B2B'),
+      clientesB2C: clientes.filter(c => c.tipo === 'B2C' || c.tipo === 'CUR'),
+      clientesB2B: clientes.filter(c => c.tipo === 'B2B' || c.tipo === 'CUR_B2B'),
       actividades,
       visitas,
       visitasPymes,

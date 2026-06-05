@@ -20,7 +20,7 @@ const todayStr = () => new Date().toISOString().split('T')[0];
 
 export default function NewClientModal({ tipo, onClose, onSave, initialData, existingCups, editId }) {
   const { currentUser, users } = useAuth();
-  const isB2B       = tipo === 'B2B';
+  const isB2B       = tipo === 'B2B' || tipo === 'CUR_B2B';
   const isEdit      = !!initialData;
   const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'manager';
 
@@ -144,6 +144,8 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
       e.fecha_formalizada = true;
     if (form.agente_gestor === '__otro__' && !agenteGestorOtro.trim())
       e.agente_gestor_otro = true;
+    if (!form.cuenta_bancaria.trim())             e.cuenta_bancaria = true;
+    if (!form.id_producto.trim())                 e.id_producto     = true;
     if (!isB2B && !isEdit && !dniBase64)         e.dni_b2c       = true;
     if (isB2B && !isEdit && !cifAutonomoBase64) e.cif_autonomo  = true;
     if (isB2B && !isEdit && !dniBase64)         e.dni_b2b       = true;
@@ -202,7 +204,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
             </div>
             <div>
               <h2 className="text-base font-semibold text-google-dark">
-                {isEdit ? `Editar ${isB2B ? 'Empresa B2B' : 'Cliente B2C'}` : isB2B ? 'Nueva Alta B2B (Empresa)' : 'Nueva Alta B2C (Particular)'}
+                {isEdit ? `Editar ${isB2B ? 'Empresa B2B' : 'Cliente B2C'}` : isB2B ? 'Nueva Empresa B2B' : 'Nueva Alta B2C (Particular)'}
               </h2>
               <p className="text-xs text-google-gray">
                 {isEdit ? 'Modifica los campos y guarda los cambios' : 'Completa todos los campos obligatorios'}
@@ -359,12 +361,13 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
 
           {/* Cuenta Bancaria */}
           <div>
-            <label className="block text-xs font-medium text-google-gray mb-1.5">Cuenta Bancaria (IBAN)</label>
+            <label className="block text-xs font-medium text-google-gray mb-1.5">Cuenta Bancaria (IBAN) *</label>
             <div className="relative">
               <div className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray"><CreditCard size={15} /></div>
               <input type="text" placeholder="Ej: ES91 2100 0418 4502 0005 1332" value={form.cuenta_bancaria}
-                onChange={(e) => set('cuenta_bancaria', e.target.value)} className="input-field pl-9" />
+                onChange={(e) => set('cuenta_bancaria', e.target.value)} className={`${inputClass('cuenta_bancaria')} pl-9`} />
             </div>
+            {errors.cuenta_bancaria && <p className="text-red-500 text-xs mt-1">Este campo es obligatorio</p>}
           </div>
 
           {/* Tarifa + Estado */}
@@ -445,15 +448,16 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
           {/* Id Producto */}
           <div>
             <label className="block text-xs font-medium text-google-gray mb-1.5 flex items-center gap-1.5">
-              <Hash size={13} /> Id Producto
+              <Hash size={13} /> Id Producto *
             </label>
             <input
               type="text"
-              placeholder="Ej: PROD-2024-ELEC-01"
+              placeholder="Ej: Tarifa Libre 50 Endesa"
               value={form.id_producto}
               onChange={(e) => set('id_producto', e.target.value)}
-              className="input-field"
+              className={inputClass('id_producto')}
             />
+            {errors.id_producto && <p className="text-red-500 text-xs mt-1">Este campo es obligatorio</p>}
           </div>
 
           {/* Creado por */}
@@ -463,7 +467,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
             </label>
             <input
               type="text"
-              placeholder="Ej: Esgvxpa00301"
+              placeholder="Ej: Salesforce Palencia"
               value={form.creado_por}
               onChange={(e) => set('creado_por', e.target.value)}
               className="input-field"

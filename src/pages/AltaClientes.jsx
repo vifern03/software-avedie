@@ -218,6 +218,7 @@ export default function AltaClientes({ tipo }) {
   const clientes = isB2B ? clientesB2B : clientesB2C;
 
   const [showModal,        setShowModal]        = useState(false);
+  const [showCurModal,     setShowCurModal]     = useState(false);
   const [editClient,       setEditClient]        = useState(null);
   const [deleteTarget,     setDeleteTarget]      = useState(null);
   const [firmaTarget,      setFirmaTarget]       = useState(null);
@@ -225,6 +226,7 @@ export default function AltaClientes({ tipo }) {
   const [search,           setSearch]            = useState('');
   const [searchNombre,     setSearchNombre]      = useState('');
   const [filterComercial,  setFilterComercial]   = useState('');
+  const [filterTipo,       setFilterTipo]        = useState('');
   const [timeFilter,       setTimeFilter]        = useState('');
   const [dateFilter,       setDateFilter]        = useState('');
   const [sortField,        setSortField]         = useState('fecha_tramitacion');
@@ -240,7 +242,7 @@ export default function AltaClientes({ tipo }) {
     return [...new Set([...fromUsers, ...fromData])].sort();
   }, [users, clientes]);
 
-  useEffect(() => { setCurrentPage(1); }, [search, searchNombre, filterComercial, dateFilter, timeFilter]);
+  useEffect(() => { setCurrentPage(1); }, [search, searchNombre, filterComercial, dateFilter, timeFilter, filterTipo]);
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
@@ -282,8 +284,12 @@ export default function AltaClientes({ tipo }) {
       updateCliente(editClient.id, data);
       return { error: null };
     }
-    return await addCliente(data, tipo);
+    const saveTipo = showCurModal ? (isB2B ? 'CUR_B2B' : 'CUR') : tipo;
+    return await addCliente(data, saveTipo);
   };
+
+  const closeModal = () => { setShowModal(false); setShowCurModal(false); setEditClient(null); };
+  const modalTipoActivo = editClient ? editClient.tipo : showCurModal ? (isB2B ? 'CUR_B2B' : 'CUR') : tipo;
 
   const toggleSort = (field) => {
     if (sortField === field) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -305,7 +311,8 @@ export default function AltaClientes({ tipo }) {
       const matchNombre    = !searchNombre    || (c.nombre || '').toLowerCase().includes(qn);
       const matchComercial = !filterComercial || c.comercial === filterComercial;
       const matchDate      = !dateFilter      || c.fecha_tramitacion === dateFilter;
-      return matchSearch && matchNombre && matchComercial && matchDate;
+      const matchTipo      = !filterTipo      || c.tipo === filterTipo;
+      return matchSearch && matchNombre && matchComercial && matchDate && matchTipo;
     })
     .sort((a, b) => {
       let va = a[sortField] ?? '';
@@ -335,10 +342,16 @@ export default function AltaClientes({ tipo }) {
           </h1>
           <p className="text-sm text-google-gray mt-1">Gestión de contratos</p>
         </div>
-        <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-2">
-          <Plus size={16} />
-          <span>Nuevo {isB2B ? 'Empresa' : 'Cliente'}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowCurModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-300 bg-red-50 text-red-700 text-sm font-medium hover:bg-red-100 transition-colors">
+            <Plus size={16} />
+            <span>Alta CUR</span>
+          </button>
+          <button onClick={() => setShowModal(true)} className="btn-primary flex items-center gap-2">
+            <Plus size={16} />
+            <span>{isB2B ? 'Nueva Empresa' : 'Nuevo Cliente'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Counter cards — 3 estados */}
@@ -458,6 +471,12 @@ export default function AltaClientes({ tipo }) {
               </button>
             )}
           </div>
+          <div className="flex items-center gap-1 ml-4 border-l border-google-border pl-4">
+            <span className="text-xs text-google-gray mr-1">Tipo:</span>
+            <FilterPill label="Todos" active={filterTipo === ''} onClick={() => setFilterTipo('')} />
+            <FilterPill label={isB2B ? 'B2B' : 'B2C'} active={filterTipo === (isB2B ? 'B2B' : 'B2C')} onClick={() => setFilterTipo(isB2B ? 'B2B' : 'B2C')} />
+            <FilterPill label="CUR" active={filterTipo === (isB2B ? 'CUR_B2B' : 'CUR')} onClick={() => setFilterTipo(isB2B ? 'CUR_B2B' : 'CUR')} />
+          </div>
         </div>
       </div>
 
@@ -501,7 +520,7 @@ export default function AltaClientes({ tipo }) {
                 <tr>
                   <td colSpan={TOTAL_COLS} className="text-center py-10 text-google-gray text-sm">
                     {baseClientes.length === 0
-                      ? `No hay contratos recientes. Pulsa "Nuevo ${isB2B ? 'Empresa' : 'Cliente'}" para empezar.`
+                      ? `No hay contratos recientes. Pulsa "${isB2B ? 'Nueva Empresa' : 'Nuevo Cliente'}" para empezar.`
                       : 'No se encontraron resultados'}
                   </td>
                 </tr>
@@ -510,7 +529,13 @@ export default function AltaClientes({ tipo }) {
                   <tr key={c.id} className="hover:bg-google-bg transition-colors">
                     <td className="table-cell font-medium text-google-dark whitespace-nowrap">{c.nombre}</td>
                     <td className="table-cell">
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${c.tipo === 'B2B' ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'}`}>{c.tipo}</span>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                        c.tipo === 'B2B'                            ? 'bg-indigo-100 text-indigo-700'
+                        : (c.tipo === 'CUR' || c.tipo === 'CUR_B2B') ? 'bg-red-100 text-red-700'
+                        : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {(c.tipo === 'CUR' || c.tipo === 'CUR_B2B') ? 'CUR' : c.tipo}
+                      </span>
                     </td>
                     <td className="table-cell text-google-gray text-xs">{c.linea_negocio || '—'}</td>
                     <td className="table-cell text-google-gray text-xs max-w-[140px] truncate" title={subtipo(c)}>{subtipo(c)}</td>
@@ -645,11 +670,11 @@ export default function AltaClientes({ tipo }) {
         />
       )}
 
-      {(showModal || editClient) && (
+      {(showModal || showCurModal || editClient) && (
         <NewClientModal
           key={editClient?.id ?? 'new'}
-          tipo={tipo}
-          onClose={() => { setShowModal(false); setEditClient(null); }}
+          tipo={modalTipoActivo}
+          onClose={closeModal}
           onSave={handleModalSave}
           existingCups={allCups}
           editId={editClient?.id}
