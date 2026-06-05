@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
   display_name   TEXT,
   is_undeletable BOOLEAN     DEFAULT FALSE,
   security_pin   TEXT,
+  equipo         TEXT        DEFAULT 'Ambos',
   deleted_at     TIMESTAMPTZ DEFAULT NULL,
   created_at     TIMESTAMPTZ DEFAULT NOW()
 );
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS clientes (
   descripcion       TEXT,
   estado            TEXT        DEFAULT 'Pendiente Firma',
   comercial         TEXT,
+  equipo            TEXT        DEFAULT 'Ambos',
   fecha_tramitacion TEXT,
   fecha_firma       TEXT,
   fecha_formalizada TEXT,
@@ -62,6 +64,14 @@ ALTER TABLE clientes DISABLE ROW LEVEL SECURITY;
 -- ALTER TABLE clientes ADD COLUMN IF NOT EXISTS justo_titulo_url  TEXT;
 -- ALTER TABLE clientes ADD COLUMN IF NOT EXISTS factura_b2b_url   TEXT;
 -- ALTER TABLE clientes ADD COLUMN IF NOT EXISTS consumo_anual_est NUMERIC;
+
+-- MIGRACIÓN — Gestión de Equipos (Sedes) — Fase 5:
+-- ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS equipo TEXT DEFAULT 'Ambos';
+-- ALTER TABLE clientes ADD COLUMN IF NOT EXISTS equipo TEXT DEFAULT 'Ambos';
+-- ALTER TABLE visitas  ADD COLUMN IF NOT EXISTS equipo TEXT DEFAULT 'Ambos';
+-- UPDATE usuarios SET equipo = 'Ambos' WHERE equipo IS NULL;
+-- UPDATE clientes SET equipo = 'Ambos' WHERE equipo IS NULL;
+-- UPDATE visitas  SET equipo = 'Ambos' WHERE equipo IS NULL;
 
 -- MIGRACIÓN — restricción UNIQUE en CUPS (BD ya existente):
 -- Paso 1: comprobar si hay CUPS duplicados (limpiar antes de continuar si hay resultados):
@@ -94,6 +104,7 @@ CREATE TABLE IF NOT EXISTS visitas (
   tipo           TEXT,
   tipo_otro      TEXT,
   registrado_por TEXT,
+  equipo         TEXT        DEFAULT 'Ambos',
   deleted_at     TIMESTAMPTZ DEFAULT NULL,
   created_at     TIMESTAMPTZ DEFAULT NOW()
 );

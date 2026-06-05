@@ -26,7 +26,16 @@ export function DataProvider({ children }) {
     async function loadAll() {
       setIsLoading(true);
 
-      const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+      const isAdmin      = currentUser?.role === 'admin';
+      const isPrivileged = isAdmin || currentUser?.role === 'manager';
+      const userEquipo   = currentUser?.equipo || 'Ambos';
+      const filterByTeam = !isAdmin && userEquipo !== 'Ambos';
+
+      let clientesQuery = supabase
+        .from('clientes')
+        .select('*')
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false });
 
       let visitasQuery = supabase
         .from('visitas')
@@ -40,6 +49,11 @@ export function DataProvider({ children }) {
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
+      if (filterByTeam) {
+        clientesQuery = clientesQuery.eq('equipo', userEquipo);
+        visitasQuery  = visitasQuery.eq('equipo', userEquipo);
+      }
+
       if (currentUser && !isPrivileged) {
         visitasPymesQuery = visitasPymesQuery.eq('registrado_por', currentUser.username);
       }
@@ -50,7 +64,7 @@ export function DataProvider({ children }) {
         { data: visitasData      },
         { data: visitasPymesData },
       ] = await Promise.all([
-        supabase.from('clientes').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
+        clientesQuery,
         supabase.from('actividades').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
         visitasQuery,
         visitasPymesQuery,
@@ -118,6 +132,7 @@ export function DataProvider({ children }) {
       tipo_otro:            data.tipo_otro   || '',
       punto_venta:          data.punto_venta || '',
       registrado_por:       currentUser?.username || 'Sistema',
+      equipo:               currentUser?.equipo   || 'Ambos',
       dni_cif_escaneado_url,
       dni_cif_reverso_url,
     };
@@ -311,6 +326,7 @@ export function DataProvider({ children }) {
       descripcion:      data.descripcion     || '',
       estado:           data.estado          || 'Pendiente Firma',
       comercial:        data.agente_gestor   || currentUser?.username || 'Desconocido',
+      equipo:           currentUser?.equipo  || 'Ambos',
       fecha_tramitacion: tramitacion,
       fecha_firma:       data.fecha_firma       || null,
       fecha_formalizada: data.fecha_formalizada || null,

@@ -329,6 +329,7 @@ export default function GestionUsuarios() {
     users, permissions, updatePermissions,
     addUser, editUser, deleteUser, pin, changePin,
     userPermissions, updateUserPermission, removeUserPermission, resetUserPermissions,
+    updateUserEquipo,
   } = useAuth();
 
   const [flash, setFlash]                           = useState(null);
@@ -604,6 +605,19 @@ export default function GestionUsuarios() {
                         )}
                       </p>
                       <p className={`text-xs ${meta.text}`}>{meta.label}</p>
+                    </div>
+                    {/* Sede del equipo */}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <span className="text-xs text-google-gray whitespace-nowrap">Sede:</span>
+                      <select
+                        value={user.equipo || 'Ambos'}
+                        onChange={(e) => updateUserEquipo(user.username, e.target.value)}
+                        className="text-xs border border-google-border rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 text-google-dark cursor-pointer"
+                      >
+                        <option value="Palencia">Palencia</option>
+                        <option value="Valladolid">Valladolid</option>
+                        <option value="Ambos">Ambos</option>
+                      </select>
                     </div>
                     {hasOverrides && (
                       <button

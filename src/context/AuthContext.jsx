@@ -21,6 +21,7 @@ function dbToUser(row) {
     displayName:   row.display_name   || row.username,
     isUndeletable: row.is_undeletable || false,
     securityPin:   row.security_pin   || null,
+    equipo:        row.equipo         || 'Ambos',
   };
 }
 
@@ -256,12 +257,24 @@ export function AuthProvider({ children }) {
       .then(({ error }) => { if (error) console.error('changePin:', error); });
   }, []);
 
+  const updateUserEquipo = useCallback((username, equipo) => {
+    setUsers(prev => prev.map(u => u.username === username ? { ...u, equipo } : u));
+    supabase.from('usuarios').update({ equipo }).eq('username', username)
+      .then(({ error }) => { if (error) console.error('updateUserEquipo:', error); });
+    if (currentUser?.username === username) {
+      const updated = { ...currentUser, equipo };
+      setCurrentUser(updated);
+      localStorage.setItem(SESSION_KEY, JSON.stringify(updated));
+    }
+  }, [currentUser]);
+
   return (
     <AuthContext.Provider value={{
       currentUser, permissions, users, pin, userPermissions, isLoading, dbError,
       login, logout, updatePermissions, hasAccess,
       addUser, editUser, deleteUser, changePin,
       updateUserPermission, removeUserPermission, resetUserPermissions,
+      updateUserEquipo,
     }}>
       {children}
     </AuthContext.Provider>
