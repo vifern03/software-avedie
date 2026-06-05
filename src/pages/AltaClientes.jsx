@@ -64,30 +64,31 @@ function StatusBadge({ estado }) {
   );
 }
 
-function downloadBase64File(base64, clientName = 'documento') {
-  const mime  = base64.split(';')[0].replace('data:', '');
-  const ext   = mime === 'application/pdf' ? 'pdf' : mime === 'image/jpeg' ? 'jpg' : mime === 'image/png' ? 'png' : 'bin';
-  const link  = document.createElement('a');
-  link.href   = base64;
-  link.download = `${clientName.replace(/\s+/g, '_')}.${ext}`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+function openBase64File(base64) {
+  const mime = base64.split(';')[0].replace('data:', '');
+  const byteString = atob(base64.split(',')[1]);
+  const ab = new ArrayBuffer(byteString.length);
+  const ia = new Uint8Array(ab);
+  for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+  const blob = new Blob([ab], { type: mime });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank', 'noopener,noreferrer');
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
 function FileCell({ value, clientName }) {
   if (!value) return <span className="text-google-gray">—</span>;
   if (value.startsWith('data:')) {
     return (
-      <button onClick={() => downloadBase64File(value, clientName)}
-        className="p-1 rounded hover:bg-slate-100 transition-colors" title="Descargar">
+      <button onClick={() => openBase64File(value)}
+        className="p-1 rounded hover:bg-slate-100 transition-colors" title="Ver archivo">
         <Eye size={15} className="text-slate-500" />
       </button>
     );
   }
   return (
     <a href={value} target="_blank" rel="noopener noreferrer"
-      className="p-1 rounded hover:bg-slate-100 transition-colors" title="Ver DNI/CIF">
+      className="p-1 rounded hover:bg-slate-100 transition-colors" title="Ver archivo">
       <Eye size={15} className="text-slate-500" />
     </a>
   );
@@ -97,7 +98,7 @@ function DocIcon({ value, label, clientName }) {
   if (!value) return null;
   if (value.startsWith('data:')) {
     return (
-      <button onClick={() => downloadBase64File(value, clientName)}
+      <button onClick={() => openBase64File(value)}
         className="p-1 rounded hover:bg-indigo-50 transition-colors" title={label}>
         <Eye size={15} className="text-indigo-400 hover:text-indigo-600" />
       </button>
