@@ -29,7 +29,8 @@ export function DataProvider({ children }) {
       const isAdmin      = currentUser?.role === 'admin';
       const isPrivileged = isAdmin || currentUser?.role === 'manager';
       const userEquipo   = currentUser?.equipo || 'Ambos';
-      const filterByTeam = !isAdmin && userEquipo !== 'Ambos';
+      const filterByTeam = !isAdmin && userEquipo !== 'Ambos' && userEquipo !== 'Ninguno';
+      const filterByOwn  = !isAdmin && userEquipo === 'Ninguno';
 
       let clientesQuery = supabase
         .from('clientes')
@@ -52,6 +53,11 @@ export function DataProvider({ children }) {
       if (filterByTeam) {
         clientesQuery = clientesQuery.eq('equipo', userEquipo);
         visitasQuery  = visitasQuery.eq('equipo', userEquipo);
+      }
+
+      if (filterByOwn) {
+        clientesQuery = clientesQuery.eq('comercial', currentUser.username);
+        visitasQuery  = visitasQuery.eq('registrado_por', currentUser.username);
       }
 
       if (currentUser && !isPrivileged) {

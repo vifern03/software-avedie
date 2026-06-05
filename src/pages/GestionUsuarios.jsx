@@ -617,6 +617,7 @@ export default function GestionUsuarios() {
                         <option value="Palencia">Palencia</option>
                         <option value="Valladolid">Valladolid</option>
                         <option value="Ambos">Ambos</option>
+                        <option value="Ninguno">Ninguno</option>
                       </select>
                     </div>
                     {hasOverrides && (
