@@ -254,7 +254,10 @@ export default function AltaClientes({ tipo }) {
 
   const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'manager';
   const isAdmin      = currentUser?.role === 'admin';
+  const userEquipo   = currentUser?.equipo || 'Ambos';
+  const isTeamMember = !isPrivileged && (userEquipo === 'Palencia' || userEquipo === 'Valladolid');
 
+  // Contadores: siempre individuales
   const baseClientes = clientes.filter((c) => {
     const d = new Date(c.fecha_tramitacion || '');
     if (isNaN(d) || d < cutoff) return false;
@@ -265,6 +268,14 @@ export default function AltaClientes({ tipo }) {
   const totalPendienteFirma = baseClientes.filter((c) => c.estado === 'Pendiente Firma').length;
   const totalTramitados     = baseClientes.filter((c) => c.estado === 'Tramitado').length;
   const totalFormalizados   = baseClientes.filter((c) => c.estado === 'Formalizado').length;
+
+  // Tabla: miembros de equipo ven todos los contratos del equipo (DataContext ya los acota por sede)
+  const baseTabla = isTeamMember
+    ? clientes.filter((c) => {
+        const d = new Date(c.fecha_tramitacion || '');
+        return !isNaN(d) && d >= cutoff;
+      })
+    : baseClientes;
 
   const handleModalSave = async (data) => {
     if (editClient) {
@@ -286,7 +297,7 @@ export default function AltaClientes({ tipo }) {
       : <ChevronDown size={12} className="text-google-blue" />;
   };
 
-  const filtered = getTimeFilteredList(baseClientes, timeFilter)
+  const filtered = getTimeFilteredList(baseTabla, timeFilter)
     .filter((c) => {
       const q  = search.toLowerCase();
       const qn = searchNombre.toLowerCase();
