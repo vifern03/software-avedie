@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '../lib/supabase';
 
@@ -13,22 +13,84 @@ const formatDateDDMMYYYY = (dateStr) => {
   return `${parts[2]}/${parts[1]}/${parts[0]}`;
 };
 
+// ── Stale-while-revalidate cache ──────────────────────────────────────────────
+// Campos Base64 excluidos del caché para no saturar localStorage (pueden ser
+// varios MB por cliente). HistoricaDB los obtiene del fetch en segundo plano.
+const BINARY_FIELDS = ['dni_escaneado', 'ultima_factura', 'cif_autonomo_url', 'justo_titulo_url', 'factura_b2b_url'];
+
+const cacheKey = (username) => `dashboard_cache_${username}`;
+
+const readCache = (username) => {
+  if (!username) return null;
+  try {
+    const raw = localStorage.getItem(cacheKey(username));
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+};
+
+const writeCache = (username, data) => {
+  if (!username) return;
+  try {
+    const payload = {
+      ...data,
+      clientes: data.clientes.map(c => {
+        const r = { ...c };
+        BINARY_FIELDS.forEach(f => delete r[f]);
+        return r;
+      }),
+    };
+    localStorage.setItem(cacheKey(username), JSON.stringify(payload));
+  } catch { /* cuota agotada — ignorar silenciosamente */ }
+};
+
+
 export function DataProvider({ children }) {
   const { currentUser, users } = useAuth();
 
-  const [clientes,    setClientes]    = useState([]);
-  const [actividades, setActividades] = useState([]);
+  const [clientes,     setClientes]     = useState([]);
+  const [actividades,  setActividades]  = useState([]);
   const [visitas,      setVisitas]      = useState([]);
   const [visitasPymes, setVisitasPymes] = useState([]);
   const [isLoading,    setIsLoading]    = useState(true);
 
-  useEffect(() => {
-    async function loadAll() {
-      setIsLoading(true);
+  // Clave de la última carga completada: evita el double-fetch cuando
+  // AuthContext revalida currentUser con los mismos datos de BD.
+  const lastFetchKey = useRef(null);
 
-      const isAdmin      = currentUser?.role === 'admin';
-      const isPrivileged = isAdmin || currentUser?.role === 'manager';
-      const userEquipo   = currentUser?.equipo || 'Ambos';
+  useEffect(() => {
+    // Si no hay usuario, limpiar estado (cambio de cuenta o logout)
+    if (!currentUser) {
+      setClientes([]);
+      setActividades([]);
+      setVisitas([]);
+      setVisitasPymes([]);
+      setIsLoading(false);
+      lastFetchKey.current = null;
+      return;
+    }
+
+    // Guard: si la identidad relevante para los filtros no cambió, no re-fetchar
+    const fetchKey = `${currentUser.username}|${currentUser.role}|${currentUser.equipo}`;
+    if (fetchKey === lastFetchKey.current) return;
+    lastFetchKey.current = fetchKey;
+
+    // ── 1. Inyectar caché INMEDIATAMENTE (pintura instantánea) ───────────────
+    const userCache = readCache(currentUser.username);
+    if (userCache) {
+      setClientes(userCache.clientes     || []);
+      setActividades(userCache.actividades  || []);
+      setVisitas(userCache.visitas       || []);
+      setVisitasPymes(userCache.visitasPymes || []);
+      setIsLoading(false);
+    } else {
+      setIsLoading(true);
+    }
+
+    // ── 2. Revalidación asíncrona en segundo plano ───────────────────────────
+    async function loadAll() {
+      const isAdmin      = currentUser.role === 'admin';
+      const isPrivileged = isAdmin || currentUser.role === 'manager';
+      const userEquipo   = currentUser.equipo || 'Ambos';
       const filterByTeam = !isAdmin && userEquipo !== 'Ambos' && userEquipo !== 'Ninguno';
       const filterByOwn  = !isAdmin && userEquipo === 'Ninguno';
 
@@ -60,14 +122,14 @@ export function DataProvider({ children }) {
         visitasQuery  = visitasQuery.eq('registrado_por', currentUser.username);
       }
 
-      if (currentUser && !isPrivileged) {
+      if (!isPrivileged) {
         visitasPymesQuery = visitasPymesQuery.eq('registrado_por', currentUser.username);
       }
 
       const [
-        { data: clientesData     },
-        { data: actividadesData  },
-        { data: visitasData      },
+        { data: clientesData,     error: clientesErr },
+        { data: actividadesData },
+        { data: visitasData },
         { data: visitasPymesData },
       ] = await Promise.all([
         clientesQuery,
@@ -76,12 +138,36 @@ export function DataProvider({ children }) {
         visitasPymesQuery,
       ]);
 
-      setClientes(clientesData      || []);
-      setActividades(actividadesData || []);
-      setVisitas(visitasData        || []);
-      setVisitasPymes(visitasPymesData || []);
+      // ── 3. Evitar race condition: descartar si el usuario cambió ──────────
+      if (lastFetchKey.current !== fetchKey) return;
+
+      if (clientesErr) {
+        // Error de red/BD: mantener datos del caché si existen
+        if (!userCache) setIsLoading(false);
+        return;
+      }
+
+      const newClientes     = clientesData     || [];
+      const newActividades  = actividadesData  || [];
+      const newVisitas      = visitasData      || [];
+      const newVisitasPymes = visitasPymesData || [];
+
+      setClientes(newClientes);
+      setActividades(newActividades);
+      setVisitas(newVisitas);
+      setVisitasPymes(newVisitasPymes);
+
+      // Persistir datos frescos para la próxima carga
+      writeCache(currentUser.username, {
+        clientes:     newClientes,
+        actividades:  newActividades,
+        visitas:      newVisitas,
+        visitasPymes: newVisitasPymes,
+      });
+
       setIsLoading(false);
     }
+
     loadAll();
   }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
