@@ -229,6 +229,7 @@ export default function AltaClientes({ tipo }) {
   const [filterPrescriptor, setFilterPrescriptor] = useState('');
   const [filterComercial,   setFilterComercial]   = useState('');
   const [filterTipo,       setFilterTipo]        = useState('');
+  const [filterEstado,     setFilterEstado]      = useState('');
   const [timeFilter,       setTimeFilter]        = useState('');
   const [dateFilter,       setDateFilter]        = useState('');
   const [sortField,        setSortField]         = useState('fecha_tramitacion');
@@ -244,7 +245,7 @@ export default function AltaClientes({ tipo }) {
     return [...new Set([...fromUsers, ...fromData])].sort();
   }, [users, clientes]);
 
-  useEffect(() => { setCurrentPage(1); }, [search, searchNombre, filterPrescriptor, filterComercial, dateFilter, timeFilter, filterTipo]);
+  useEffect(() => { setCurrentPage(1); }, [search, searchNombre, filterPrescriptor, filterComercial, dateFilter, timeFilter, filterTipo, filterEstado]);
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
@@ -315,7 +316,8 @@ export default function AltaClientes({ tipo }) {
       const matchComercial   = !filterComercial   || c.comercial === filterComercial;
       const matchDate        = !dateFilter        || c.fecha_tramitacion === dateFilter;
       const matchTipo        = !filterTipo        || c.tipo === filterTipo;
-      return matchSearch && matchNombre && matchPrescriptor && matchComercial && matchDate && matchTipo;
+      const matchEstado      = !filterEstado      || c.estado === filterEstado;
+      return matchSearch && matchNombre && matchPrescriptor && matchComercial && matchDate && matchTipo && matchEstado;
     })
     .sort((a, b) => {
       let va = a[sortField] ?? '';
@@ -487,6 +489,27 @@ export default function AltaClientes({ tipo }) {
             <FilterPill label="Todos" active={filterTipo === ''} onClick={() => setFilterTipo('')} />
             <FilterPill label={isB2B ? 'B2B' : 'B2C'} active={filterTipo === (isB2B ? 'B2B' : 'B2C')} onClick={() => setFilterTipo(isB2B ? 'B2B' : 'B2C')} />
             <FilterPill label="CUR" active={filterTipo === (isB2B ? 'CUR_B2B' : 'CUR')} onClick={() => setFilterTipo(isB2B ? 'CUR_B2B' : 'CUR')} />
+          </div>
+          <div className="flex items-center gap-1 ml-4 border-l border-google-border pl-4">
+            <select
+              value={filterEstado}
+              onChange={(e) => setFilterEstado(e.target.value)}
+              className="input-field h-9 min-w-[180px] text-sm"
+            >
+              <option value="">Filtrar por estado...</option>
+              <option value="Pendiente Firma">Pendiente Firma</option>
+              <option value="Tramitado">Tramitado</option>
+              <option value="Formalizado">Formalizado</option>
+            </select>
+            {filterEstado && (
+              <button
+                onClick={() => setFilterEstado('')}
+                className="p-1 rounded text-google-gray hover:text-red-500 hover:bg-red-50 transition-colors"
+                title="Quitar filtro"
+              >
+                <X size={13} />
+              </button>
+            )}
           </div>
         </div>
       </div>
