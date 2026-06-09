@@ -428,34 +428,32 @@ export default function AltaClientes({ tipo }) {
           </div>
         </div>
 
-        {/* Fila 2 (solo B2B): buscador por nombre + filtro por comercial */}
-        {isB2B && (
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray" />
-              <input type="text" placeholder="Buscar por nombre..." value={searchNombre}
-                onChange={(e) => setSearchNombre(e.target.value)} className="input-field pl-9 h-9" />
-              {searchNombre && (
-                <button onClick={() => setSearchNombre('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-google-gray hover:text-google-dark">
-                  <X size={14} />
-                </button>
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              <select value={filterComercial} onChange={(e) => setFilterComercial(e.target.value)}
-                className="input-field h-9 min-w-[180px] text-sm">
-                <option value="">Filtrar por comercial...</option>
-                {comercialesDisponibles.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-              {filterComercial && (
-                <button onClick={() => setFilterComercial('')}
-                  className="p-1 rounded text-google-gray hover:text-red-500 hover:bg-red-50 transition-colors" title="Quitar filtro">
-                  <X size={13} />
-                </button>
-              )}
-            </div>
+        {/* Fila 2: buscador por nombre + filtro por comercial */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray" />
+            <input type="text" placeholder="Buscar por nombre..." value={searchNombre}
+              onChange={(e) => setSearchNombre(e.target.value)} className="input-field pl-9 h-9" />
+            {searchNombre && (
+              <button onClick={() => setSearchNombre('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-google-gray hover:text-google-dark">
+                <X size={14} />
+              </button>
+            )}
           </div>
-        )}
+          <div className="flex items-center gap-1">
+            <select value={filterComercial} onChange={(e) => setFilterComercial(e.target.value)}
+              className="input-field h-9 min-w-[180px] text-sm">
+              <option value="">Filtrar por comercial...</option>
+              {comercialesDisponibles.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            {filterComercial && (
+              <button onClick={() => setFilterComercial('')}
+                className="p-1 rounded text-google-gray hover:text-red-500 hover:bg-red-50 transition-colors" title="Quitar filtro">
+                <X size={13} />
+              </button>
+            )}
+          </div>
+        </div>
 
         {/* Fila 3: filtros de tramitación */}
         <div className="flex flex-wrap items-center gap-2">

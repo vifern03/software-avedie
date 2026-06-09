@@ -110,6 +110,21 @@ CREATE TABLE IF NOT EXISTS visitas (
 );
 ALTER TABLE visitas DISABLE ROW LEVEL SECURITY;
 
+-- ── Tabla de fichajes (Control de Horario) ──────────────────────────────────
+CREATE TABLE IF NOT EXISTS fichajes (
+  id           BIGINT      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  usuario      TEXT        NOT NULL,
+  fecha        TEXT        NOT NULL,
+  hora_entrada TEXT,
+  hora_salida  TEXT,
+  eventos      JSONB       DEFAULT '[]'::jsonb,
+  created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE fichajes DISABLE ROW LEVEL SECURITY;
+-- MIGRACIÓN (ejecutar si la tabla ya existe):
+-- ALTER TABLE fichajes ADD COLUMN IF NOT EXISTS eventos JSONB DEFAULT '[]'::jsonb;
+-- NOTIFY pgrst, 'reload schema';
+
 -- ── Tabla de reportes de software ───────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS reportes (
   id              BIGINT      PRIMARY KEY,

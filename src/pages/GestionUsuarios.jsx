@@ -15,6 +15,7 @@ const PAGES = [
   { id: 'b2b',          label: 'Alta B2B'        },
   { id: 'visitas',      label: 'Visitas Tienda'  },
   { id: 'visitas_pymes', label: 'Visitas PYME'   },
+  { id: 'fichajes',     label: 'Control Horario' },
   { id: 'reportes',     label: 'Reportes'        },
   { id: 'historial',    label: 'Historial'       },
 ];
