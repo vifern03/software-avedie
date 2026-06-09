@@ -56,7 +56,7 @@ export function DataProvider({ children }) {
       }
 
       if (filterByOwn) {
-        clientesQuery = clientesQuery.eq('comercial', currentUser.username);
+        clientesQuery = clientesQuery.or(`comercial.eq.${currentUser.username},creado_por.eq.${currentUser.username}`);
         visitasQuery  = visitasQuery.eq('registrado_por', currentUser.username);
       }
 
@@ -540,12 +540,17 @@ export function DataProvider({ children }) {
     clientes.forEach((c) => {
       const d = new Date(c.fecha_tramitacion || '');
       if (isNaN(d.getTime()) || d.getMonth() !== curMonth || d.getFullYear() !== curYear) return;
-      if (!map[c.comercial]) {
-        const av = (c.comercial || '??').slice(0, 2).toUpperCase();
-        map[c.comercial] = { id: c.comercial, nombre: c.comercial, avatar: av, cerrados: 0, pendientes: 0 };
+      const key = c.creado_por || '';
+      if (!key) return;
+      if (!map[key]) {
+        const knownUser = users.find(u => u.username === key);
+        const av = knownUser
+          ? (knownUser.displayName || knownUser.username).split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+          : key.slice(0, 2).toUpperCase();
+        map[key] = { id: key, nombre: knownUser?.displayName || key, avatar: av, cerrados: 0, pendientes: 0 };
       }
-      if (c.estado === 'Formalizado') map[c.comercial].cerrados++;
-      else if (c.estado === 'Tramitado' || c.estado === 'Pendiente Firma') map[c.comercial].pendientes++;
+      if (c.estado === 'Formalizado') map[key].cerrados++;
+      else if (c.estado === 'Tramitado' || c.estado === 'Pendiente Firma') map[key].pendientes++;
     });
     return Object.values(map).sort((a, b) => b.cerrados - a.cerrados || b.pendientes - a.pendientes);
   }, [clientes, users]);

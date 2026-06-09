@@ -27,6 +27,9 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
   const initialAgenteGestorValue = initialData?.agente_gestor || currentUser?.username || '';
   const isKnownUser = !initialAgenteGestorValue || users.some(u => u.username === initialAgenteGestorValue);
 
+  const initialCreadoPorValue = initialData?.creado_por || '';
+  const isCreadoPorKnown = !initialCreadoPorValue || users.some(u => u.username === initialCreadoPorValue);
+
   const [form, setForm] = useState({
     nombre:            initialData?.nombre            || '',
     identificacion:    initialData?.identificacion    || '',
@@ -37,7 +40,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
     subtipo:           initialData?.subtipo           || '',
     subtipo_otro:      initialData?.subtipo_otro      || '',
     id_producto:       initialData?.id_producto       || '',
-    creado_por:        initialData?.creado_por        || '',
+    creado_por:        isCreadoPorKnown ? initialCreadoPorValue : '__otro__',
     descripcion:       initialData?.descripcion       || '',
     consumo_anual_est: initialData?.consumo_anual_est != null ? String(initialData.consumo_anual_est) : '',
     estado:            initialData?.estado            || 'Pendiente Firma',
@@ -48,7 +51,8 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
     fecha_firma:       initialData?.fecha_firma       ?? null,
     fecha_formalizada: initialData?.fecha_formalizada ?? null,
   });
-  const [agenteGestorOtro, setAgenteGestorOtro] = useState(isKnownUser ? '' : initialAgenteGestorValue);
+  const [agenteGestorOtro,  setAgenteGestorOtro]  = useState(isKnownUser     ? '' : initialAgenteGestorValue);
+  const [prescriptorOtro,   setPrescriptorOtro]   = useState(isCreadoPorKnown ? '' : initialCreadoPorValue);
   const [errors,       setErrors]       = useState({});
   const [saved,        setSaved]        = useState(false);
   const [cupsDbError,  setCupsDbError]  = useState(null);
@@ -144,6 +148,10 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
       e.fecha_formalizada = true;
     if (form.agente_gestor === '__otro__' && !agenteGestorOtro.trim())
       e.agente_gestor_otro = true;
+    if (!form.creado_por)
+      e.creado_por = true;
+    if (form.creado_por === '__otro__' && !prescriptorOtro.trim())
+      e.prescriptor_otro = true;
     if (!form.cuenta_bancaria.trim())             e.cuenta_bancaria = true;
     if (!form.id_producto.trim())                 e.id_producto     = true;
     if (!isB2B && !isEdit && !dniBase64)         e.dni_b2c       = true;
@@ -162,9 +170,11 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
     setCupsDbError(null);
 
     const efectiveAgenteGestor = form.agente_gestor === '__otro__' ? agenteGestorOtro.trim() : form.agente_gestor;
+    const efectivePrescriptor  = form.creado_por    === '__otro__' ? prescriptorOtro.trim()  : form.creado_por;
     const result = await onSave({
       ...form,
       agente_gestor:    efectiveAgenteGestor,
+      creado_por:       efectivePrescriptor,
       tipo,
       dni_escaneado:    dniBase64,
       ultima_factura:   ultimaFacturaBase64 || null,
@@ -460,18 +470,33 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
             {errors.id_producto && <p className="text-red-500 text-xs mt-1">Este campo es obligatorio</p>}
           </div>
 
-          {/* Creado por */}
+          {/* Prescriptor */}
           <div>
             <label className="block text-xs font-medium text-google-gray mb-1.5 flex items-center gap-1.5">
-              <User size={13} /> Creado por
+              <User size={13} /> Prescriptor *
             </label>
-            <input
-              type="text"
-              placeholder="Ej: Salesforce Palencia"
+            <select
               value={form.creado_por}
-              onChange={(e) => set('creado_por', e.target.value)}
-              className="input-field"
-            />
+              onChange={(e) => { set('creado_por', e.target.value); setErrors(er => ({ ...er, prescriptor_otro: false })); }}
+              className={inputClass('creado_por')}
+            >
+              <option value="">Seleccionar prescriptor...</option>
+              {users.map((u) => (
+                <option key={u.username} value={u.username}>{u.displayName || u.username}</option>
+              ))}
+              <option value="__otro__">Otro</option>
+            </select>
+            {form.creado_por === '__otro__' && (
+              <input
+                type="text"
+                placeholder="Escribe el nombre del prescriptor..."
+                value={prescriptorOtro}
+                onChange={(e) => { setPrescriptorOtro(e.target.value); setErrors(er => ({ ...er, prescriptor_otro: false })); }}
+                className={`input-field mt-2 ${errors.prescriptor_otro ? '!border-red-400 focus:!ring-red-300' : ''}`}
+              />
+            )}
+            {errors.creado_por    && <p className="text-red-500 text-xs mt-1">Este campo es obligatorio</p>}
+            {errors.prescriptor_otro && <p className="text-red-500 text-xs mt-1">Debes especificar el nombre del prescriptor</p>}
           </div>
 
           {/* Descripción */}

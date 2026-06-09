@@ -185,7 +185,7 @@ export default function HistoricaDB() {
       { header: 'CUPS',             key: 'cups',              width: 30, style: { numFmt: '@' } },
       { header: 'Tarifa',           key: 'tarifa',            width: 12 },
       { header: 'Id Producto',      key: 'id_producto',       width: 20 },
-      { header: 'Creado por',       key: 'creado_por',        width: 18 },
+      { header: 'Prescriptor',      key: 'creado_por',        width: 18 },
       { header: 'Tramitado por',    key: 'tramitado_por',     width: 18 },
       { header: 'F. Firma',        key: 'fecha_firma',       width: 14 },
       { header: 'F. Tramitación',  key: 'fecha_tramitacion', width: 16 },
@@ -382,7 +382,7 @@ export default function HistoricaDB() {
                   <th className="table-header">CUPS</th>
                   {th('tarifa',            'Tarifa')}
                   <th className="table-header">Id Producto</th>
-                  <th className="table-header">Creado por</th>
+                  <th className="table-header">Prescriptor</th>
                   {th('comercial',         'Tramitado por')}
                   {th('fecha_firma',       'F. Firma')}
                   {th('fecha_tramitacion', 'F. Tramitación')}

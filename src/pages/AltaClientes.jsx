@@ -225,8 +225,9 @@ export default function AltaClientes({ tipo }) {
   const [firmaTarget,      setFirmaTarget]       = useState(null);
   const [formalizarTarget, setFormalizarTarget]  = useState(null);
   const [search,           setSearch]            = useState('');
-  const [searchNombre,     setSearchNombre]      = useState('');
-  const [filterComercial,  setFilterComercial]   = useState('');
+  const [searchNombre,      setSearchNombre]      = useState('');
+  const [filterPrescriptor, setFilterPrescriptor] = useState('');
+  const [filterComercial,   setFilterComercial]   = useState('');
   const [filterTipo,       setFilterTipo]        = useState('');
   const [timeFilter,       setTimeFilter]        = useState('');
   const [dateFilter,       setDateFilter]        = useState('');
@@ -243,7 +244,7 @@ export default function AltaClientes({ tipo }) {
     return [...new Set([...fromUsers, ...fromData])].sort();
   }, [users, clientes]);
 
-  useEffect(() => { setCurrentPage(1); }, [search, searchNombre, filterComercial, dateFilter, timeFilter, filterTipo]);
+  useEffect(() => { setCurrentPage(1); }, [search, searchNombre, filterPrescriptor, filterComercial, dateFilter, timeFilter, filterTipo]);
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
@@ -264,7 +265,7 @@ export default function AltaClientes({ tipo }) {
   const baseClientes = clientes.filter((c) => {
     const d = new Date(c.fecha_tramitacion || '');
     if (isNaN(d) || d < cutoff) return false;
-    if (!isPrivileged && c.comercial !== currentUser?.username) return false;
+    if (!isPrivileged && c.comercial !== currentUser?.username && c.creado_por !== currentUser?.username) return false;
     return true;
   });
 
@@ -308,12 +309,13 @@ export default function AltaClientes({ tipo }) {
     .filter((c) => {
       const q  = search.toLowerCase();
       const qn = searchNombre.toLowerCase();
-      const matchSearch    = !search          || (c.cups || '').toLowerCase().includes(q) || (c.cif_dni || '').toLowerCase().includes(q);
-      const matchNombre    = !searchNombre    || (c.nombre || '').toLowerCase().includes(qn);
-      const matchComercial = !filterComercial || c.comercial === filterComercial;
-      const matchDate      = !dateFilter      || c.fecha_tramitacion === dateFilter;
-      const matchTipo      = !filterTipo      || c.tipo === filterTipo;
-      return matchSearch && matchNombre && matchComercial && matchDate && matchTipo;
+      const matchSearch      = !search            || (c.cups || '').toLowerCase().includes(q) || (c.cif_dni || '').toLowerCase().includes(q);
+      const matchNombre      = !searchNombre      || (c.nombre    || '').toLowerCase().includes(qn);
+      const matchPrescriptor = !filterPrescriptor || (c.creado_por || '').toLowerCase().includes(filterPrescriptor.toLowerCase());
+      const matchComercial   = !filterComercial   || c.comercial === filterComercial;
+      const matchDate        = !dateFilter        || c.fecha_tramitacion === dateFilter;
+      const matchTipo        = !filterTipo        || c.tipo === filterTipo;
+      return matchSearch && matchNombre && matchPrescriptor && matchComercial && matchDate && matchTipo;
     })
     .sort((a, b) => {
       let va = a[sortField] ?? '';
@@ -428,7 +430,7 @@ export default function AltaClientes({ tipo }) {
           </div>
         </div>
 
-        {/* Fila 2: buscador por nombre + filtro por comercial */}
+        {/* Fila 2: nombre + prescriptor + tramitador */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[200px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray" />
@@ -440,10 +442,20 @@ export default function AltaClientes({ tipo }) {
               </button>
             )}
           </div>
+          <div className="relative flex-1 min-w-[180px]">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray" />
+            <input type="text" placeholder="Buscar por Prescriptor..." value={filterPrescriptor}
+              onChange={(e) => setFilterPrescriptor(e.target.value)} className="input-field pl-9 h-9" />
+            {filterPrescriptor && (
+              <button onClick={() => setFilterPrescriptor('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-google-gray hover:text-google-dark">
+                <X size={14} />
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-1">
             <select value={filterComercial} onChange={(e) => setFilterComercial(e.target.value)}
               className="input-field h-9 min-w-[180px] text-sm">
-              <option value="">Filtrar por comercial...</option>
+              <option value="">Filtrar por tramitador...</option>
               {comercialesDisponibles.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
             {filterComercial && (
@@ -501,7 +513,7 @@ export default function AltaClientes({ tipo }) {
                 <th className="table-header">CUPS</th>
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('tarifa')}><div className="flex items-center gap-1">Tarifa <SortIcon field="tarifa" /></div></th>
                 <th className="table-header">Id Producto</th>
-                <th className="table-header">Creado por</th>
+                <th className="table-header">Prescriptor</th>
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('comercial')}><div className="flex items-center gap-1">Tramitado por <SortIcon field="comercial" /></div></th>
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('fecha_firma')}><div className="flex items-center gap-1">F. Firma <SortIcon field="fecha_firma" /></div></th>
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('fecha_tramitacion')}><div className="flex items-center gap-1">F. Tramitación <SortIcon field="fecha_tramitacion" /></div></th>
