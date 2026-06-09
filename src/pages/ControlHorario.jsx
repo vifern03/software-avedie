@@ -160,9 +160,9 @@ function runMockTests() {
 
 function RelojDigital({ now }) {
   return (
-    <div className="flex items-center justify-center gap-3 py-5">
-      <Clock size={32} className="text-google-blue flex-shrink-0" />
-      <span className="text-6xl font-mono font-bold text-google-dark tracking-widest tabular-nums select-none">
+    <div className="flex items-center justify-center gap-2 sm:gap-3 py-4 sm:py-5">
+      <Clock size={28} className="text-google-blue flex-shrink-0 hidden sm:block" />
+      <span className="text-4xl sm:text-6xl font-mono font-bold text-google-dark tracking-widest tabular-nums select-none">
         {pad(now.getHours())}
         <span className="text-google-blue animate-pulse">:</span>
         {pad(now.getMinutes())}
@@ -466,7 +466,7 @@ export default function ControlHorario() {
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="p-4 md:p-6 space-y-4 md:space-y-6 max-w-5xl mx-auto">
 
       {/* Cabecera */}
       <div>
@@ -488,25 +488,25 @@ export default function ControlHorario() {
       )}
 
       {/* ── Tarjeta de fichaje ─────────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl shadow-google border border-google-border p-6 text-center">
+      <div className="bg-white rounded-2xl shadow-google border border-google-border p-4 md:p-6 text-center">
 
         <RelojDigital now={now} />
 
-        {/* Indicadores de estado */}
-        <div className="flex items-stretch justify-center gap-0 mb-6 bg-google-bg rounded-xl overflow-hidden border border-google-border divide-x divide-google-border">
-          <div className="flex-1 px-4 py-3">
+        {/* Indicadores de estado — 2 col en móvil, 4 col en escritorio */}
+        <div className="grid grid-cols-2 md:grid-cols-4 mb-5 md:mb-6 bg-google-bg rounded-xl overflow-hidden border border-google-border">
+          <div className="px-4 py-3 border-r border-b border-google-border md:border-b-0">
             <p className="text-[11px] font-medium text-google-gray uppercase tracking-wide mb-0.5">Entrada</p>
-            <p className={`text-base font-mono font-bold ${eventos.find(e => e.tipo === 'entrada') ? 'text-blue-600' : 'text-google-gray'}`}>
+            <p className={`text-sm md:text-base font-mono font-bold ${eventos.find(e => e.tipo === 'entrada') ? 'text-blue-600' : 'text-google-gray'}`}>
               {eventos.find(e => e.tipo === 'entrada')?.hora ?? '—'}
             </p>
           </div>
-          <div className="flex-1 px-4 py-3">
+          <div className="px-4 py-3 border-b border-google-border md:border-b-0 md:border-r">
             <p className="text-[11px] font-medium text-google-gray uppercase tracking-wide mb-0.5">Tiempo activo</p>
-            <p className={`text-base font-mono font-bold ${trabajadoSec > 0 ? 'text-google-dark' : 'text-google-gray'}`}>
+            <p className={`text-sm md:text-base font-mono font-bold ${trabajadoSec > 0 ? 'text-google-dark' : 'text-google-gray'}`}>
               {estadoJornada !== 'No_Iniciada' ? secToHms(trabajadoSec) : '—'}
             </p>
           </div>
-          <div className="flex-1 px-4 py-3">
+          <div className="px-4 py-3 border-r border-google-border">
             <p className="text-[11px] font-medium text-google-gray uppercase tracking-wide mb-0.5">Estado</p>
             <p className={`text-sm font-semibold ${
               estadoJornada === 'En_Jornada'  ? 'text-green-600' :
@@ -518,68 +518,70 @@ export default function ControlHorario() {
                estadoJornada === 'En_Pausa'    ? 'En pausa' : 'Finalizada'}
             </p>
           </div>
-          <div className="flex-1 px-4 py-3">
+          <div className="px-4 py-3">
             <p className="text-[11px] font-medium text-google-gray uppercase tracking-wide mb-0.5">Salida</p>
-            <p className={`text-base font-mono font-bold ${hoyFichaje?.hora_salida ? 'text-red-600' : 'text-google-gray'}`}>
+            <p className={`text-sm md:text-base font-mono font-bold ${hoyFichaje?.hora_salida ? 'text-red-600' : 'text-google-gray'}`}>
               {hoyFichaje?.hora_salida ?? '—'}
             </p>
           </div>
         </div>
 
-        {/* Botones de fichaje */}
-        <div className="flex items-center justify-center gap-3 flex-wrap">
+        {/* Botones de fichaje — ocultos en móvil (política: solo desde PC) */}
+        {!isMobile && (
+          <div className="flex items-center justify-center gap-3 flex-wrap">
 
-          {/* Entrada */}
-          <button
-            onClick={() => setConfirmando('entrada')}
-            disabled={isMobile || loadingHoy || estadoJornada !== 'No_Iniciada' || saving}
-            className="flex items-center gap-2.5 px-7 py-3.5 rounded-xl text-white font-semibold text-sm
-              bg-blue-600 hover:bg-blue-700 active:bg-blue-800
-              disabled:bg-blue-200 disabled:cursor-not-allowed transition-colors shadow-sm"
-          >
-            <LogIn size={19} />
-            Fichar Entrada
-          </button>
-
-          {/* Pausar / Reactivar — solo visible si hay jornada activa o pausada */}
-          {(estadoJornada === 'En_Jornada' || estadoJornada === 'En_Pausa') && (
+            {/* Entrada */}
             <button
-              onClick={handlePausaToggle}
-              disabled={isMobile || saving || (esPausaObligatoria && !canReactivate)}
-              className={`flex items-center gap-2.5 px-7 py-3.5 rounded-xl text-white font-semibold text-sm
-                transition-colors shadow-sm
-                ${estadoJornada === 'En_Pausa'
-                  ? canReactivate
-                    ? 'bg-green-600 hover:bg-green-700 active:bg-green-800 disabled:bg-green-200'
-                    : 'bg-green-300 cursor-not-allowed'
-                  : 'bg-orange-500 hover:bg-orange-600 active:bg-orange-700 disabled:bg-orange-200'
-                }
-                disabled:cursor-not-allowed`}
+              onClick={() => setConfirmando('entrada')}
+              disabled={loadingHoy || estadoJornada !== 'No_Iniciada' || saving}
+              className="flex items-center gap-2.5 px-7 py-3.5 rounded-xl text-white font-semibold text-sm
+                bg-blue-600 hover:bg-blue-700 active:bg-blue-800
+                disabled:bg-blue-200 disabled:cursor-not-allowed transition-colors shadow-sm"
             >
-              {estadoJornada === 'En_Pausa' ? (
-                esPausaObligatoria && !canReactivate ? (
-                  <><Lock size={16} /> Reactivar en {secToHms(restanteSec)}</>
-                ) : (
-                  <><Play size={19} /> Reactivar Jornada</>
-                )
-              ) : (
-                <><Pause size={19} /> Pausar Jornada</>
-              )}
+              <LogIn size={19} />
+              Fichar Entrada
             </button>
-          )}
 
-          {/* Salida */}
-          <button
-            onClick={() => setConfirmando('salida')}
-            disabled={isMobile || loadingHoy || estadoJornada !== 'En_Jornada' || saving}
-            className="flex items-center gap-2.5 px-7 py-3.5 rounded-xl text-white font-semibold text-sm
-              bg-red-600 hover:bg-red-700 active:bg-red-800
-              disabled:bg-red-200 disabled:cursor-not-allowed transition-colors shadow-sm"
-          >
-            <LogOut size={19} />
-            Fichar Salida
-          </button>
-        </div>
+            {/* Pausar / Reactivar — solo visible si hay jornada activa o pausada */}
+            {(estadoJornada === 'En_Jornada' || estadoJornada === 'En_Pausa') && (
+              <button
+                onClick={handlePausaToggle}
+                disabled={saving || (esPausaObligatoria && !canReactivate)}
+                className={`flex items-center gap-2.5 px-7 py-3.5 rounded-xl text-white font-semibold text-sm
+                  transition-colors shadow-sm
+                  ${estadoJornada === 'En_Pausa'
+                    ? canReactivate
+                      ? 'bg-green-600 hover:bg-green-700 active:bg-green-800 disabled:bg-green-200'
+                      : 'bg-green-300 cursor-not-allowed'
+                    : 'bg-orange-500 hover:bg-orange-600 active:bg-orange-700 disabled:bg-orange-200'
+                  }
+                  disabled:cursor-not-allowed`}
+              >
+                {estadoJornada === 'En_Pausa' ? (
+                  esPausaObligatoria && !canReactivate ? (
+                    <><Lock size={16} /> Reactivar en {secToHms(restanteSec)}</>
+                  ) : (
+                    <><Play size={19} /> Reactivar Jornada</>
+                  )
+                ) : (
+                  <><Pause size={19} /> Pausar Jornada</>
+                )}
+              </button>
+            )}
+
+            {/* Salida */}
+            <button
+              onClick={() => setConfirmando('salida')}
+              disabled={loadingHoy || estadoJornada !== 'En_Jornada' || saving}
+              className="flex items-center gap-2.5 px-7 py-3.5 rounded-xl text-white font-semibold text-sm
+                bg-red-600 hover:bg-red-700 active:bg-red-800
+                disabled:bg-red-200 disabled:cursor-not-allowed transition-colors shadow-sm"
+            >
+              <LogOut size={19} />
+              Fichar Salida
+            </button>
+          </div>
+        )}
 
         {/* Banner de pausa obligatoria */}
         {esPausaObligatoria && (
