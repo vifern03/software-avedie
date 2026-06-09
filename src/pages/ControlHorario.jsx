@@ -10,8 +10,9 @@ import { useAuth } from '../context/AuthContext';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 
 // ─── Constantes de convenio ───────────────────────────────────────────────────
-const PAUSA_OBLIG_SEC  = 5.5 * 3600;  // 5h 30min consecutivos → pausa forzada
-const DESCANSO_REQ_SEC = 2   * 3600;  // 2h descanso diario total requerido
+const PAUSA_OBLIG_SEC  = 5.5 * 3600;       // 5h 30min consecutivos → pausa forzada
+const DESCANSO_REQ_SEC = 2   * 3600;       // 2h descanso diario total requerido
+const JORNADA_MAX_SEC  = 8 * 3600 + 5 * 60; // 8h 05m trabajo neto → parada automática
 const ADMINS           = ['victor', 'adolfo'];
 
 // ─── Utilidades ───────────────────────────────────────────────────────────────
@@ -79,6 +80,80 @@ function extractPausas(eventos) {
     pairs.push({ inicio: eventos[i].hora, fin: vuelta, durMin });
   }
   return pairs;
+}
+
+// Detecta si el último evento de salida fue una parada automática.
+function isAutoParado(eventos) {
+  if (!eventos?.length) return false;
+  const last = eventos[eventos.length - 1];
+  return last?.tipo === 'salida' && last?.autoParado === true;
+}
+
+// ─── Banco de pruebas internas (solo DEV) ─────────────────────────────────────
+function runMockTests() {
+  const results = [];
+
+  // Caso A — Pausas dinámicas múltiples
+  {
+    const ev = [
+      { tipo: 'entrada', hora: '08:00:00' },
+      { tipo: 'pausa',   hora: '09:30:00' }, // 90m trabajo
+      { tipo: 'vuelta',  hora: '10:00:00' }, // 30m pausa
+      { tipo: 'pausa',   hora: '12:00:00' }, // 120m trabajo
+      { tipo: 'vuelta',  hora: '12:45:00' }, // 45m pausa
+      { tipo: 'pausa',   hora: '14:15:00' }, // 90m trabajo
+      { tipo: 'vuelta',  hora: '14:45:00' }, // 30m pausa → total desc: 105m = 1h45m
+    ];
+    const nowSec = timeToSec('16:00:00'); // 75m trabajo final → total trabajo: 375m = 6h15m
+    const { trabajadoSec, descansadoSec } = calcTiempos(ev, nowSec);
+    const restanteSec = Math.max(0, DESCANSO_REQ_SEC - descansadoSec);
+    const pass = trabajadoSec === 375 * 60 && descansadoSec === 105 * 60 && restanteSec === 15 * 60;
+    results.push({
+      name: 'Caso A — Pausas dinámicas múltiples',
+      pass,
+      detail: `Trabajado: ${secToLabel(trabajadoSec)} (esp. 6h 15m) | Descansado: ${secToLabel(descansadoSec)} (esp. 1h 45m) | Cupo restante: ${secToLabel(restanteSec)} (esp. 15m)`,
+    });
+  }
+
+  // Caso B — Auto-pausa obligatoria a las 5h30m consecutivos
+  {
+    const ev = [{ tipo: 'entrada', hora: '07:00:00' }];
+    const nowPrevio = timeToSec('12:29:59'); // 5h29m59s → NO debe disparar
+    const nowExacto = timeToSec('12:30:00'); // 5h30m00s → SÍ debe disparar
+    const { consecutivoSec: c1 } = calcTiempos(ev, nowPrevio);
+    const { consecutivoSec: c2 } = calcTiempos(ev, nowExacto);
+    const notYet = c1 < PAUSA_OBLIG_SEC;
+    const fires  = c2 >= PAUSA_OBLIG_SEC;
+    results.push({
+      name: 'Caso B — Auto-pausa 5h30m consecutivos',
+      pass: notYet && fires,
+      detail: `12:29:59 → ${secToHms(c1)} consecutivo, dispara=${!notYet} | 12:30:00 → ${secToHms(c2)} consecutivo, dispara=${fires}`,
+    });
+  }
+
+  // Caso C — Corte automático 8h05m (simulación a 5 seg del límite)
+  {
+    // Jornada: entrada 08:00, pausa 10:00, vuelta 11:00 (2h trabajo previo)
+    // Para neto=8h04m55s: desde vuelta necesitamos 6h04m55s → now=17:04:55
+    const ev = [
+      { tipo: 'entrada', hora: '08:00:00' },
+      { tipo: 'pausa',   hora: '10:00:00' },
+      { tipo: 'vuelta',  hora: '11:00:00' },
+    ];
+    const nowMenos5 = timeToSec('17:04:55'); // neto = 8h04m55s → NO dispara
+    const nowLimite = timeToSec('17:05:00'); // neto = 8h05m00s → DISPARA
+    const { trabajadoSec: t1 } = calcTiempos(ev, nowMenos5);
+    const { trabajadoSec: t2 } = calcTiempos(ev, nowLimite);
+    const notYet = t1 < JORNADA_MAX_SEC;
+    const fires  = t2 >= JORNADA_MAX_SEC;
+    results.push({
+      name: 'Caso C — Corte automático 8h05m',
+      pass: notYet && fires,
+      detail: `17:04:55 → neto ${secToHms(t1)} (${t1}s vs ${JORNADA_MAX_SEC}s), dispara=${!notYet} | 17:05:00 → neto ${secToHms(t2)}, dispara=${fires}`,
+    });
+  }
+
+  return results;
 }
 
 // ─── Sub-componentes ──────────────────────────────────────────────────────────
@@ -155,9 +230,10 @@ export default function ControlHorario() {
   const [filtroHasta,   setFiltroHasta]   = useState('');
 
   // ── Refs para evitar re-triggers ─────────────────────────────────────────
-  const savingRef       = useRef(false);
-  const autoTriggerRef  = useRef(null); // hora del último evento work que disparó auto-pausa
-  const hoyRef          = useRef(null);
+  const savingRef      = useRef(false);
+  const autoTriggerRef = useRef(null); // hora del último evento work que disparó auto-pausa
+  const autoStopRef    = useRef(null); // id del fichaje al que ya se aplicó la parada automática
+  const hoyRef         = useRef(null);
 
   // Mantener hoyRef sincronizado con state
   useEffect(() => { hoyRef.current = hoyFichaje; }, [hoyFichaje]);
@@ -219,14 +295,18 @@ export default function ControlHorario() {
   useEffect(() => { if (isAdmin) loadAll(); }, [loadAll, isAdmin]);
 
   // ── Registrar evento en BD ───────────────────────────────────────────────
-  const registrarEvento = useCallback(async (tipo, obligatoria = false) => {
+  const registrarEvento = useCallback(async (tipo, obligatoria = false, autoParado = false) => {
     const rec  = hoyRef.current;
     if (savingRef.current) return;
     savingRef.current = true;
     setSaving(true);
 
-    const hora     = nowTimeStr();
-    const newEv    = tipo === 'pausa' ? { tipo, hora, obligatoria } : { tipo, hora };
+    const hora  = nowTimeStr();
+    const newEv = tipo === 'pausa'
+      ? { tipo, hora, obligatoria }
+      : (tipo === 'salida' && autoParado)
+        ? { tipo, hora, autoParado: true }
+        : { tipo, hora };
     const eventos  = [...(rec?.eventos ?? []), newEv];
     const updates  = { eventos };
     if (tipo === 'salida') updates.hora_salida = hora;
@@ -250,7 +330,7 @@ export default function ControlHorario() {
       hoyRef.current = updated;
       const MSGS = {
         entrada: `Entrada registrada a las ${hora}`,
-        salida:  `Salida registrada a las ${hora}`,
+        salida:  autoParado ? `Jornada detenida automáticamente a las ${hora} (límite 8h 05m)` : `Salida registrada a las ${hora}`,
         pausa:   obligatoria ? `Pausa obligatoria activada a las ${hora}` : `Jornada pausada a las ${hora}`,
         vuelta:  `Jornada reactivada a las ${hora}`,
       };
@@ -280,6 +360,21 @@ export default function ControlHorario() {
     registrarEvento('pausa', true);
   }, [now, registrarEvento]);
 
+  // ── Parada automática al alcanzar 8h05m de tiempo activo neto ────────────
+  useEffect(() => {
+    const rec = hoyRef.current;
+    if (!rec || savingRef.current) return;
+    if (autoStopRef.current === rec.id) return; // ya procesado para este fichaje
+    const eventos = rec.eventos ?? [];
+    const estado  = deriveEstado(eventos);
+    if (estado === 'Finalizada' || estado === 'No_Iniciada') return;
+    const nowSec = timeToSec(nowTimeStr());
+    const { trabajadoSec } = calcTiempos(eventos, nowSec);
+    if (trabajadoSec < JORNADA_MAX_SEC) return;
+    autoStopRef.current = rec.id;
+    registrarEvento('salida', false, true);
+  }, [now, registrarEvento]);
+
   // ── Handlers UI ──────────────────────────────────────────────────────────
   const handleFichar = (tipo) => {
     setConfirmando(null);
@@ -291,6 +386,10 @@ export default function ControlHorario() {
     if (est === 'En_Jornada')  registrarEvento('pausa', false);
     else if (est === 'En_Pausa') registrarEvento('vuelta');
   };
+
+  // ── Banco de pruebas (solo DEV, se ejecuta una vez al montar) ────────────
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const mockTestResults = useMemo(() => (import.meta.env.DEV ? runMockTests() : null), []);
 
   // ── Estado derivado (se recalcula cada segundo) ───────────────────────────
   const eventos       = hoyFichaje?.eventos ?? [];
@@ -343,7 +442,11 @@ export default function ControlHorario() {
     });
     allFichajes.forEach((f) => {
       const endSec = f.hora_salida ? timeToSec(f.hora_salida) : 0;
-      const total  = f.hora_salida ? secToLabel(calcTiempos(f.eventos, endSec).trabajadoSec) : '—';
+      const total  = isAutoParado(f.eventos)
+        ? '8h 05m (Parado Automático)'
+        : f.hora_salida
+          ? secToLabel(calcTiempos(f.eventos, endSec).trabajadoSec)
+          : '—';
       ws.addRow({
         usuario:      f.usuario,
         fecha:        fmtFecha(f.fecha),
@@ -505,8 +608,14 @@ export default function ControlHorario() {
         {/* Mensaje de éxito / estado */}
         <div className="mt-3 min-h-[20px]">
           {savedMsg ? (
-            <p className="text-sm text-green-600 font-medium flex items-center justify-center gap-1.5">
-              <CheckCircle size={14} /> {savedMsg}
+            <p className={`text-sm font-medium flex items-center justify-center gap-1.5 ${
+              isAutoParado(eventos) ? 'text-amber-600' : 'text-green-600'
+            }`}>
+              {isAutoParado(eventos) ? <AlertCircle size={14} /> : <CheckCircle size={14} />} {savedMsg}
+            </p>
+          ) : estadoJornada === 'Finalizada' && isAutoParado(eventos) ? (
+            <p className="text-sm text-amber-600 font-medium flex items-center justify-center gap-1.5">
+              <AlertCircle size={14} /> Jornada detenida automáticamente · Límite 8h 05m alcanzado
             </p>
           ) : estadoJornada === 'Finalizada' ? (
             <p className="text-sm text-green-600 font-medium flex items-center justify-center gap-1.5">
@@ -558,9 +667,10 @@ export default function ControlHorario() {
               </thead>
               <tbody className="divide-y divide-google-border">
                 {historico.map((f) => {
-                  const pausas   = extractPausas(f.eventos);
-                  const endSec   = f.hora_salida ? timeToSec(f.hora_salida) : null;
-                  const totalSec = endSec !== null ? calcTiempos(f.eventos, endSec).trabajadoSec : null;
+                  const pausas    = extractPausas(f.eventos);
+                  const endSec    = f.hora_salida ? timeToSec(f.hora_salida) : null;
+                  const totalSec  = endSec !== null ? calcTiempos(f.eventos, endSec).trabajadoSec : null;
+                  const autoStop  = isAutoParado(f.eventos);
                   return (
                     <tr key={f.id} className="hover:bg-google-bg/40 transition-colors">
                       <td className="px-5 py-3 font-semibold text-google-dark sticky left-0 bg-white z-10">
@@ -580,8 +690,17 @@ export default function ControlHorario() {
                       <td className="px-4 py-3 text-center font-mono text-red-600 text-xs font-semibold">
                         {f.hora_salida ?? '—'}
                       </td>
-                      <td className="px-5 py-3 text-center font-mono font-bold text-green-600">
-                        {totalSec !== null ? secToLabel(totalSec) : <span className="text-google-gray font-normal">—</span>}
+                      <td className="px-5 py-3 text-center font-mono font-bold">
+                        {autoStop ? (
+                          <span className="text-amber-600">
+                            8h 05m{' '}
+                            <span className="font-normal text-[10px] whitespace-nowrap">(Parado Automático)</span>
+                          </span>
+                        ) : totalSec !== null ? (
+                          <span className="text-green-600">{secToLabel(totalSec)}</span>
+                        ) : (
+                          <span className="text-google-gray font-normal">—</span>
+                        )}
                       </td>
                     </tr>
                   );
@@ -656,14 +775,21 @@ export default function ControlHorario() {
                   {allFichajes.map((f) => {
                     const endSec   = f.hora_salida ? timeToSec(f.hora_salida) : null;
                     const totalSec = endSec !== null ? calcTiempos(f.eventos, endSec).trabajadoSec : null;
+                    const autoStop = isAutoParado(f.eventos);
                     return (
                       <tr key={f.id} className="hover:bg-google-bg/50 transition-colors">
                         <td className="px-6 py-3 font-medium text-google-dark">{f.usuario}</td>
                         <td className="px-6 py-3 text-google-dark">{fmtFecha(f.fecha)}</td>
                         <td className="px-6 py-3 font-mono text-blue-600">{f.hora_entrada ?? '—'}</td>
                         <td className="px-6 py-3 font-mono text-red-600">{f.hora_salida  ?? '—'}</td>
-                        <td className="px-6 py-3 font-mono font-semibold text-green-600">
-                          {totalSec !== null ? secToLabel(totalSec) : '—'}
+                        <td className="px-6 py-3 font-mono font-semibold">
+                          {autoStop ? (
+                            <span className="text-amber-600">
+                              8h 05m <span className="font-normal text-xs">(Parado Automático)</span>
+                            </span>
+                          ) : totalSec !== null ? (
+                            <span className="text-green-600">{secToLabel(totalSec)}</span>
+                          ) : '—'}
                         </td>
                       </tr>
                     );
@@ -675,6 +801,53 @@ export default function ControlHorario() {
               </p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Panel de pruebas internas (solo entorno DEV) ──────────────────── */}
+      {import.meta.env.DEV && mockTestResults && (
+        <div className="bg-white rounded-2xl border-2 border-amber-300 overflow-hidden">
+          <div className="px-6 py-3 bg-amber-50 border-b border-amber-200 flex items-center gap-2">
+            <AlertCircle size={16} className="text-amber-600 flex-shrink-0" />
+            <h2 className="text-sm font-bold text-amber-800 uppercase tracking-wide">
+              Banco de pruebas internas — Solo visible en DEV
+            </h2>
+            <span className={`ml-auto text-xs font-semibold px-2 py-0.5 rounded-full ${
+              mockTestResults.every(r => r.pass)
+                ? 'bg-green-100 text-green-700'
+                : 'bg-red-100 text-red-700'
+            }`}>
+              {mockTestResults.filter(r => r.pass).length}/{mockTestResults.length} OK
+            </span>
+          </div>
+          <div className="px-6 py-4 space-y-3">
+            {mockTestResults.map((r, i) => (
+              <div
+                key={i}
+                className={`rounded-xl px-4 py-3 border ${
+                  r.pass
+                    ? 'bg-green-50 border-green-200'
+                    : 'bg-red-50 border-red-200'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  {r.pass
+                    ? <CheckCircle size={15} className="text-green-600 flex-shrink-0" />
+                    : <AlertCircle size={15} className="text-red-600 flex-shrink-0" />
+                  }
+                  <span className={`text-sm font-semibold ${r.pass ? 'text-green-700' : 'text-red-700'}`}>
+                    {r.name}
+                  </span>
+                  <span className={`ml-auto text-xs font-bold ${r.pass ? 'text-green-600' : 'text-red-600'}`}>
+                    {r.pass ? 'PASS ✓' : 'FAIL ✗'}
+                  </span>
+                </div>
+                <p className="text-[11px] font-mono text-google-gray leading-relaxed break-all">
+                  {r.detail}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
