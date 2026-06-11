@@ -82,11 +82,18 @@ function extractPausas(eventos) {
   return pairs;
 }
 
-// Detecta si el último evento de salida fue una parada automática.
+// Detecta si el último evento de salida fue una parada automática en tiempo real.
 function isAutoParado(eventos) {
   if (!eventos?.length) return false;
   const last = eventos[eventos.length - 1];
   return last?.tipo === 'salida' && last?.autoParado === true;
+}
+
+// Detecta si el cierre fue retroactivo (jornada olvidada del día anterior).
+function isRetroactivoCerrado(eventos) {
+  if (!eventos?.length) return false;
+  const last = eventos[eventos.length - 1];
+  return last?.tipo === 'salida' && last?.retroactivo === true;
 }
 
 // ─── Banco de pruebas internas (solo DEV) ─────────────────────────────────────
@@ -150,6 +157,45 @@ function runMockTests() {
       name: 'Caso C — Corte automático 8h05m',
       pass: notYet && fires,
       detail: `17:04:55 → neto ${secToHms(t1)} (${t1}s vs ${JORNADA_MAX_SEC}s), dispara=${!notYet} | 17:05:00 → neto ${secToHms(t2)}, dispara=${fires}`,
+    });
+  }
+
+  // Caso D — Cierre retroactivo En_Jornada (sin pausas → salida = entrada + 8h05m)
+  {
+    const ev = [{ tipo: 'entrada', hora: '09:00:00' }];
+    // lastWorkSec = 9*3600 = 32400; workedBefore = 0; remaining = JORNADA_MAX_SEC
+    const lastWorkSec     = timeToSec('09:00:00');
+    const workedBeforeSec = calcTiempos(ev, lastWorkSec).trabajadoSec;
+    const remainingSec    = Math.max(0, JORNADA_MAX_SEC - workedBeforeSec);
+    const salidaSec       = Math.min(lastWorkSec + remainingSec, 86399);
+    const hora_salida     = secToHms(salidaSec);
+    // Con la salida añadida, el total neto debe ser exactamente JORNADA_MAX_SEC
+    const evConSalida  = [...ev, { tipo: 'salida', hora: hora_salida, retroactivo: true }];
+    const { trabajadoSec } = calcTiempos(evConSalida, salidaSec);
+    const pass = hora_salida === '17:05:00' && trabajadoSec === JORNADA_MAX_SEC;
+    results.push({
+      name: 'Caso D — Cierre retroactivo En_Jornada sin pausas',
+      pass,
+      detail: `Entrada 09:00 → salida calculada ${hora_salida} (esp. 17:05:00) | Neto: ${secToHms(trabajadoSec)} (esp. 08:05:00)`,
+    });
+  }
+
+  // Caso E — Cierre retroactivo En_Pausa (salida = hora inicio última pausa)
+  {
+    const ev = [
+      { tipo: 'entrada', hora: '08:00:00' },
+      { tipo: 'pausa',   hora: '14:30:00' }, // 6h30m trabajadas antes de pausar
+    ];
+    const hora_salida = ev[ev.length - 1].hora; // '14:30:00'
+    const endSec      = timeToSec(hora_salida);
+    const evConSalida = [...ev, { tipo: 'salida', hora: hora_salida, retroactivo: true }];
+    const { trabajadoSec } = calcTiempos(evConSalida, endSec);
+    const expectedTrabajado = (6 * 3600 + 30 * 60); // 6h30m
+    const pass = hora_salida === '14:30:00' && trabajadoSec === expectedTrabajado;
+    results.push({
+      name: 'Caso E — Cierre retroactivo En_Pausa (salida = inicio pausa)',
+      pass,
+      detail: `Última pausa a las 14:30:00 → hora_salida=${hora_salida} | Neto: ${secToLabel(trabajadoSec)} (esp. 6h 30m)`,
     });
   }
 
@@ -259,19 +305,78 @@ export default function ControlHorario() {
     setLoadingHoy(false);
   }, [username]);
 
-  // ── Cargar histórico + purgar > 45 días ──────────────────────────────────
+  // ── Cargar histórico + purgar > 45 días + cierre retroactivo ─────────────
   const loadHistorico = useCallback(async () => {
     setLoadingHist(true);
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 45);
     await supabase.from('fichajes').delete()
       .eq('usuario', username).lt('fecha', cutoff.toISOString().split('T')[0]);
+
     const { data } = await supabase
       .from('fichajes')
       .select('id, fecha, hora_entrada, hora_salida, eventos')
       .eq('usuario', username)
       .order('fecha', { ascending: false });
-    setHistorico((data ?? []).map(r => ({ ...r, eventos: r.eventos ?? [] })));
+
+    const registros = (data ?? []).map(r => ({ ...r, eventos: r.eventos ?? [] }));
+
+    // ── Cierre retroactivo de jornadas olvidadas ────────────────────────────
+    // Si el usuario se marchó sin fichar salida, al día siguiente el sistema
+    // detecta el registro abierto y lo cierra automáticamente:
+    //   • En_Pausa  → hora_salida = hora de inicio de la última pausa.
+    //   • En_Jornada → hora_salida = hora en que se habrían completado 8h05m
+    //                  netas desde la hora de entrada (incluyendo las pausas).
+    const hoy = todayStr();
+    const staleRecords = registros.filter(f => {
+      if (f.fecha >= hoy || f.hora_salida) return false;
+      const est = deriveEstado(f.eventos);
+      return est === 'En_Jornada' || est === 'En_Pausa';
+    });
+
+    for (const stale of staleRecords) {
+      const eventos = stale.eventos;
+      const estado  = deriveEstado(eventos);
+      let hora_salida = null;
+
+      if (estado === 'En_Pausa') {
+        // La última pausa registrada es el momento en que dejaron de trabajar
+        hora_salida = eventos[eventos.length - 1].hora;
+      } else {
+        // En_Jornada: encontrar cuándo se habrían cumplido 8h05m netas
+        const lastWorkEv = [...eventos].reverse().find(
+          e => e.tipo === 'entrada' || e.tipo === 'vuelta'
+        );
+        if (lastWorkEv) {
+          const lastWorkSec     = timeToSec(lastWorkEv.hora);
+          // Tiempo neto trabajado ANTES del último tramo activo
+          const workedBeforeSec = calcTiempos(eventos, lastWorkSec).trabajadoSec;
+          const remainingSec    = Math.max(0, JORNADA_MAX_SEC - workedBeforeSec);
+          // Hora de salida = inicio del último tramo + segundos restantes (max medianoche)
+          hora_salida = secToHms(Math.min(lastWorkSec + remainingSec, 86399));
+        }
+      }
+
+      if (!hora_salida) continue;
+
+      const nuevosEventos = [...eventos, { tipo: 'salida', hora: hora_salida, retroactivo: true }];
+      await supabase.from('fichajes')
+        .update({ hora_salida, eventos: nuevosEventos })
+        .eq('id', stale.id);
+    }
+
+    if (staleRecords.length > 0) {
+      // Recargar los registros actualizados tras los cierres retroactivos
+      const { data: data2 } = await supabase
+        .from('fichajes')
+        .select('id, fecha, hora_entrada, hora_salida, eventos')
+        .eq('usuario', username)
+        .order('fecha', { ascending: false });
+      setHistorico((data2 ?? []).map(r => ({ ...r, eventos: r.eventos ?? [] })));
+    } else {
+      setHistorico(registros);
+    }
+
     setLoadingHist(false);
   }, [username]);
 
@@ -441,12 +546,16 @@ export default function ControlHorario() {
       cell.alignment = { horizontal: 'center' };
     });
     allFichajes.forEach((f) => {
-      const endSec = f.hora_salida ? timeToSec(f.hora_salida) : 0;
-      const total  = isAutoParado(f.eventos)
+      const endSec    = f.hora_salida ? timeToSec(f.hora_salida) : 0;
+      const autoStop  = isAutoParado(f.eventos);
+      const retroStop = !autoStop && isRetroactivoCerrado(f.eventos);
+      const total  = autoStop
         ? '8h 05m (Parado Automático)'
-        : f.hora_salida
-          ? secToLabel(calcTiempos(f.eventos, endSec).trabajadoSec)
-          : '—';
+        : retroStop
+          ? `${secToLabel(calcTiempos(f.eventos, endSec).trabajadoSec)} (Cierre Retroactivo)`
+          : f.hora_salida
+            ? secToLabel(calcTiempos(f.eventos, endSec).trabajadoSec)
+            : '—';
       ws.addRow({
         usuario:      f.usuario,
         fecha:        fmtFecha(f.fecha),
@@ -669,10 +778,11 @@ export default function ControlHorario() {
               </thead>
               <tbody className="divide-y divide-google-border">
                 {historico.map((f) => {
-                  const pausas    = extractPausas(f.eventos);
-                  const endSec    = f.hora_salida ? timeToSec(f.hora_salida) : null;
-                  const totalSec  = endSec !== null ? calcTiempos(f.eventos, endSec).trabajadoSec : null;
-                  const autoStop  = isAutoParado(f.eventos);
+                  const pausas      = extractPausas(f.eventos);
+                  const endSec      = f.hora_salida ? timeToSec(f.hora_salida) : null;
+                  const totalSec    = endSec !== null ? calcTiempos(f.eventos, endSec).trabajadoSec : null;
+                  const autoStop    = isAutoParado(f.eventos);
+                  const retroStop   = !autoStop && isRetroactivoCerrado(f.eventos);
                   return (
                     <tr key={f.id} className="hover:bg-google-bg/40 transition-colors">
                       <td className="px-5 py-3 font-semibold text-google-dark sticky left-0 bg-white z-10">
@@ -697,6 +807,11 @@ export default function ControlHorario() {
                           <span className="text-amber-600">
                             8h 05m{' '}
                             <span className="font-normal text-[10px] whitespace-nowrap">(Parado Automático)</span>
+                          </span>
+                        ) : retroStop ? (
+                          <span className="text-indigo-600">
+                            {secToLabel(totalSec ?? 0)}{' '}
+                            <span className="font-normal text-[10px] whitespace-nowrap">(Cierre Retroactivo)</span>
                           </span>
                         ) : totalSec !== null ? (
                           <span className="text-green-600">{secToLabel(totalSec)}</span>
@@ -775,9 +890,10 @@ export default function ControlHorario() {
                 </thead>
                 <tbody className="divide-y divide-google-border">
                   {allFichajes.map((f) => {
-                    const endSec   = f.hora_salida ? timeToSec(f.hora_salida) : null;
-                    const totalSec = endSec !== null ? calcTiempos(f.eventos, endSec).trabajadoSec : null;
-                    const autoStop = isAutoParado(f.eventos);
+                    const endSec    = f.hora_salida ? timeToSec(f.hora_salida) : null;
+                    const totalSec  = endSec !== null ? calcTiempos(f.eventos, endSec).trabajadoSec : null;
+                    const autoStop  = isAutoParado(f.eventos);
+                    const retroStop = !autoStop && isRetroactivoCerrado(f.eventos);
                     return (
                       <tr key={f.id} className="hover:bg-google-bg/50 transition-colors">
                         <td className="px-6 py-3 font-medium text-google-dark">{f.usuario}</td>
@@ -788,6 +904,11 @@ export default function ControlHorario() {
                           {autoStop ? (
                             <span className="text-amber-600">
                               8h 05m <span className="font-normal text-xs">(Parado Automático)</span>
+                            </span>
+                          ) : retroStop ? (
+                            <span className="text-indigo-600">
+                              {secToLabel(totalSec ?? 0)}{' '}
+                              <span className="font-normal text-xs">(Cierre Retroactivo)</span>
                             </span>
                           ) : totalSec !== null ? (
                             <span className="text-green-600">{secToLabel(totalSec)}</span>

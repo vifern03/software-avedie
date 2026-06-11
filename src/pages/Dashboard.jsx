@@ -1,7 +1,7 @@
 import { UserCheck, Users, FileCheck, Clock, PenTool, Building2, BarChart2, Activity } from 'lucide-react';
 import { useData } from '../context/DataContext';
 
-const AltasMesCard = ({ icon: Icon, label, value, color }) => (
+const AltasMesCard = ({ icon: Icon, label, value, color, subtitle }) => (
   <div className="card p-6 flex items-center gap-5">
     <div className={`w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0 ${color}`}>
       <Icon size={26} className="text-white" />
@@ -9,6 +9,7 @@ const AltasMesCard = ({ icon: Icon, label, value, color }) => (
     <div>
       <p className="text-5xl font-bold text-google-dark tabular-nums leading-none">{value}</p>
       <p className="text-sm text-google-gray mt-2">{label}</p>
+      {subtitle && <p className="text-xs text-google-gray/60 mt-0.5 italic">{subtitle}</p>}
     </div>
   </div>
 );
@@ -39,18 +40,31 @@ export default function Dashboard({ onNavigate }) {
   const { clientes, clientesB2C, clientesB2B, actividades, rankingComerciales } = useData();
 
   const now = new Date();
+  const curMonth = now.getMonth();
+  const curYear  = now.getFullYear();
+
+  // Texto "de Junio 2026" calculado dinámicamente sin riesgo de zona horaria
   const mesActual = (() => { const m = now.toLocaleString('es-ES', { month: 'long' }); return m.charAt(0).toUpperCase() + m.slice(1); })();
+  const subtitleMes = `de ${mesActual} ${curYear}`;
 
-  const altasMesB2C = clientesB2C.filter((c) => {
-    const d = new Date(c.fecha_tramitacion || '');
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  }).length;
+  // Comparación de fecha puramente sobre el string YYYY-MM-DD para evitar
+  // el salto de día que provoca Date('YYYY-MM-DD') al interpretar UTC midnight
+  // en zonas horarias con offset negativo.
+  const enMesActual = (fechaStr) => {
+    const [y, m] = (fechaStr || '').split('-').map(Number);
+    return m - 1 === curMonth && y === curYear;
+  };
 
-  const altasMesB2B = clientesB2B.filter((c) => {
-    const d = new Date(c.fecha_tramitacion || '');
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  }).length;
+  // Altas del Mes: SOLO contratos Formalizados cuya fecha_formalizada sea del mes en curso
+  const altasMesB2C = clientesB2C.filter(
+    (c) => c.estado === 'Formalizado' && enMesActual(c.fecha_formalizada)
+  ).length;
 
+  const altasMesB2B = clientesB2B.filter(
+    (c) => c.estado === 'Formalizado' && enMesActual(c.fecha_formalizada)
+  ).length;
+
+  // Acumulado histórico absoluto — sin ningún filtro de fecha
   const totalContratos    = clientes.length;
   const formalizados      = clientes.filter((c) => c.estado === 'Formalizado').length;
   const tramitados        = clientes.filter((c) => c.estado === 'Tramitado').length;
@@ -81,8 +95,8 @@ export default function Dashboard({ onNavigate }) {
         <StatCard icon={Users}     label="Formalizados"      value={formalizados}    color="bg-green-500"   />
         <StatCard icon={Clock}     label="Tramitados"        value={tramitados}      color="bg-orange-500"  />
         <StatCard icon={PenTool}   label="Pendientes Firma"  value={pendientesFirma} color="bg-red-500"     />
-        <AltasMesCard icon={UserCheck} label="Altas del Mes B2C" value={altasMesB2C} color="bg-blue-500"   />
-        <AltasMesCard icon={Building2} label="Altas del Mes B2B" value={altasMesB2B} color="bg-indigo-500" />
+        <AltasMesCard icon={UserCheck} label="Altas del Mes B2C" value={altasMesB2C} color="bg-blue-500"   subtitle={subtitleMes} />
+        <AltasMesCard icon={Building2} label="Altas del Mes B2B" value={altasMesB2B} color="bg-indigo-500" subtitle={subtitleMes} />
       </div>
 
       {/* Two-column: ranking + activity */}

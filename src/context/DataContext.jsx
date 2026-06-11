@@ -638,6 +638,12 @@ export function DataProvider({ children }) {
     const curMonth = now.getMonth();
     const curYear  = now.getFullYear();
 
+    // Comparación directa sobre YYYY-MM-DD para evitar saltos de día por UTC
+    const enMesActual = (fechaStr) => {
+      const [y, m] = (fechaStr || '').split('-').map(Number);
+      return m - 1 === curMonth && y === curYear;
+    };
+
     const map = {};
     users.forEach((u) => {
       const initials = (u.displayName || u.username)
@@ -645,8 +651,7 @@ export function DataProvider({ children }) {
       map[u.username] = { id: u.username, nombre: u.displayName || u.username, avatar: initials, cerrados: 0, pendientes: 0 };
     });
     clientes.forEach((c) => {
-      const d = new Date(c.fecha_tramitacion || '');
-      if (isNaN(d.getTime()) || d.getMonth() !== curMonth || d.getFullYear() !== curYear) return;
+      if (!enMesActual(c.fecha_tramitacion)) return;
       const key = c.creado_por || '';
       if (!key) return;
       if (!map[key]) {
