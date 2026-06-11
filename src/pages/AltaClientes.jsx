@@ -351,6 +351,7 @@ export default function AltaClientes({ tipo }) {
             Alta {isB2B ? 'B2B · Empresas' : 'B2C · Particulares'}
           </h1>
           <p className="text-sm text-google-gray mt-1">Gestión de contratos</p>
+          <p className="text-sm text-gray-400 mt-0.5">Datos de los últimos 30 días</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowCurModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-300 bg-red-50 text-red-700 text-sm font-medium hover:bg-red-100 transition-colors">

@@ -199,7 +199,7 @@ function LlamadaModal({ onClose, onSave, initialData }) {
           {/* Captura (obligatoria en nuevo, opcional en edición) */}
           <div>
             <label className="block text-xs font-medium text-google-gray mb-1.5">
-              Captura de pantalla{' '}
+              Subir captura de pantalla con el tiempo de la llamada{' '}
               {!isEdit
                 ? <span className="text-red-500">* (obligatoria)</span>
                 : <span className="font-normal">(opcional — se mantiene la actual si no subes nueva)</span>
