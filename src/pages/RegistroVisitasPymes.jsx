@@ -922,7 +922,9 @@ export default function RegistroVisitasPymes() {
   const { visitasPymes, addVisitaPyme, updateVisitaPyme, transicionEstadoPyme, deleteVisitaPyme } = useData();
   const { currentUser } = useAuth();
 
-  const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+  const isAdmin      = currentUser?.role?.toLowerCase() === 'admin';
+  const isManager    = currentUser?.role?.toLowerCase() === 'manager';
+  const isPrivileged = isAdmin || isManager;
 
   const [showModal,       setShowModal]       = useState(false);
   const [editVisita,      setEditVisita]      = useState(null);

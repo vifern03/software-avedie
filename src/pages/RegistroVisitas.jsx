@@ -333,8 +333,9 @@ export default function RegistroVisitas() {
   const { visitas, addVisita, updateVisita, deleteVisita } = useData();
   const { currentUser } = useAuth();
 
-  const isAdmin      = currentUser?.role === 'admin';
-  const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+  const isAdmin      = currentUser?.role?.toLowerCase() === 'admin';
+  const isManager    = currentUser?.role?.toLowerCase() === 'manager';
+  const isPrivileged = isAdmin || isManager;
 
   const [showModal,    setShowModal]    = useState(false);
   const [editVisita,   setEditVisita]   = useState(null);

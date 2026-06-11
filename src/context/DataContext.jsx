@@ -14,9 +14,19 @@ const formatDateDDMMYYYY = (dateStr) => {
 };
 
 // ── Stale-while-revalidate cache ──────────────────────────────────────────────
-// Campos Base64 excluidos del caché para no saturar localStorage (pueden ser
-// varios MB por cliente). HistoricaDB los obtiene del fetch en segundo plano.
+// Campos Base64 excluidos del caché y del SELECT principal: pueden pesar varios
+// MB por registro y provocan timeout en Supabase con SELECT *. HistoricaDB los
+// obtiene por separado bajo demanda.
 const BINARY_FIELDS = ['dni_escaneado', 'ultima_factura', 'cif_autonomo_url', 'justo_titulo_url', 'factura_b2b_url'];
+
+// Columnas que sí se descargan en el fetch principal (sin binarios)
+const CLIENTES_SELECT = [
+  'id', 'tipo', 'nombre', 'cif_dni', 'telefono', 'mail', 'cuenta_bancaria',
+  'cups', 'tarifa', 'linea_negocio', 'subtipo', 'subtipo_otro', 'id_producto',
+  'creado_por', 'descripcion', 'estado', 'comercial', 'equipo',
+  'fecha_tramitacion', 'fecha_firma', 'fecha_formalizada', 'created_at',
+  'deleted_at', 'consumo_anual_est',
+].join(',');
 
 const cacheKey = (username) => `dashboard_cache_${username}`;
 
@@ -88,41 +98,52 @@ export function DataProvider({ children }) {
 
     // ── 2. Revalidación asíncrona en segundo plano ───────────────────────────
     async function loadAll() {
-      const isAdmin      = currentUser.role === 'admin';
-      const isPrivileged = isAdmin || currentUser.role === 'manager';
-      const userEquipo   = currentUser.equipo || 'Ambos';
-      const filterByTeam = !isAdmin && userEquipo !== 'Ambos' && userEquipo !== 'Ninguno';
-      const filterByOwn  = !isAdmin && userEquipo === 'Ninguno';
+      const isAdmin   = currentUser.role?.toLowerCase() === 'admin';
+      const isManager = currentUser.role?.toLowerCase() === 'manager';
+      const userEquipo = currentUser.equipo || 'Ambos';
 
+      // ── Clientes (B2C / B2B) ──────────────────────────────────────────────────
+      // Admin y Manager: acceso GLOBAL sin restricción de equipo.
+      // Comercial: acotado a su equipo, o a sus propios registros si equipo='Ninguno'.
       let clientesQuery = supabase
         .from('clientes')
-        .select('*')
+        .select(CLIENTES_SELECT)
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
+      if (!isAdmin && !isManager) {
+        if (userEquipo !== 'Ambos' && userEquipo !== 'Ninguno') {
+          clientesQuery = clientesQuery.eq('equipo', userEquipo);
+        } else if (userEquipo === 'Ninguno') {
+          clientesQuery = clientesQuery.or(`comercial.eq.${currentUser.username},creado_por.eq.${currentUser.username}`);
+        }
+      }
+
+      // ── Visitas Tienda ────────────────────────────────────────────────────────
+      // Admin: acceso GLOBAL. Manager: solo su sede. Comercial: su sede o sus registros.
       let visitasQuery = supabase
         .from('visitas')
         .select('*')
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
+      if (!isAdmin) {
+        if (userEquipo !== 'Ambos' && userEquipo !== 'Ninguno') {
+          visitasQuery = visitasQuery.eq('punto_venta', userEquipo);
+        } else if (userEquipo === 'Ninguno') {
+          visitasQuery = visitasQuery.eq('registrado_por', currentUser.username);
+        }
+      }
+
+      // ── Visitas Pymes ─────────────────────────────────────────────────────────
+      // Admin y Manager: acceso GLOBAL. Comercial: solo las suyas.
       let visitasPymesQuery = supabase
         .from('visitas_pymes')
         .select('*')
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
-      if (filterByTeam) {
-        clientesQuery = clientesQuery.eq('equipo', userEquipo);
-        visitasQuery  = visitasQuery.eq('punto_venta', userEquipo);
-      }
-
-      if (filterByOwn) {
-        clientesQuery = clientesQuery.or(`comercial.eq.${currentUser.username},creado_por.eq.${currentUser.username}`);
-        visitasQuery  = visitasQuery.eq('registrado_por', currentUser.username);
-      }
-
-      if (!isPrivileged) {
+      if (!isAdmin && !isManager) {
         visitasPymesQuery = visitasPymesQuery.eq('registrado_por', currentUser.username);
       }
 

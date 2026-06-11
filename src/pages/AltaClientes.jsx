@@ -257,30 +257,35 @@ export default function AltaClientes({ tipo }) {
   cutoff.setDate(cutoff.getDate() - 30);
   cutoff.setHours(0, 0, 0, 0);
 
-  const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'manager';
-  const isAdmin      = currentUser?.role === 'admin';
+  const isAdmin      = currentUser?.role?.toLowerCase() === 'admin';
+  const isManager    = currentUser?.role?.toLowerCase() === 'manager';
+  const isPrivileged = isAdmin || isManager;
   const userEquipo   = currentUser?.equipo || 'Ambos';
   const isTeamMember = !isPrivileged && (userEquipo === 'Palencia' || userEquipo === 'Valladolid');
 
-  // Contadores: siempre individuales
-  const baseClientes = clientes.filter((c) => {
-    const d = new Date(c.fecha_tramitacion || '');
-    if (isNaN(d) || d < cutoff) return false;
-    if (!isPrivileged && c.comercial !== currentUser?.username && c.creado_por !== currentUser?.username) return false;
-    return true;
-  });
+  // Contadores: admin/manager ven histórico completo; comercial solo sus registros últimos 30 días
+  const baseClientes = isPrivileged
+    ? clientes
+    : clientes.filter((c) => {
+        const d = new Date(c.fecha_tramitacion || '');
+        if (isNaN(d) || d < cutoff) return false;
+        if (c.comercial !== currentUser?.username && c.creado_por !== currentUser?.username) return false;
+        return true;
+      });
 
   const totalPendienteFirma = baseClientes.filter((c) => c.estado === 'Pendiente Firma').length;
   const totalTramitados     = baseClientes.filter((c) => c.estado === 'Tramitado').length;
   const totalFormalizados   = baseClientes.filter((c) => c.estado === 'Formalizado').length;
 
-  // Tabla: miembros de equipo ven todos los contratos del equipo (DataContext ya los acota por sede)
-  const baseTabla = isTeamMember
-    ? clientes.filter((c) => {
-        const d = new Date(c.fecha_tramitacion || '');
-        return !isNaN(d) && d >= cutoff;
-      })
-    : baseClientes;
+  // Admin y Manager: histórico completo sin restricción de fecha
+  const baseTabla = (isAdmin || isManager)
+    ? clientes
+    : isTeamMember
+      ? clientes.filter((c) => {
+          const d = new Date(c.fecha_tramitacion || '');
+          return !isNaN(d) && d >= cutoff;
+        })
+      : baseClientes;
 
   const handleModalSave = async (data) => {
     if (editClient) {
