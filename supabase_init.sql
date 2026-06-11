@@ -140,6 +140,26 @@ CREATE TABLE IF NOT EXISTS reportes (
 );
 ALTER TABLE reportes DISABLE ROW LEVEL SECURITY;
 
+-- ── Tabla de registro de llamadas comerciales ────────────────────────────────
+CREATE TABLE IF NOT EXISTS llamadas (
+  id               BIGINT      PRIMARY KEY,
+  fecha            TEXT        NOT NULL,
+  hora             TEXT        NOT NULL,
+  nombre           TEXT        NOT NULL,
+  dni              TEXT        NOT NULL,
+  precio_kw        NUMERIC,
+  permanencia      TEXT        NOT NULL DEFAULT 'Sin permanencia',
+  tiempo_llamada   TEXT,
+  captura_url      TEXT,
+  tipo_cliente     TEXT        NOT NULL DEFAULT 'Cliente Potencial',
+  comentarios      TEXT,
+  registrado_por   TEXT        NOT NULL,
+  equipo           TEXT        DEFAULT 'Ambos',
+  deleted_at       TIMESTAMPTZ DEFAULT NULL,
+  created_at       TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE llamadas DISABLE ROW LEVEL SECURITY;
+
 -- =============================================================================
 --  FIN DEL SCRIPT
 --  El propio CRM sembrará los usuarios y la configuración inicial

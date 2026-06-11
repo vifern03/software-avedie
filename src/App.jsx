@@ -15,6 +15,7 @@ import RegistroVisitas from './pages/RegistroVisitas';
 import RegistroVisitasPymes from './pages/RegistroVisitasPymes';
 import ReportesSoftware from './pages/ReportesSoftware';
 import ControlHorario from './pages/ControlHorario';
+import RegistroLlamadas from './pages/RegistroLlamadas';
 
 function LoadingScreen() {
   return (
@@ -83,7 +84,7 @@ export default function App() {
 
   useEffect(() => {
     if (!currentUser) return;
-    const SECTIONS = ['dashboard', 'historica', 'radar', 'b2c', 'b2b', 'historial', 'visitas', 'visitas_pymes', 'fichajes', 'reportes', 'gestion'];
+    const SECTIONS = ['dashboard', 'historica', 'radar', 'b2c', 'b2b', 'historial', 'visitas', 'visitas_pymes', 'llamadas', 'fichajes', 'reportes', 'gestion'];
     const first = SECTIONS.find(s => hasAccess(s));
     if (first) setActiveSection(first);
   }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -106,6 +107,7 @@ export default function App() {
       case 'historial': return <HistorialActividades />;
       case 'visitas':       return <RegistroVisitas />;
       case 'visitas_pymes': return <RegistroVisitasPymes />;
+      case 'llamadas':  return <RegistroLlamadas />;
       case 'fichajes':  return <ControlHorario />;
       case 'reportes':  return <ReportesSoftware />;
       case 'gestion':   return <GestionUsuarios />;

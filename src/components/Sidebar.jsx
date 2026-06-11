@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LayoutDashboard, Database, RefreshCw, UserPlus, Building2, History, LogOut, Settings, User, Store, ClipboardList, Sparkles, Menu, X, Landmark, Clock } from 'lucide-react';
+import { LayoutDashboard, Database, RefreshCw, UserPlus, Building2, History, LogOut, Settings, User, Store, ClipboardList, Sparkles, Menu, X, Landmark, Clock, Phone } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const ALL_ITEMS = [
@@ -10,6 +10,7 @@ const ALL_ITEMS = [
   { id: 'b2b',       label: 'Alta B2B (Empresa)',       icon: Building2       },
   { id: 'visitas',       label: 'Registro Visitas Tienda',  icon: Store      },
   { id: 'visitas_pymes', label: 'Registro Visitas PYMES',  icon: Landmark   },
+  { id: 'llamadas',      label: 'Registro de Llamadas',    icon: Phone      },
   { id: 'fichajes',      label: 'Control de Horario',      icon: Clock      },
   { id: 'reportes',      label: 'Reportes de Software',    icon: ClipboardList },
   { id: 'historial', label: 'Historial de Actividades', icon: History         },
