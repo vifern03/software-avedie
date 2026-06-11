@@ -16,6 +16,7 @@ const PAGES = [
   { id: 'visitas',      label: 'Visitas Tienda'  },
   { id: 'visitas_pymes', label: 'Visitas PYME'   },
   { id: 'llamadas',     label: 'Reg. Llamadas'  },
+  { id: 'tarifas',      label: 'Tarifas'        },
   { id: 'fichajes',     label: 'Control Horario' },
   { id: 'reportes',     label: 'Reportes'        },
   { id: 'historial',    label: 'Historial'       },
@@ -543,7 +544,7 @@ export default function GestionUsuarios() {
                 )}
               </div>
 
-              <div className="grid grid-cols-3 lg:grid-cols-11 divide-x divide-google-border">
+              <div className="grid grid-cols-3 lg:grid-cols-12 divide-x divide-google-border">
                 {PAGES.map((page) => {
                   const active = isAdmin
                     ? true
@@ -634,7 +635,7 @@ export default function GestionUsuarios() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-3 sm:grid-cols-11 gap-1.5">
+                  <div className="grid grid-cols-3 sm:grid-cols-12 gap-1.5">
                     {PAGES.map((page) => {
                       const isOverridden = userOverrides[page.id] !== undefined;
                       const effective    = isOverridden
