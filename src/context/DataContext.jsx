@@ -330,6 +330,8 @@ export function DataProvider({ children }) {
       fecha_resolucion:             data.fecha_resolucion          || null,
       factura_url,
       comparativa_url,
+      latitud:                      data.latitud                   ?? null,
+      longitud:                     data.longitud                  ?? null,
     };
     setVisitasPymes(prev => [newVisita, ...prev]);
     const { error } = await supabase.from('visitas_pymes').insert([newVisita]);
@@ -380,6 +382,8 @@ export function DataProvider({ children }) {
       ...(data.estado                    !== undefined && { estado:                    data.estado                    }),
       ...(data.fecha_enviada_comparativa !== undefined && { fecha_enviada_comparativa: data.fecha_enviada_comparativa }),
       ...(data.fecha_resolucion          !== undefined && { fecha_resolucion:          data.fecha_resolucion          }),
+      ...(data.latitud  !== undefined && { latitud:  data.latitud  ?? null }),
+      ...(data.longitud !== undefined && { longitud: data.longitud ?? null }),
     };
     setVisitasPymes(prev => prev.map(v => v.id === id ? { ...v, ...updateObj } : v));
     const { error } = await supabase.from('visitas_pymes').update(updateObj).eq('id', id);

@@ -543,7 +543,7 @@ export default function GestionUsuarios() {
                 )}
               </div>
 
-              <div className="grid grid-cols-3 lg:grid-cols-9 divide-x divide-google-border">
+              <div className="grid grid-cols-3 lg:grid-cols-11 divide-x divide-google-border">
                 {PAGES.map((page) => {
                   const active = isAdmin
                     ? true
@@ -551,9 +551,9 @@ export default function GestionUsuarios() {
                   return (
                     <div
                       key={page.id}
-                      className="flex flex-col items-center gap-2 px-2 py-4 hover:bg-google-bg transition-colors"
+                      className="flex flex-col items-center gap-1.5 px-1 py-3 hover:bg-google-bg transition-colors"
                     >
-                      <p className="text-xs font-medium text-google-dark text-center leading-tight">
+                      <p className="text-[10px] font-medium text-google-dark text-center leading-tight">
                         {page.label}
                       </p>
                       <Toggle
@@ -561,8 +561,8 @@ export default function GestionUsuarios() {
                         onChange={() => requestAction({ type: 'toggle', roleId, pageId: page.id })}
                         disabled={isAdmin}
                       />
-                      <span className={`text-xs ${active ? 'text-green-600' : 'text-google-gray'}`}>
-                        {active ? 'Activo' : 'Bloqueado'}
+                      <span className={`text-[10px] ${active ? 'text-green-600' : 'text-google-gray'}`}>
+                        {active ? 'Activo' : 'Inactivo'}
                       </span>
                     </div>
                   );
@@ -634,7 +634,7 @@ export default function GestionUsuarios() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-3 sm:grid-cols-9 gap-2">
+                  <div className="grid grid-cols-3 sm:grid-cols-11 gap-1.5">
                     {PAGES.map((page) => {
                       const isOverridden = userOverrides[page.id] !== undefined;
                       const effective    = isOverridden
@@ -644,13 +644,13 @@ export default function GestionUsuarios() {
                       return (
                         <div
                           key={page.id}
-                          className={`flex flex-col items-center gap-1.5 px-3 py-3 rounded-lg border transition-colors ${
+                          className={`flex flex-col items-center gap-1 px-1.5 py-2 rounded-lg border transition-colors ${
                             isOverridden
                               ? 'bg-orange-50 border-orange-200'
                               : 'bg-google-bg border-google-border'
                           }`}
                         >
-                          <p className="text-xs font-medium text-google-dark text-center leading-tight">
+                          <p className="text-[10px] font-medium text-google-dark text-center leading-tight">
                             {page.label}
                           </p>
                           <Toggle
@@ -664,12 +664,12 @@ export default function GestionUsuarios() {
                             disabled={false}
                           />
                           {isOverridden ? (
-                            <span className="text-xs font-medium text-orange-600 bg-orange-100 px-1.5 py-0.5 rounded">
-                              Personalizado
+                            <span className="text-[10px] font-medium text-orange-600 bg-orange-100 px-1 py-0.5 rounded">
+                              Custom
                             </span>
                           ) : (
-                            <span className={`text-xs ${effective ? 'text-green-600' : 'text-google-gray'}`}>
-                              {effective ? 'Activo' : 'Bloqueado'}
+                            <span className={`text-[10px] ${effective ? 'text-green-600' : 'text-google-gray'}`}>
+                              {effective ? 'Activo' : 'Inactivo'}
                             </span>
                           )}
                         </div>

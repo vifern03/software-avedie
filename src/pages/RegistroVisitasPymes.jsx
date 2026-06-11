@@ -4,7 +4,7 @@ import { saveAs } from 'file-saver';
 import {
   Landmark, Plus, CalendarDays, Users, Search, Trash2, Pencil, CheckCircle,
   X, FileSpreadsheet, Camera, ExternalLink, Loader2, ArrowRight, Check, Minus, Eye,
-  Clock, TrendingUp, FileText,
+  Clock, TrendingUp, FileText, MapPin,
 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
@@ -558,6 +558,8 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
     fecha_resolucion:          toDatetimeLocal(initialData?.fecha_resolucion),
     factura_url:               initialData?.factura_url               || '',
     comparativa_url:           initialData?.comparativa_url           || '',
+    latitud:                   initialData?.latitud                   ?? null,
+    longitud:                  initialData?.longitud                  ?? null,
   });
 
   const [fotoFile,        setFotoFile]        = useState(null);
@@ -585,6 +587,21 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
     const reader = new FileReader();
     reader.onload = (ev) => setFotoPreview(ev.target.result);
     reader.readAsDataURL(file);
+
+    // Captura silenciosa de coordenadas GPS en segundo plano
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setForm(f => ({
+            ...f,
+            latitud:  pos.coords.latitude,
+            longitud: pos.coords.longitude,
+          }));
+        },
+        () => { /* permiso denegado o sin señal — continúa sin coordenadas */ },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    }
   };
 
   const showDocsSection     = ESTADOS_CON_DOCS.includes(form.estado);
@@ -1244,6 +1261,7 @@ export default function RegistroVisitasPymes() {
                 <th className="table-header">Tel. Cliente</th>
                 <th className="table-header">Correo Cliente</th>
                 <th className="table-header">Foto</th>
+                {isPrivileged && <th className="table-header">GPS</th>}
                 <th className="table-header">Estado</th>
                 <th className="table-header">Fecha Env. Comparativa</th>
                 <th className="table-header">Fecha Resolución</th>
@@ -1255,7 +1273,7 @@ export default function RegistroVisitasPymes() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={15} className="text-center py-10 text-google-gray text-sm">
+                  <td colSpan={isPrivileged ? 16 : 15} className="text-center py-10 text-google-gray text-sm">
                     {visitasPymes.length === 0
                       ? 'No hay visitas PYME registradas. Pulsa "+ Nueva Visita PYME" para empezar.'
                       : 'No se encontraron resultados con los filtros aplicados'}
@@ -1280,6 +1298,21 @@ export default function RegistroVisitasPymes() {
                           </a>
                         : <span className="text-google-gray">—</span>}
                     </td>
+                    {isPrivileged && (
+                      <td className="table-cell text-center">
+                        {v.latitud && v.longitud
+                          ? <a
+                              href={`https://www.google.com/maps/search/?api=1&query=${v.latitud},${v.longitud}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
+                              title={`${v.latitud}, ${v.longitud}`}
+                            >
+                              <MapPin size={13} />Ver
+                            </a>
+                          : <span className="text-google-gray">—</span>}
+                      </td>
+                    )}
                     <td className="table-cell">
                       <EstadoBadge estado={v.estado || 'Solicitado Factura'} />
                     </td>

@@ -140,6 +140,10 @@ CREATE TABLE IF NOT EXISTS reportes (
 );
 ALTER TABLE reportes DISABLE ROW LEVEL SECURITY;
 
+-- MIGRACIÓN — Geolocalización en Visitas PYMES (ejecutar si la tabla ya existe):
+-- ALTER TABLE visitas_pymes ADD COLUMN IF NOT EXISTS latitud  DOUBLE PRECISION;
+-- ALTER TABLE visitas_pymes ADD COLUMN IF NOT EXISTS longitud DOUBLE PRECISION;
+
 -- ── Tabla de registro de llamadas comerciales ────────────────────────────────
 CREATE TABLE IF NOT EXISTS llamadas (
   id               BIGINT      PRIMARY KEY,
