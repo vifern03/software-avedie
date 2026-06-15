@@ -6,6 +6,7 @@ import NewClientModal from '../components/NewClientModal';
 import DeleteConfirmModal from '../components/DeleteConfirmModal';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import Pagination from '../components/Pagination';
+import ShareButton from '../components/ShareButton';
 import { useData, fetchSingleDoc } from '../context/DataContext';
 import DateInput from '../components/DateInput';
 
@@ -103,7 +104,7 @@ const FilterPill = ({ label, active, onClick }) => (
 );
 
 export default function HistoricaDB() {
-  const { clientes, updateCliente, firmarContrato, formalizarContrato, deleteCliente, docsFlags } = useData();
+  const { clientes, updateCliente, updateCompartidoCon, firmarContrato, formalizarContrato, deleteCliente, docsFlags } = useData();
 
   const allCups = useMemo(
     () => new Set(clientes.map(c => (c.cups || '').toUpperCase().trim()).filter(Boolean)),
@@ -463,6 +464,7 @@ export default function HistoricaDB() {
                             className="p-1 rounded hover:bg-blue-50 transition-colors" title="Editar">
                             <Pencil size={15} className="text-google-blue" />
                           </button>
+                          <ShareButton cliente={c} onUpdate={updateCompartidoCon} />
                           <button onClick={() => setDeleteTarget(c)}
                             className="p-1 rounded hover:bg-red-50 transition-colors" title="Eliminar">
                             <Trash2 size={15} className="text-red-500" />

@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react';
-import { X, User, Building2, Phone, Zap, FileText, CheckCircle, AlertCircle, Mail, CreditCard, Upload, Pencil, Calendar, UserCheck, Briefcase, Hash, AlignLeft, BarChart2 } from 'lucide-react';
+import { X, User, Building2, Phone, Zap, FileText, CheckCircle, AlertCircle, Mail, CreditCard, Upload, Pencil, Calendar, UserCheck, Briefcase, Hash, AlignLeft, BarChart2, Users, Check } from 'lucide-react';
 import DateInput from './DateInput';
 import { useAuth } from '../context/AuthContext';
+import { SHARE_USERS } from './ShareButton';
 
 const tarifas  = ['2.0TD', '3.0TD', '3.1A', '6.1TD', '6.1A', '6.2', '6.3', '6.4', 'RL.1', 'RL.2', 'RL.3'];
 const estados  = ['Pendiente Firma', 'Tramitado', 'Formalizado'];
@@ -57,6 +58,13 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
   const [saved,        setSaved]        = useState(false);
   const [cupsDbError,  setCupsDbError]  = useState(null);
 
+  // ── Compartir contrato ─────────────────────────────────────────────────────
+  const [quiereCompartir, setQuiereCompartir] = useState(false);
+  const [compartidoCon,   setCompartidoCon]   = useState(['CARMEN BALLESTEROS']);
+
+  const toggleCompartido = (u) =>
+    setCompartidoCon(prev => prev.includes(u) ? prev.filter(x => x !== u) : [...prev, u]);
+
   const [dniBase64,   setDniBase64]   = useState(initialData?.dni_escaneado || '');
   const [dniFileName, setDniFileName] = useState(
     initialData?.dni_escaneado?.startsWith?.('data:') ? 'Archivo existente' : ''
@@ -85,8 +93,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
   const justoTituloInputRef   = useRef(null);
   const facturaB2bInputRef    = useRef(null);
   const ultimaFacturaInputRef = useRef(null);
-  // M-1: bandera de control para bloquear doble envío antes del re-render
-  const submittingRef        = useRef(false);
+  const submittingRef         = useRef(false);
 
   const set = (field, value) => {
     setForm((f) => {
@@ -108,7 +115,6 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
     });
   };
 
-  // M-2: validar tamaño antes de FileReader (máx. 5 MB para adjuntos de contrato)
   const handleFileChange = (e, setFileName, setBase64) => {
     const file = e.target.files[0];
     if (!file) { setFileName(''); setBase64(''); return; }
@@ -162,7 +168,6 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
     return Object.keys(e).length === 0;
   };
 
-  // M-1: submittingRef bloquea el segundo disparo antes de que React deshabilite el botón
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (submittingRef.current || !validate()) return;
@@ -176,6 +181,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
       agente_gestor:    efectiveAgenteGestor,
       creado_por:       efectivePrescriptor,
       tipo,
+      compartido_con:   !isEdit && quiereCompartir ? compartidoCon : [],
       dni_escaneado:    dniBase64,
       ultima_factura:   ultimaFacturaBase64 || null,
       cif_autonomo_url: cifAutonomoBase64,
@@ -229,7 +235,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
         {/* Scrollable form body */}
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4 overflow-y-auto">
 
-          {/* Tramitado por (editable select) */}
+          {/* Tramitado por */}
           <div>
             <label className="block text-xs font-medium text-google-gray mb-1.5 flex items-center gap-1.5">
               <UserCheck size={13} /> Tramitado por
@@ -251,6 +257,63 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
             )}
             {errors.agente_gestor_otro && <p className="text-red-500 text-xs mt-1">Debes especificar el nombre del tramitador</p>}
           </div>
+
+          {/* ── Compartir contrato (solo en nuevas altas, no en edición) ────── */}
+          {!isEdit && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 space-y-2.5">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Users size={13} className="text-slate-500" />
+                <span className="text-xs font-semibold text-google-dark">
+                  ¿Deseas dar acceso a algún otro trabajador para que pueda ver este contrato?
+                </span>
+              </div>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                  <input
+                    type="radio"
+                    name="quiere_compartir"
+                    checked={!quiereCompartir}
+                    onChange={() => setQuiereCompartir(false)}
+                    className="accent-google-blue"
+                  />
+                  <span className="text-xs text-google-gray">No</span>
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                  <input
+                    type="radio"
+                    name="quiere_compartir"
+                    checked={quiereCompartir}
+                    onChange={() => setQuiereCompartir(true)}
+                    className="accent-google-blue"
+                  />
+                  <span className="text-xs text-google-gray">Sí</span>
+                </label>
+              </div>
+
+              {quiereCompartir && (
+                <div className="pt-1 space-y-1.5">
+                  <p className="text-xs text-google-gray">Selecciona los trabajadores con acceso:</p>
+                  {SHARE_USERS.map(u => (
+                    <button
+                      key={u}
+                      type="button"
+                      onClick={() => toggleCompartido(u)}
+                      className="flex items-center gap-2 w-full text-left group"
+                    >
+                      <div className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
+                        compartidoCon.includes(u)
+                          ? 'bg-google-blue border-google-blue'
+                          : 'border-gray-300 bg-white group-hover:border-google-blue'
+                      }`}>
+                        {compartidoCon.includes(u) && <Check size={10} className="text-white" strokeWidth={3} />}
+                      </div>
+                      <span className="text-xs text-google-dark">{u}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Línea de Negocio */}
           <div>
@@ -405,7 +468,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
             </div>
           </div>
 
-          {/* Fecha de Firma — visible cuando estado es Tramitado o Formalizado */}
+          {/* Fecha de Firma */}
           {(form.estado === 'Tramitado' || form.estado === 'Formalizado') && (
             <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
               <label className="block text-xs font-semibold text-orange-700 mb-1.5 flex items-center gap-1.5">
@@ -421,7 +484,6 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
                   type="button"
                   onClick={() => set('fecha_firma', form.fecha_tramitacion)}
                   className="text-xs text-orange-600 hover:text-orange-800 whitespace-nowrap px-2 py-1.5 border border-orange-200 rounded-lg bg-white hover:bg-orange-100 transition-colors"
-                  title="Rellenar automáticamente con la fecha de tramitación"
                 >
                   Coincide con fecha anterior
                 </button>
@@ -430,7 +492,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
             </div>
           )}
 
-          {/* Fecha de Formalización — visible solo cuando estado es Formalizado */}
+          {/* Fecha de Formalización */}
           {form.estado === 'Formalizado' && (
             <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3">
               <label className="block text-xs font-semibold text-green-700 mb-1.5 flex items-center gap-1.5">
@@ -446,7 +508,6 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
                   type="button"
                   onClick={() => set('fecha_formalizada', form.fecha_firma || form.fecha_tramitacion)}
                   className="text-xs text-green-600 hover:text-green-800 whitespace-nowrap px-2 py-1.5 border border-green-200 rounded-lg bg-white hover:bg-green-100 transition-colors"
-                  title="Rellenar automáticamente con la fecha de firma"
                 >
                   Coincide con fecha anterior
                 </button>
@@ -547,7 +608,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
 
             {isB2B ? (
               <>
-                {/* CIF / Recibo Autónomos — OBLIGATORIO en nuevas altas B2B */}
+                {/* CIF / Recibo Autónomos */}
                 <div>
                   <label className="block text-xs font-medium text-google-gray mb-1.5">
                     CIF / Recibo Autónomos <span className="text-red-500 font-semibold">*</span>
@@ -574,7 +635,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
                   {errors.cif_autonomo && <p className="text-red-500 text-xs mt-1">Este documento es obligatorio</p>}
                 </div>
 
-                {/* DNI — OBLIGATORIO en nuevas altas B2B */}
+                {/* DNI B2B */}
                 <div>
                   <label className="block text-xs font-medium text-google-gray mb-1.5">
                     DNI <span className="text-red-500 font-semibold">*</span>
@@ -601,7 +662,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
                   {errors.dni_b2b && <p className="text-red-500 text-xs mt-1">Este documento es obligatorio</p>}
                 </div>
 
-                {/* Factura — OBLIGATORIO en nuevas altas B2B */}
+                {/* Factura B2B */}
                 <div>
                   <label className="block text-xs font-medium text-google-gray mb-1.5">
                     Factura <span className="text-red-500 font-semibold">*</span>
@@ -628,7 +689,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
                   {errors.factura_b2b && <p className="text-red-500 text-xs mt-1">Este documento es obligatorio</p>}
                 </div>
 
-                {/* Justo Título — OPCIONAL */}
+                {/* Justo Título */}
                 <div>
                   <label className="block text-xs font-medium text-google-gray mb-1.5">
                     Justo Título <span className="font-normal text-google-gray">(Opcional)</span>
@@ -654,7 +715,6 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
                 </div>
               </>
             ) : (
-              /* B2C: DNI/CIF + Última Factura, ambos opcionales */
               <>
                 <div>
                   <label className="block text-xs font-medium text-google-gray mb-1.5">
@@ -709,7 +769,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
             )}
           </div>
 
-          {/* Banner error base de datos (p.ej. CUPS duplicado que pasó el pre-check) */}
+          {/* Error BD */}
           {cupsDbError && (
             <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
               <AlertCircle size={16} className="text-red-500 flex-shrink-0 mt-0.5" />

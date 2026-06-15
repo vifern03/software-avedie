@@ -4,6 +4,7 @@ import NewClientModal from '../components/NewClientModal';
 import DeleteConfirmModal from '../components/DeleteConfirmModal';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import Pagination from '../components/Pagination';
+import ShareButton from '../components/ShareButton';
 import { useData, fetchSingleDoc } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import DateInput from '../components/DateInput';
@@ -220,7 +221,7 @@ function ConsumoModal({ cliente, onClose, onSave }) {
 
 export default function AltaClientes({ tipo }) {
   const isB2B = tipo === 'B2B';
-  const { clientes: allClientes, clientesB2C, clientesB2B, addCliente, updateCliente, setConsumoAnualEst, firmarContrato, formalizarContrato, deleteCliente, rankingComerciales, docsFlags } = useData();
+  const { clientes: allClientes, clientesB2C, clientesB2B, addCliente, updateCliente, updateCompartidoCon, setConsumoAnualEst, firmarContrato, formalizarContrato, deleteCliente, rankingComerciales, docsFlags } = useData();
 
   const allCups = useMemo(
     () => new Set(allClientes.map(c => (c.cups || '').toUpperCase().trim()).filter(Boolean)),
@@ -278,6 +279,8 @@ export default function AltaClientes({ tipo }) {
   const baseClientes = isPrivileged
     ? clientes
     : clientes.filter((c) => {
+        const sharedWithMe = (c.compartido_con || []).includes(currentUser?.username);
+        if (sharedWithMe) return true; // contratos compartidos siempre visibles
         const d = new Date(c.fecha_tramitacion || '');
         if (isNaN(d) || d < cutoff) return false;
         if (c.comercial !== currentUser?.username && c.creado_por !== currentUser?.username) return false;
@@ -293,6 +296,8 @@ export default function AltaClientes({ tipo }) {
     ? clientes
     : isTeamMember
       ? clientes.filter((c) => {
+          const sharedWithMe = (c.compartido_con || []).includes(currentUser?.username);
+          if (sharedWithMe) return true;
           const d = new Date(c.fecha_tramitacion || '');
           return !isNaN(d) && d >= cutoff;
         })
@@ -658,6 +663,7 @@ export default function AltaClientes({ tipo }) {
                             <FileCheck size={15} className="text-green-600" />
                           </button>
                         )}
+                        <ShareButton cliente={c} onUpdate={updateCompartidoCon} />
                         <button onClick={() => setEditClient(c)}
                           className="p-1 rounded hover:bg-blue-50 transition-colors" title="Editar">
                           <Pencil size={15} className="text-google-blue" />

@@ -23,6 +23,8 @@ const BINARY_FIELDS = [
   'cif_autonomo_url', 'justo_titulo_url', 'factura_b2b_url',
 ];
 
+// compartido_con se fetch en query separada (así el SELECT principal no falla
+// si la columna aún no existe en BD)
 const CLIENTES_SELECT = [
   'id', 'tipo', 'nombre', 'cif_dni', 'telefono', 'mail', 'cuenta_bancaria',
   'cups', 'tarifa', 'linea_negocio', 'subtipo', 'subtipo_otro', 'id_producto',
@@ -120,8 +122,6 @@ export function DataProvider({ children }) {
       const userEquipo = currentUser.equipo || 'Ambos';
 
       // ── Clientes (B2C / B2B) ──────────────────────────────────────────────────
-      // Admin y Manager: acceso GLOBAL sin restricción de equipo.
-      // Comercial: acotado a su equipo, o a sus propios registros si equipo='Ninguno'.
       let clientesQuery = supabase
         .from('clientes')
         .select(CLIENTES_SELECT)
@@ -137,7 +137,6 @@ export function DataProvider({ children }) {
       }
 
       // ── Visitas Tienda ────────────────────────────────────────────────────────
-      // Admin: acceso GLOBAL. Manager: solo su sede. Comercial: su sede o sus registros.
       let visitasQuery = supabase
         .from('visitas')
         .select('*')
@@ -153,7 +152,6 @@ export function DataProvider({ children }) {
       }
 
       // ── Visitas Pymes ─────────────────────────────────────────────────────────
-      // Admin y Manager: acceso GLOBAL. Comercial: solo las suyas.
       let visitasPymesQuery = supabase
         .from('visitas_pymes')
         .select('*')
@@ -164,15 +162,33 @@ export function DataProvider({ children }) {
         visitasPymesQuery = visitasPymesQuery.eq('registrado_por', currentUser.username);
       }
 
-      // Consultas de existencia de documentos — builders independientes (importante:
-      // no reusar el mismo builder o Supabase acumula condiciones entre queries)
+      // ── compartido_con (query separada, falla silenciosamente si no existe la columna)
+      const compartidoQuery = supabase
+        .from('clientes')
+        .select('id,compartido_con')
+        .is('deleted_at', null);
+
+      // ── Contratos compartidos con el usuario (solo para no-admin/manager)
+      // Falla silenciosamente si la columna no existe aún en BD
+      const sharedQuery = (!isAdmin && !isManager)
+        ? supabase
+            .from('clientes')
+            .select(CLIENTES_SELECT)
+            .is('deleted_at', null)
+            .filter('compartido_con', 'cs', `{"${currentUser.username}"}`)
+            .order('created_at', { ascending: false })
+        : null;
+
+      // Consultas de existencia de documentos — builders independientes
       const mkFlag = (col) => supabase.from('clientes').select('id').is('deleted_at', null).not(col, 'is', null);
 
       const [
-        { data: clientesData,     error: clientesErr },
+        { data: clientesData,     error: clientesErr  },
         { data: actividadesData },
         { data: visitasData },
         { data: visitasPymesData },
+        { data: compartidoData,   error: compartidoErr },
+        { data: sharedRaw },
         { data: dniData    },
         { data: factData   },
         { data: cifData    },
@@ -183,6 +199,8 @@ export function DataProvider({ children }) {
         supabase.from('actividades').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
         visitasQuery,
         visitasPymesQuery,
+        compartidoQuery,
+        sharedQuery || Promise.resolve({ data: [], error: null }),
         mkFlag('dni_escaneado'),
         mkFlag('ultima_factura'),
         mkFlag('cif_autonomo_url'),
@@ -194,17 +212,34 @@ export function DataProvider({ children }) {
       if (lastFetchKey.current !== fetchKey) return;
 
       if (clientesErr) {
-        // Error de red/BD: mantener datos del caché si existen
         if (!userCache) setIsLoading(false);
         return;
       }
 
-      const newClientes     = clientesData     || [];
+      // Construir mapa de compartido_con (vacío si la columna no existe aún)
+      const compartidoMap = {};
+      if (!compartidoErr && compartidoData) {
+        compartidoData.forEach(r => { compartidoMap[r.id] = r.compartido_con || []; });
+      }
+
+      // Fusionar compartido_con en los registros principales
+      const mainClientes = (clientesData || []).map(c => ({
+        ...c,
+        compartido_con: compartidoMap[c.id] || [],
+      }));
+
+      // Añadir contratos compartidos que no estén ya en mainClientes
+      const ownIds = new Set(mainClientes.map(c => c.id));
+      const extraShared = (sharedRaw || [])
+        .filter(c => !ownIds.has(c.id))
+        .map(c => ({ ...c, compartido_con: compartidoMap[c.id] || [] }));
+
+      const newClientes     = [...mainClientes, ...extraShared];
       const newActividades  = actividadesData  || [];
       const newVisitas      = visitasData      || [];
       const newVisitasPymes = visitasPymesData || [];
 
-      // Construir mapa de flags booleanos a partir de los sets de IDs
+      // Construir mapa de flags booleanos
       const dniSet     = new Set((dniData    || []).map(r => r.id));
       const factSet    = new Set((factData   || []).map(r => r.id));
       const cifSet     = new Set((cifData    || []).map(r => r.id));
@@ -228,7 +263,6 @@ export function DataProvider({ children }) {
       setVisitasPymes(newVisitasPymes);
       setDocsFlags(newDocsFlags);
 
-      // Persistir datos frescos para la próxima carga (docsFlags incluido)
       writeCache(currentUser.username, {
         clientes:     newClientes,
         actividades:  newActividades,
@@ -498,6 +532,7 @@ export function DataProvider({ children }) {
       fecha_tramitacion: tramitacion,
       fecha_firma:       data.fecha_firma       || null,
       fecha_formalizada: data.fecha_formalizada || null,
+      compartido_con:    data.compartido_con    || [],
       ...(data.dni_escaneado    ? { dni_escaneado:    data.dni_escaneado    } : {}),
       ...(data.ultima_factura   ? { ultima_factura:   data.ultima_factura   } : {}),
       ...(data.cif_autonomo_url ? { cif_autonomo_url: data.cif_autonomo_url } : {}),
@@ -611,7 +646,6 @@ export function DataProvider({ children }) {
 
     setClientes(prev => prev.map(c => c.id === id ? { ...c, ...updateObj } : c));
 
-    // Actualizar flags si se subió algún doc nuevo
     const flagPatch = {};
     if (data.dni_escaneado)    flagPatch.tiene_dni         = true;
     if (data.ultima_factura)   flagPatch.tiene_factura     = true;
@@ -634,6 +668,15 @@ export function DataProvider({ children }) {
         })
       : `${currentUser?.username} ha revisado el expediente de ${clientName}`;
     addActivity('Actualización', desc, currentUser?.username);
+  };
+
+  // Actualiza la lista de trabajadores con acceso a un contrato específico
+  const updateCompartidoCon = async (id, compartidoCon) => {
+    const arr = Array.isArray(compartidoCon) ? compartidoCon : [];
+    setClientes(prev => prev.map(c => c.id === id ? { ...c, compartido_con: arr } : c));
+    const { error } = await supabase.from('clientes').update({ compartido_con: arr }).eq('id', id);
+    if (error) { console.error('updateCompartidoCon:', error); return { error }; }
+    return { error: null };
   };
 
   const setConsumoAnualEst = (id, valor) => {
@@ -715,7 +758,6 @@ export function DataProvider({ children }) {
     const curMonth = now.getMonth();
     const curYear  = now.getFullYear();
 
-    // Comparación directa sobre YYYY-MM-DD para evitar saltos de día por UTC
     const enMesActual = (fechaStr) => {
       const [y, m] = (fechaStr || '').split('-').map(Number);
       return m - 1 === curMonth && y === curYear;
@@ -757,6 +799,7 @@ export function DataProvider({ children }) {
       isLoading,
       addCliente,
       updateCliente,
+      updateCompartidoCon,
       setConsumoAnualEst,
       firmarContrato,
       formalizarContrato,
