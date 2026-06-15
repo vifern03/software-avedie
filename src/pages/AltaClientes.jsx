@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Plus, FileCheck, Clock, AlertCircle, Trophy, Search, ChevronUp, ChevronDown, Trash2, Pencil, PenTool, X, Eye, FileText, BarChart2, CheckCircle } from 'lucide-react';
+import { Plus, FileCheck, Clock, AlertCircle, Trophy, Search, ChevronUp, ChevronDown, Trash2, Pencil, PenTool, X, Eye, Loader2, BarChart2, CheckCircle } from 'lucide-react';
 import NewClientModal from '../components/NewClientModal';
 import DeleteConfirmModal from '../components/DeleteConfirmModal';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import Pagination from '../components/Pagination';
-import { useData } from '../context/DataContext';
+import { useData, fetchSingleDoc } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import DateInput from '../components/DateInput';
 
@@ -64,51 +64,62 @@ function StatusBadge({ estado }) {
   );
 }
 
-function openBase64File(base64) {
+function openBase64(base64) {
   const mime = base64.split(';')[0].replace('data:', '');
-  const byteString = atob(base64.split(',')[1]);
-  const ab = new ArrayBuffer(byteString.length);
+  const bytes = atob(base64.split(',')[1]);
+  const ab = new ArrayBuffer(bytes.length);
   const ia = new Uint8Array(ab);
-  for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-  const blob = new Blob([ab], { type: mime });
-  const url = URL.createObjectURL(blob);
+  for (let i = 0; i < bytes.length; i++) ia[i] = bytes.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([ab], { type: mime }));
   window.open(url, '_blank', 'noopener,noreferrer');
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
-function FileCell({ value, clientName }) {
-  if (!value) return <span className="text-google-gray">—</span>;
-  if (value.startsWith('data:')) {
-    return (
-      <button onClick={() => openBase64File(value)}
-        className="p-1 rounded hover:bg-slate-100 transition-colors" title="Ver archivo">
-        <Eye size={15} className="text-slate-500" />
-      </button>
-    );
-  }
+// Celda lazy: muestra el ojo si el flag indica que hay doc; descarga Base64 al hacer clic
+function FileCell({ hasDoc, clientId, campo }) {
+  const [loading, setLoading] = useState(false);
+  if (!hasDoc) return <span className="text-google-gray">—</span>;
+  const handleClick = async () => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const data = await fetchSingleDoc(clientId, campo);
+      if (data) openBase64(data);
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
-    <a href={value} target="_blank" rel="noopener noreferrer"
+    <button onClick={handleClick} disabled={loading}
       className="p-1 rounded hover:bg-slate-100 transition-colors" title="Ver archivo">
-      <Eye size={15} className="text-slate-500" />
-    </a>
+      {loading
+        ? <Loader2 size={15} className="text-slate-400 animate-spin" />
+        : <Eye size={15} className="text-slate-500" />}
+    </button>
   );
 }
 
-function DocIcon({ value, label, clientName }) {
-  if (!value) return null;
-  if (value.startsWith('data:')) {
-    return (
-      <button onClick={() => openBase64File(value)}
-        className="p-1 rounded hover:bg-indigo-50 transition-colors" title={label}>
-        <Eye size={15} className="text-indigo-400 hover:text-indigo-600" />
-      </button>
-    );
-  }
+// Icono lazy para celda multi-doc B2B
+function DocIcon({ hasDoc, clientId, campo, label }) {
+  const [loading, setLoading] = useState(false);
+  if (!hasDoc) return null;
+  const handleClick = async () => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const data = await fetchSingleDoc(clientId, campo);
+      if (data) openBase64(data);
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
-    <a href={value} target="_blank" rel="noopener noreferrer"
+    <button onClick={handleClick} disabled={loading}
       className="p-1 rounded hover:bg-indigo-50 transition-colors" title={label}>
-      <Eye size={15} className="text-indigo-400 hover:text-indigo-600" />
-    </a>
+      {loading
+        ? <Loader2 size={15} className="text-indigo-300 animate-spin" />
+        : <Eye size={15} className="text-indigo-400 hover:text-indigo-600" />}
+    </button>
   );
 }
 
@@ -209,7 +220,7 @@ function ConsumoModal({ cliente, onClose, onSave }) {
 
 export default function AltaClientes({ tipo }) {
   const isB2B = tipo === 'B2B';
-  const { clientes: allClientes, clientesB2C, clientesB2B, addCliente, updateCliente, setConsumoAnualEst, firmarContrato, formalizarContrato, deleteCliente, rankingComerciales } = useData();
+  const { clientes: allClientes, clientesB2C, clientesB2B, addCliente, updateCliente, setConsumoAnualEst, firmarContrato, formalizarContrato, deleteCliente, rankingComerciales, docsFlags } = useData();
 
   const allCups = useMemo(
     () => new Set(allClientes.map(c => (c.cups || '').toUpperCase().trim()).filter(Boolean)),
@@ -601,19 +612,19 @@ export default function AltaClientes({ tipo }) {
                     <td className="table-cell text-center">
                       {isB2B ? (
                         <div className="flex items-center justify-center gap-0.5">
-                          <DocIcon value={c.cif_autonomo_url} label="Ver CIF / Autónomo" clientName={`CIF_${c.nombre}`} />
-                          <DocIcon value={c.dni_escaneado}    label="Ver DNI"            clientName={`DNI_${c.nombre}`} />
-                          <DocIcon value={c.factura_b2b_url}  label="Ver Factura"        clientName={`Factura_${c.nombre}`} />
-                          <DocIcon value={c.justo_titulo_url} label="Ver Justo Título"   clientName={`JustoTitulo_${c.nombre}`} />
-                          {!c.cif_autonomo_url && !c.dni_escaneado && !c.factura_b2b_url && !c.justo_titulo_url && (
+                          <DocIcon hasDoc={docsFlags[c.id]?.tiene_cif}         clientId={c.id} campo="cif_autonomo_url" label="Ver CIF / Autónomo" />
+                          <DocIcon hasDoc={docsFlags[c.id]?.tiene_dni}         clientId={c.id} campo="dni_escaneado"    label="Ver DNI" />
+                          <DocIcon hasDoc={docsFlags[c.id]?.tiene_factura_b2b} clientId={c.id} campo="factura_b2b_url"  label="Ver Factura B2B" />
+                          <DocIcon hasDoc={docsFlags[c.id]?.tiene_justo}       clientId={c.id} campo="justo_titulo_url" label="Ver Justo Título" />
+                          {!docsFlags[c.id]?.tiene_cif && !docsFlags[c.id]?.tiene_dni && !docsFlags[c.id]?.tiene_factura_b2b && !docsFlags[c.id]?.tiene_justo && (
                             <span className="text-google-gray">—</span>
                           )}
                         </div>
                       ) : (
-                        <FileCell value={c.dni_escaneado} clientName={`DNI_${c.nombre}`} />
+                        <FileCell hasDoc={docsFlags[c.id]?.tiene_dni} clientId={c.id} campo="dni_escaneado" />
                       )}
                     </td>
-                    <td className="table-cell text-center"><FileCell value={c.ultima_factura} clientName={`Factura_${c.nombre}`} /></td>
+                    <td className="table-cell text-center"><FileCell hasDoc={docsFlags[c.id]?.tiene_factura} clientId={c.id} campo="ultima_factura" /></td>
                     <td className="table-cell text-google-gray text-xs max-w-[180px] truncate" title={c.descripcion || ''}>{c.descripcion || '—'}</td>
                     {isB2B && (
                       <td className="table-cell text-center">

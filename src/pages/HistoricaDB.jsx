@@ -1,39 +1,50 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { Search, Filter, FileSpreadsheet, ChevronUp, ChevronDown, Database, Trash2, Pencil, Eye, FileText, X, PenTool, FileCheck } from 'lucide-react';
+import { Search, Filter, FileSpreadsheet, ChevronUp, ChevronDown, Database, Trash2, Pencil, Eye, Loader2, X, PenTool, FileCheck } from 'lucide-react';
 import NewClientModal from '../components/NewClientModal';
 import DeleteConfirmModal from '../components/DeleteConfirmModal';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import Pagination from '../components/Pagination';
-import { useData } from '../context/DataContext';
+import { useData, fetchSingleDoc } from '../context/DataContext';
 import DateInput from '../components/DateInput';
 
-function downloadBase64File(base64, clientName = 'documento') {
-  const mime  = base64.split(';')[0].replace('data:', '');
-  const ext   = mime === 'application/pdf' ? 'pdf' : mime === 'image/jpeg' ? 'jpg' : mime === 'image/png' ? 'png' : 'bin';
-  const link  = document.createElement('a');
-  link.href   = base64;
-  link.download = `${clientName.replace(/\s+/g, '_')}.${ext}`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+function openBase64(base64, clientName = 'documento') {
+  const mime = base64.split(';')[0].replace('data:', '');
+  const ext  = mime === 'application/pdf' ? 'pdf' : mime === 'image/jpeg' ? 'jpg' : mime === 'image/png' ? 'png' : 'bin';
+  const bytes = atob(base64.split(',')[1]);
+  const ab = new ArrayBuffer(bytes.length);
+  const ia = new Uint8Array(ab);
+  for (let i = 0; i < bytes.length; i++) ia[i] = bytes.charCodeAt(i);
+  const url = URL.createObjectURL(new Blob([ab], { type: mime }));
+  // Abrir en nueva pestaña y disparar descarga con nombre del cliente
+  const a = document.createElement('a');
+  a.href = url; a.download = `${clientName.replace(/\s+/g, '_')}.${ext}`; a.target = '_blank';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
-function FileCell({ value, clientName }) {
-  if (!value) return <span className="text-google-gray">—</span>;
-  if (typeof value === 'string' && value.startsWith('data:')) {
-    return (
-      <button onClick={() => downloadBase64File(value, clientName)}
-        className="p-1 rounded hover:bg-slate-100 transition-colors" title="Descargar archivo">
-        <Eye size={15} className="text-slate-500 hover:text-slate-800 transition-colors" />
-      </button>
-    );
-  }
+// Celda lazy — muestra ojo si el flag indica que hay doc; descarga al hacer clic
+function FileCell({ hasDoc, clientId, campo, clientName }) {
+  const [loading, setLoading] = useState(false);
+  if (!hasDoc) return <span className="text-google-gray">—</span>;
+  const handleClick = async () => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      const data = await fetchSingleDoc(clientId, campo);
+      if (data) openBase64(data, clientName);
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
-    <span title="Archivo registrado" className="inline-flex items-center justify-center p-1">
-      <FileText size={15} className="text-slate-400" />
-    </span>
+    <button onClick={handleClick} disabled={loading}
+      className="p-1 rounded hover:bg-slate-100 transition-colors" title="Descargar archivo">
+      {loading
+        ? <Loader2 size={15} className="text-slate-400 animate-spin" />
+        : <Eye size={15} className="text-slate-500 hover:text-slate-800 transition-colors" />}
+    </button>
   );
 }
 
@@ -92,7 +103,7 @@ const FilterPill = ({ label, active, onClick }) => (
 );
 
 export default function HistoricaDB() {
-  const { clientes, updateCliente, firmarContrato, formalizarContrato, deleteCliente } = useData();
+  const { clientes, updateCliente, firmarContrato, formalizarContrato, deleteCliente, docsFlags } = useData();
 
   const allCups = useMemo(
     () => new Set(clientes.map(c => (c.cups || '').toUpperCase().trim()).filter(Boolean)),
@@ -431,8 +442,8 @@ export default function HistoricaDB() {
                           : <span className="text-google-gray italic">—</span>}
                       </td>
                       <td className="table-cell"><StatusBadge estado={c.estado} /></td>
-                      <td className="table-cell text-center"><FileCell value={c.dni_escaneado} clientName={`DNI_${c.nombre}`} /></td>
-                      <td className="table-cell text-center"><FileCell value={c.ultima_factura} clientName={`Factura_${c.nombre}`} /></td>
+                      <td className="table-cell text-center"><FileCell hasDoc={docsFlags[c.id]?.tiene_dni}     clientId={c.id} campo="dni_escaneado"  clientName={`DNI_${c.nombre}`} /></td>
+                      <td className="table-cell text-center"><FileCell hasDoc={docsFlags[c.id]?.tiene_factura} clientId={c.id} campo="ultima_factura" clientName={`Factura_${c.nombre}`} /></td>
                       <td className="table-cell text-google-gray text-xs max-w-[180px] truncate" title={c.descripcion || ''}>{c.descripcion || '—'}</td>
                       <td className="table-cell text-center">
                         <div className="flex items-center justify-center gap-1">

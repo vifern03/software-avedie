@@ -14,12 +14,15 @@ const formatDateDDMMYYYY = (dateStr) => {
 };
 
 // ── Stale-while-revalidate cache ──────────────────────────────────────────────
-// Campos Base64 excluidos del caché y del SELECT principal: pueden pesar varios
-// MB por registro y provocan timeout en Supabase con SELECT *. HistoricaDB los
-// obtiene por separado bajo demanda.
-const BINARY_FIELDS = ['dni_escaneado', 'ultima_factura', 'cif_autonomo_url', 'justo_titulo_url', 'factura_b2b_url'];
+// Los campos Base64 se excluyen del SELECT principal: con 99+ registros el
+// payload supera el límite de Supabase y produce statement timeout (57014).
+// En su lugar se almacenan flags booleanos (docsFlags) indicando si existe
+// cada documento. El Base64 real se descarga SOLO al hacer clic (fetch-on-click).
+const BINARY_FIELDS = [
+  'dni_escaneado', 'dni_reverso', 'ultima_factura',
+  'cif_autonomo_url', 'justo_titulo_url', 'factura_b2b_url',
+];
 
-// Columnas que sí se descargan en el fetch principal (sin binarios)
 const CLIENTES_SELECT = [
   'id', 'tipo', 'nombre', 'cif_dni', 'telefono', 'mail', 'cuenta_bancaria',
   'cups', 'tarifa', 'linea_negocio', 'subtipo', 'subtipo_otro', 'id_producto',
@@ -27,6 +30,17 @@ const CLIENTES_SELECT = [
   'fecha_tramitacion', 'fecha_firma', 'fecha_formalizada', 'created_at',
   'deleted_at', 'consumo_anual_est',
 ].join(',');
+
+// Descarga ÚNICAMENTE el campo Base64 de UN cliente concreto (fetch-on-click)
+export const fetchSingleDoc = async (clientId, campo) => {
+  const { data, error } = await supabase
+    .from('clientes')
+    .select(`id,${campo}`)
+    .eq('id', clientId)
+    .single();
+  if (error || !data) return null;
+  return data[campo] || null;
+};
 
 const cacheKey = (username) => `dashboard_cache_${username}`;
 
@@ -43,6 +57,7 @@ const writeCache = (username, data) => {
   try {
     const payload = {
       ...data,
+      // docsFlags se guarda tal cual (solo booleanos, muy ligero)
       clientes: data.clientes.map(c => {
         const r = { ...c };
         BINARY_FIELDS.forEach(f => delete r[f]);
@@ -61,6 +76,7 @@ export function DataProvider({ children }) {
   const [actividades,  setActividades]  = useState([]);
   const [visitas,      setVisitas]      = useState([]);
   const [visitasPymes, setVisitasPymes] = useState([]);
+  const [docsFlags,    setDocsFlags]    = useState({});
   const [isLoading,    setIsLoading]    = useState(true);
 
   // Clave de la última carga completada: evita el double-fetch cuando
@@ -87,10 +103,11 @@ export function DataProvider({ children }) {
     // ── 1. Inyectar caché INMEDIATAMENTE (pintura instantánea) ───────────────
     const userCache = readCache(currentUser.username);
     if (userCache) {
-      setClientes(userCache.clientes     || []);
-      setActividades(userCache.actividades  || []);
-      setVisitas(userCache.visitas       || []);
+      setClientes(userCache.clientes       || []);
+      setActividades(userCache.actividades || []);
+      setVisitas(userCache.visitas         || []);
       setVisitasPymes(userCache.visitasPymes || []);
+      setDocsFlags(userCache.docsFlags     || {});
       setIsLoading(false);
     } else {
       setIsLoading(true);
@@ -147,16 +164,30 @@ export function DataProvider({ children }) {
         visitasPymesQuery = visitasPymesQuery.eq('registrado_por', currentUser.username);
       }
 
+      // Consultas de existencia de documentos — builders independientes (importante:
+      // no reusar el mismo builder o Supabase acumula condiciones entre queries)
+      const mkFlag = (col) => supabase.from('clientes').select('id').is('deleted_at', null).not(col, 'is', null);
+
       const [
         { data: clientesData,     error: clientesErr },
         { data: actividadesData },
         { data: visitasData },
         { data: visitasPymesData },
+        { data: dniData    },
+        { data: factData   },
+        { data: cifData    },
+        { data: justoData  },
+        { data: fb2bData   },
       ] = await Promise.all([
         clientesQuery,
         supabase.from('actividades').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
         visitasQuery,
         visitasPymesQuery,
+        mkFlag('dni_escaneado'),
+        mkFlag('ultima_factura'),
+        mkFlag('cif_autonomo_url'),
+        mkFlag('justo_titulo_url'),
+        mkFlag('factura_b2b_url'),
       ]);
 
       // ── 3. Evitar race condition: descartar si el usuario cambió ──────────
@@ -173,17 +204,37 @@ export function DataProvider({ children }) {
       const newVisitas      = visitasData      || [];
       const newVisitasPymes = visitasPymesData || [];
 
+      // Construir mapa de flags booleanos a partir de los sets de IDs
+      const dniSet     = new Set((dniData    || []).map(r => r.id));
+      const factSet    = new Set((factData   || []).map(r => r.id));
+      const cifSet     = new Set((cifData    || []).map(r => r.id));
+      const justoSet   = new Set((justoData  || []).map(r => r.id));
+      const fb2bSet    = new Set((fb2bData   || []).map(r => r.id));
+
+      const newDocsFlags = {};
+      newClientes.forEach(c => {
+        newDocsFlags[c.id] = {
+          tiene_dni:         dniSet.has(c.id),
+          tiene_factura:     factSet.has(c.id),
+          tiene_cif:         cifSet.has(c.id),
+          tiene_justo:       justoSet.has(c.id),
+          tiene_factura_b2b: fb2bSet.has(c.id),
+        };
+      });
+
       setClientes(newClientes);
       setActividades(newActividades);
       setVisitas(newVisitas);
       setVisitasPymes(newVisitasPymes);
+      setDocsFlags(newDocsFlags);
 
-      // Persistir datos frescos para la próxima carga
+      // Persistir datos frescos para la próxima carga (docsFlags incluido)
       writeCache(currentUser.username, {
         clientes:     newClientes,
         actividades:  newActividades,
         visitas:      newVisitas,
         visitasPymes: newVisitasPymes,
+        docsFlags:    newDocsFlags,
       });
 
       setIsLoading(false);
@@ -457,6 +508,16 @@ export function DataProvider({ children }) {
         : null,
     };
     setClientes(prev => [newCliente, ...prev]);
+    setDocsFlags(prev => ({
+      ...prev,
+      [newCliente.id]: {
+        tiene_dni:         !!(data.dni_escaneado),
+        tiene_factura:     !!(data.ultima_factura),
+        tiene_cif:         !!(data.cif_autonomo_url),
+        tiene_justo:       !!(data.justo_titulo_url),
+        tiene_factura_b2b: !!(data.factura_b2b_url),
+      },
+    }));
     const { error } = await supabase.from('clientes').insert([newCliente]);
     if (error) {
       console.error('addCliente:', error);
@@ -550,6 +611,17 @@ export function DataProvider({ children }) {
 
     setClientes(prev => prev.map(c => c.id === id ? { ...c, ...updateObj } : c));
 
+    // Actualizar flags si se subió algún doc nuevo
+    const flagPatch = {};
+    if (data.dni_escaneado)    flagPatch.tiene_dni         = true;
+    if (data.ultima_factura)   flagPatch.tiene_factura     = true;
+    if (data.cif_autonomo_url) flagPatch.tiene_cif         = true;
+    if (data.justo_titulo_url) flagPatch.tiene_justo       = true;
+    if (data.factura_b2b_url)  flagPatch.tiene_factura_b2b = true;
+    if (Object.keys(flagPatch).length > 0) {
+      setDocsFlags(prev => ({ ...prev, [id]: { ...(prev[id] || {}), ...flagPatch } }));
+    }
+
     supabase.from('clientes').update(updateObj).eq('id', id)
       .then(({ error }) => { if (error) console.error('updateCliente:', error); });
 
@@ -624,6 +696,7 @@ export function DataProvider({ children }) {
   const deleteCliente = (id) => {
     const cliente = clientes.find(c => c.id === id);
     setClientes(prev => prev.filter(c => c.id !== id));
+    setDocsFlags(prev => { const next = { ...prev }; delete next[id]; return next; });
     supabase.from('clientes').update({ deleted_at: new Date().toISOString() }).eq('id', id)
       .then(({ error }) => { if (error) console.error('deleteCliente:', error); });
     if (cliente) {
@@ -679,6 +752,7 @@ export function DataProvider({ children }) {
       actividades,
       visitas,
       visitasPymes,
+      docsFlags,
       rankingComerciales,
       isLoading,
       addCliente,
