@@ -169,13 +169,15 @@ export function DataProvider({ children }) {
         .is('deleted_at', null);
 
       // ── Contratos compartidos con el usuario (solo para no-admin/manager)
-      // Falla silenciosamente si la columna no existe aún en BD
+      // IMPORTANTE: compartido_con almacena displayName ("CARMEN BALLESTEROS"),
+      // no username ("CARMENBALLESTEROS") — filtrar siempre por displayName.
+      const userDisplayName = currentUser.displayName || currentUser.username;
       const sharedQuery = (!isAdmin && !isManager)
         ? supabase
             .from('clientes')
             .select(CLIENTES_SELECT)
             .is('deleted_at', null)
-            .filter('compartido_con', 'cs', `{"${currentUser.username}"}`)
+            .filter('compartido_con', 'cs', `{"${userDisplayName}"}`)
             .order('created_at', { ascending: false })
         : null;
 

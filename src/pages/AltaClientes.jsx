@@ -279,7 +279,7 @@ export default function AltaClientes({ tipo }) {
   const baseClientes = isPrivileged
     ? clientes
     : clientes.filter((c) => {
-        const sharedWithMe = (c.compartido_con || []).includes(currentUser?.username);
+        const sharedWithMe = (c.compartido_con || []).includes(currentUser?.displayName || currentUser?.username);
         if (sharedWithMe) return true; // contratos compartidos siempre visibles
         const d = new Date(c.fecha_tramitacion || '');
         if (isNaN(d) || d < cutoff) return false;
@@ -296,7 +296,7 @@ export default function AltaClientes({ tipo }) {
     ? clientes
     : isTeamMember
       ? clientes.filter((c) => {
-          const sharedWithMe = (c.compartido_con || []).includes(currentUser?.username);
+          const sharedWithMe = (c.compartido_con || []).includes(currentUser?.displayName || currentUser?.username);
           if (sharedWithMe) return true;
           const d = new Date(c.fecha_tramitacion || '');
           return !isNaN(d) && d >= cutoff;
