@@ -5,6 +5,7 @@ import DeleteConfirmModal from '../components/DeleteConfirmModal';
 import ConfirmActionModal from '../components/ConfirmActionModal';
 import Pagination from '../components/Pagination';
 import ShareButton from '../components/ShareButton';
+import PrescriptoresModal from '../components/PrescriptoresModal';
 import { useData, fetchSingleDoc } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import DateInput from '../components/DateInput';
@@ -221,7 +222,7 @@ function ConsumoModal({ cliente, onClose, onSave }) {
 
 export default function AltaClientes({ tipo }) {
   const isB2B = tipo === 'B2B';
-  const { clientes: allClientes, clientesB2C, clientesB2B, addCliente, updateCliente, updateCompartidoCon, setConsumoAnualEst, firmarContrato, formalizarContrato, deleteCliente, rankingComerciales, docsFlags } = useData();
+  const { clientes: allClientes, clientesB2C, clientesB2B, addCliente, updateCliente, updateCompartidoCon, setConsumoAnualEst, firmarContrato, formalizarContrato, deleteCliente, rankingComerciales, docsFlags, prescriptores, addPrescriptor, renamePrescriptor, deletePrescriptor, bulkReasignPrescriptor } = useData();
 
   const allCups = useMemo(
     () => new Set(allClientes.map(c => (c.cups || '').toUpperCase().trim()).filter(Boolean)),
@@ -230,9 +231,10 @@ export default function AltaClientes({ tipo }) {
   const { currentUser, users } = useAuth();
   const clientes = isB2B ? clientesB2B : clientesB2C;
 
-  const [showModal,        setShowModal]        = useState(false);
-  const [showCurModal,     setShowCurModal]     = useState(false);
-  const [editClient,       setEditClient]        = useState(null);
+  const [showModal,              setShowModal]              = useState(false);
+  const [showCurModal,           setShowCurModal]           = useState(false);
+  const [showPrescriptoresModal, setShowPrescriptoresModal] = useState(false);
+  const [editClient,             setEditClient]             = useState(null);
   const [deleteTarget,     setDeleteTarget]      = useState(null);
   const [firmaTarget,      setFirmaTarget]       = useState(null);
   const [formalizarTarget, setFormalizarTarget]  = useState(null);
@@ -353,7 +355,7 @@ export default function AltaClientes({ tipo }) {
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const TOTAL_COLS = isB2B ? 22 : 21;
+  const TOTAL_COLS = isB2B ? 23 : 22;
   const [consumoTarget, setConsumoTarget] = useState(null);
 
   const subtipo = (c) => c.subtipo === 'Otro' ? (c.subtipo_otro || 'Otro') : (c.subtipo || '—');
@@ -370,6 +372,15 @@ export default function AltaClientes({ tipo }) {
           <p className="text-sm text-gray-400 mt-0.5">Datos de los últimos 30 días</p>
         </div>
         <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button
+              onClick={() => setShowPrescriptoresModal(true)}
+              title="Gestión de Prescriptores"
+              className="p-2 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
+            >
+              <Pencil size={16} />
+            </button>
+          )}
           <button onClick={() => setShowCurModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-300 bg-red-50 text-red-700 text-sm font-medium hover:bg-red-100 transition-colors">
             <Plus size={16} />
             <span>Alta CUR</span>
@@ -559,6 +570,7 @@ export default function AltaClientes({ tipo }) {
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('tarifa')}><div className="flex items-center gap-1">Tarifa <SortIcon field="tarifa" /></div></th>
                 <th className="table-header">Id Producto</th>
                 <th className="table-header">Prescriptor</th>
+                <th className="table-header">Vendido por</th>
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('comercial')}><div className="flex items-center gap-1">Tramitado por <SortIcon field="comercial" /></div></th>
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('fecha_firma')}><div className="flex items-center gap-1">F. Firma <SortIcon field="fecha_firma" /></div></th>
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('fecha_tramitacion')}><div className="flex items-center gap-1">F. Tramitación <SortIcon field="fecha_tramitacion" /></div></th>
@@ -605,6 +617,7 @@ export default function AltaClientes({ tipo }) {
                     </td>
                     <td className="table-cell text-google-gray text-xs">{c.id_producto || '—'}</td>
                     <td className="table-cell text-google-gray text-xs">{c.creado_por || '—'}</td>
+                    <td className="table-cell text-google-gray text-xs">{c.vendido_por || '—'}</td>
                     <td className="table-cell text-google-gray text-xs">{c.comercial}</td>
                     <td className="table-cell tabular-nums text-xs text-google-gray">{formatDate(c.fecha_firma)}</td>
                     <td className="table-cell tabular-nums text-xs text-google-gray">{formatDate(c.fecha_tramitacion)}</td>
@@ -727,6 +740,18 @@ export default function AltaClientes({ tipo }) {
         />
       )}
 
+      {showPrescriptoresModal && (
+        <PrescriptoresModal
+          onClose={() => setShowPrescriptoresModal(false)}
+          allClientes={allClientes}
+          prescriptores={prescriptores}
+          addPrescriptor={addPrescriptor}
+          renamePrescriptor={renamePrescriptor}
+          deletePrescriptor={deletePrescriptor}
+          bulkReasignPrescriptor={bulkReasignPrescriptor}
+        />
+      )}
+
       {(showModal || showCurModal || editClient) && (
         <NewClientModal
           key={editClient?.id ?? 'new'}
@@ -746,6 +771,7 @@ export default function AltaClientes({ tipo }) {
             subtipo_otro:      editClient.subtipo_otro     || '',
             id_producto:       editClient.id_producto      || '',
             creado_por:        editClient.creado_por       || '',
+            vendido_por:       editClient.vendido_por      || '',
             descripcion:       editClient.descripcion      || '',
             consumo_anual_est: editClient.consumo_anual_est != null ? editClient.consumo_anual_est : '',
             estado:            editClient.estado,

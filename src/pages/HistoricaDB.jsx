@@ -535,6 +535,7 @@ export default function HistoricaDB() {
             subtipo_otro:      editClient.subtipo_otro     || '',
             id_producto:       editClient.id_producto      || '',
             creado_por:        editClient.creado_por       || '',
+            vendido_por:       editClient.vendido_por      || '',
             descripcion:       editClient.descripcion      || '',
             estado:            editClient.estado,
             mail:              editClient.mail             || '',

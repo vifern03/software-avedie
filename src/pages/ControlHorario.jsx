@@ -528,15 +528,31 @@ export default function ControlHorario() {
     [users]
   );
 
+  // Máximo de pausas en el panel admin (para columnas dinámicas)
+  const maxPausasAdmin = useMemo(
+    () => Math.max(0, ...allFichajes.map(r => extractPausas(r.eventos).length)),
+    [allFichajes]
+  );
+
   // ── Exportar Excel ───────────────────────────────────────────────────────
   const exportarExcel = async () => {
     const wb = new ExcelJS.Workbook();
     wb.creator = 'CRM Grupo Avedie';
     const ws = wb.addWorksheet('Fichajes');
+    const maxP = Math.max(0, ...allFichajes.map(r => extractPausas(r.eventos).length));
+    const pausaCols = [];
+    for (let i = 0; i < maxP; i++) {
+      pausaCols.push(
+        { header: `Pausa ${i + 1} Inicio`, key: `p${i}_inicio`, width: 14 },
+        { header: `Pausa ${i + 1} Fin`,    key: `p${i}_fin`,    width: 14 },
+        { header: `Pausa ${i + 1} Min`,    key: `p${i}_min`,    width: 11 },
+      );
+    }
     ws.columns = [
       { header: 'Trabajador', key: 'usuario',      width: 22 },
       { header: 'Fecha',      key: 'fecha',         width: 14 },
       { header: 'H. Entrada', key: 'hora_entrada',  width: 13 },
+      ...pausaCols,
       { header: 'H. Salida',  key: 'hora_salida',   width: 13 },
       { header: 'Total',      key: 'total',         width: 11 },
     ];
@@ -556,15 +572,26 @@ export default function ControlHorario() {
           : f.hora_salida
             ? secToLabel(calcTiempos(f.eventos, endSec).trabajadoSec)
             : '—';
+      const pausas = extractPausas(f.eventos);
+      const pausaData = {};
+      for (let i = 0; i < maxP; i++) {
+        pausaData[`p${i}_inicio`] = pausas[i]?.inicio ?? '—';
+        pausaData[`p${i}_fin`]    = pausas[i]?.fin    ?? '—';
+        pausaData[`p${i}_min`]    = pausas[i]?.durMin != null ? `${pausas[i].durMin}m` : '—';
+      }
       ws.addRow({
         usuario:      f.usuario,
         fecha:        fmtFecha(f.fecha),
         hora_entrada: f.hora_entrada ?? '—',
+        ...pausaData,
         hora_salida:  f.hora_salida  ?? '—',
         total,
       });
     });
-    ws.autoFilter = { from: 'A1', to: 'E1' };
+    const lastColLetter = ws.columns.length <= 26
+      ? String.fromCharCode(64 + ws.columns.length)
+      : `A${String.fromCharCode(64 + ws.columns.length - 26)}`;
+    ws.autoFilter = { from: 'A1', to: `${lastColLetter}1` };
     const d   = new Date();
     const buf = await wb.xlsx.writeBuffer();
     saveAs(
@@ -880,16 +907,22 @@ export default function ControlHorario() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-google-bg border-b border-google-border">
-                    {['Trabajador', 'Fecha', 'H. Entrada', 'H. Salida', 'Total'].map(h => (
-                      <th key={h} className="px-6 py-3 text-left text-xs font-semibold text-google-gray uppercase tracking-wide">
-                        {h}
+                  <tr className="bg-google-bg border-b border-google-border text-xs font-semibold text-google-gray uppercase tracking-wide">
+                    <th className="px-6 py-3 text-left whitespace-nowrap">Trabajador</th>
+                    <th className="px-6 py-3 text-left whitespace-nowrap">Fecha</th>
+                    <th className="px-4 py-3 text-center whitespace-nowrap">H. Entrada</th>
+                    {Array.from({ length: maxPausasAdmin }, (_, i) => (
+                      <th key={i} className="px-2 py-3 text-center whitespace-nowrap text-indigo-500">
+                        Pausa {i + 1}
                       </th>
                     ))}
+                    <th className="px-4 py-3 text-center whitespace-nowrap">H. Salida</th>
+                    <th className="px-6 py-3 text-center whitespace-nowrap">Total</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-google-border">
                   {allFichajes.map((f) => {
+                    const pausas    = extractPausas(f.eventos);
                     const endSec    = f.hora_salida ? timeToSec(f.hora_salida) : null;
                     const totalSec  = endSec !== null ? calcTiempos(f.eventos, endSec).trabajadoSec : null;
                     const autoStop  = isAutoParado(f.eventos);
@@ -898,9 +931,17 @@ export default function ControlHorario() {
                       <tr key={f.id} className="hover:bg-google-bg/50 transition-colors">
                         <td className="px-6 py-3 font-medium text-google-dark">{f.usuario}</td>
                         <td className="px-6 py-3 text-google-dark">{fmtFecha(f.fecha)}</td>
-                        <td className="px-6 py-3 font-mono text-blue-600">{f.hora_entrada ?? '—'}</td>
-                        <td className="px-6 py-3 font-mono text-red-600">{f.hora_salida  ?? '—'}</td>
-                        <td className="px-6 py-3 font-mono font-semibold">
+                        <td className="px-4 py-3 text-center font-mono text-blue-600 text-xs font-semibold">{f.hora_entrada ?? '—'}</td>
+                        {Array.from({ length: maxPausasAdmin }, (_, i) => (
+                          <PausaArrowCell
+                            key={i}
+                            inicio={pausas[i]?.inicio ?? null}
+                            fin={pausas[i]?.fin    ?? null}
+                            durMin={pausas[i]?.durMin ?? null}
+                          />
+                        ))}
+                        <td className="px-4 py-3 text-center font-mono text-red-600 text-xs font-semibold">{f.hora_salida ?? '—'}</td>
+                        <td className="px-6 py-3 text-center font-mono font-semibold">
                           {autoStop ? (
                             <span className="text-amber-600">
                               8h 05m <span className="font-normal text-xs">(Parado Automático)</span>

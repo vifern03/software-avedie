@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react';
-import { X, User, Building2, Phone, Zap, FileText, CheckCircle, AlertCircle, Mail, CreditCard, Upload, Pencil, Calendar, UserCheck, Briefcase, Hash, AlignLeft, BarChart2, Users, Check } from 'lucide-react';
+import { X, User, Building2, Phone, Zap, FileText, CheckCircle, AlertCircle, Mail, CreditCard, Upload, Pencil, Calendar, UserCheck, Briefcase, Hash, AlignLeft, BarChart2, Users, Check, ShoppingBag } from 'lucide-react';
 import DateInput from './DateInput';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 import { SHARE_USERS } from './ShareButton';
 
 const tarifas  = ['2.0TD', '3.0TD', '3.1A', '6.1TD', '6.1A', '6.2', '6.3', '6.4', 'RL.1', 'RL.2', 'RL.3'];
@@ -21,6 +22,8 @@ const todayStr = () => new Date().toISOString().split('T')[0];
 
 export default function NewClientModal({ tipo, onClose, onSave, initialData, existingCups, editId }) {
   const { currentUser, users } = useAuth();
+  const { prescriptores: prescriptoresDB } = useData();
+  const prescriptoresList = prescriptoresDB.map(p => p.nombre);
   const isB2B       = tipo === 'B2B' || tipo === 'CUR_B2B';
   const isEdit      = !!initialData;
   const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'manager';
@@ -29,7 +32,14 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
   const isKnownUser = !initialAgenteGestorValue || users.some(u => u.username === initialAgenteGestorValue);
 
   const initialCreadoPorValue = initialData?.creado_por || '';
-  const isCreadoPorKnown = !initialCreadoPorValue || users.some(u => u.username === initialCreadoPorValue);
+  const isCreadoPorKnown = !initialCreadoPorValue
+    || initialCreadoPorValue === 'Canal Directo'
+    || initialCreadoPorValue === 'Directo'
+    || prescriptoresDB.some(p => p.nombre === initialCreadoPorValue)
+    || users.some(u => u.username === initialCreadoPorValue);
+  const initialTipoVenta = isB2B
+    ? 'prescriptor'
+    : ((!initialCreadoPorValue || initialCreadoPorValue === 'Canal Directo' || initialCreadoPorValue === 'Directo') ? 'directo' : 'prescriptor');
 
   const [form, setForm] = useState({
     nombre:            initialData?.nombre            || '',
@@ -41,7 +51,10 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
     subtipo:           initialData?.subtipo           || '',
     subtipo_otro:      initialData?.subtipo_otro      || '',
     id_producto:       initialData?.id_producto       || '',
-    creado_por:        isCreadoPorKnown ? initialCreadoPorValue : '__otro__',
+    creado_por:        isB2B
+      ? (isCreadoPorKnown ? initialCreadoPorValue : '__otro__')
+      : (initialTipoVenta === 'directo' ? 'Canal Directo' : (isCreadoPorKnown ? initialCreadoPorValue : '__otro__')),
+    vendido_por:       initialData?.vendido_por       || '',
     descripcion:       initialData?.descripcion       || '',
     consumo_anual_est: initialData?.consumo_anual_est != null ? String(initialData.consumo_anual_est) : '',
     estado:            initialData?.estado            || 'Pendiente Firma',
@@ -52,8 +65,9 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
     fecha_firma:       initialData?.fecha_firma       ?? null,
     fecha_formalizada: initialData?.fecha_formalizada ?? null,
   });
+  const [tipoVenta,         setTipoVenta]          = useState(initialTipoVenta);
   const [agenteGestorOtro,  setAgenteGestorOtro]  = useState(isKnownUser     ? '' : initialAgenteGestorValue);
-  const [prescriptorOtro,   setPrescriptorOtro]   = useState(isCreadoPorKnown ? '' : initialCreadoPorValue);
+  const [prescriptorOtro,   setPrescriptorOtro]   = useState((isCreadoPorKnown || initialTipoVenta === 'directo') ? '' : initialCreadoPorValue);
   const [errors,       setErrors]       = useState({});
   const [saved,        setSaved]        = useState(false);
   const [cupsDbError,  setCupsDbError]  = useState(null);
@@ -154,10 +168,12 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
       e.fecha_formalizada = true;
     if (form.agente_gestor === '__otro__' && !agenteGestorOtro.trim())
       e.agente_gestor_otro = true;
-    if (!form.creado_por)
+    if (tipoVenta === 'prescriptor' && !form.creado_por)
       e.creado_por = true;
-    if (form.creado_por === '__otro__' && !prescriptorOtro.trim())
+    if (tipoVenta === 'prescriptor' && form.creado_por === '__otro__' && !prescriptorOtro.trim())
       e.prescriptor_otro = true;
+    if (!isB2B && !form.vendido_por.trim())
+      e.vendido_por = true;
     if (!form.cuenta_bancaria.trim())             e.cuenta_bancaria = true;
     if (!form.id_producto.trim())                 e.id_producto     = true;
     if (!isB2B && !isEdit && !dniBase64)         e.dni_b2c       = true;
@@ -175,11 +191,14 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
     setCupsDbError(null);
 
     const efectiveAgenteGestor = form.agente_gestor === '__otro__' ? agenteGestorOtro.trim() : form.agente_gestor;
-    const efectivePrescriptor  = form.creado_por    === '__otro__' ? prescriptorOtro.trim()  : form.creado_por;
+    const efectivePrescriptor  = tipoVenta === 'directo'
+      ? 'Canal Directo'
+      : (form.creado_por === '__otro__' ? prescriptorOtro.trim() : form.creado_por);
     const result = await onSave({
       ...form,
       agente_gestor:    efectiveAgenteGestor,
       creado_por:       efectivePrescriptor,
+      vendido_por:      isB2B ? efectivePrescriptor : form.vendido_por.trim(),
       tipo,
       compartido_con:   !isEdit && quiereCompartir ? compartidoCon : [],
       dni_escaneado:    dniBase64,
@@ -531,34 +550,121 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
             {errors.id_producto && <p className="text-red-500 text-xs mt-1">Este campo es obligatorio</p>}
           </div>
 
-          {/* Prescriptor */}
-          <div>
-            <label className="block text-xs font-medium text-google-gray mb-1.5 flex items-center gap-1.5">
-              <User size={13} /> Prescriptor *
-            </label>
-            <select
-              value={form.creado_por}
-              onChange={(e) => { set('creado_por', e.target.value); setErrors(er => ({ ...er, prescriptor_otro: false })); }}
-              className={inputClass('creado_por')}
-            >
-              <option value="">Seleccionar prescriptor...</option>
-              {users.map((u) => (
-                <option key={u.username} value={u.username}>{u.displayName || u.username}</option>
-              ))}
-              <option value="__otro__">Otro</option>
-            </select>
-            {form.creado_por === '__otro__' && (
-              <input
-                type="text"
-                placeholder="Escribe el nombre del prescriptor..."
-                value={prescriptorOtro}
-                onChange={(e) => { setPrescriptorOtro(e.target.value); setErrors(er => ({ ...er, prescriptor_otro: false })); }}
-                className={`input-field mt-2 ${errors.prescriptor_otro ? '!border-red-400 focus:!ring-red-300' : ''}`}
-              />
-            )}
-            {errors.creado_por    && <p className="text-red-500 text-xs mt-1">Este campo es obligatorio</p>}
-            {errors.prescriptor_otro && <p className="text-red-500 text-xs mt-1">Debes especificar el nombre del prescriptor</p>}
-          </div>
+          {/* Prescriptor / Tipo de Venta */}
+          {isB2B ? (
+            <div>
+              <label className="block text-xs font-medium text-google-gray mb-2 flex items-center gap-1.5">
+                <User size={13} /> Prescriptor *
+              </label>
+              <select
+                value={form.creado_por}
+                onChange={(e) => { set('creado_por', e.target.value); setErrors(er => ({ ...er, prescriptor_otro: false })); }}
+                className={inputClass('creado_por')}
+              >
+                <option value="">Seleccionar prescriptor...</option>
+                {prescriptoresList.map((nombre) => (
+                  <option key={nombre} value={nombre}>{nombre}</option>
+                ))}
+                <option value="__otro__">Otro (especificar)</option>
+              </select>
+              {form.creado_por === '__otro__' && (
+                <input
+                  type="text"
+                  placeholder="Escribe el nombre del prescriptor..."
+                  value={prescriptorOtro}
+                  onChange={(e) => { setPrescriptorOtro(e.target.value); setErrors(er => ({ ...er, prescriptor_otro: false })); }}
+                  className={`input-field mt-2 ${errors.prescriptor_otro ? '!border-red-400 focus:!ring-red-300' : ''}`}
+                />
+              )}
+              {errors.creado_por       && <p className="text-red-500 text-xs mt-1">Este campo es obligatorio</p>}
+              {errors.prescriptor_otro && <p className="text-red-500 text-xs mt-1">Debes especificar el nombre del prescriptor</p>}
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-medium text-google-gray mb-2 flex items-center gap-1.5">
+                <User size={13} /> Tipo de Venta *
+              </label>
+              <div className="flex gap-2 mb-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTipoVenta('directo');
+                    set('creado_por', 'Directo');
+                    setErrors(er => ({ ...er, creado_por: false, prescriptor_otro: false }));
+                  }}
+                  className={`flex-1 py-2 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+                    tipoVenta === 'directo'
+                      ? 'bg-google-blue text-white border-google-blue shadow-sm'
+                      : 'bg-white text-google-gray border-google-border hover:border-google-blue hover:text-google-blue'
+                  }`}
+                >
+                  Canal Directo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTipoVenta('prescriptor');
+                    set('creado_por', '');
+                    setErrors(er => ({ ...er, creado_por: false }));
+                  }}
+                  className={`flex-1 py-2 px-3 rounded-lg border text-xs font-semibold transition-colors ${
+                    tipoVenta === 'prescriptor'
+                      ? 'bg-google-blue text-white border-google-blue shadow-sm'
+                      : 'bg-white text-google-gray border-google-border hover:border-google-blue hover:text-google-blue'
+                  }`}
+                >
+                  Con Prescriptor
+                </button>
+              </div>
+              {tipoVenta === 'prescriptor' && (
+                <>
+                  <p className="text-xs text-google-gray mb-1.5">Seleccione de la lista:</p>
+                  <select
+                    value={form.creado_por}
+                    onChange={(e) => { set('creado_por', e.target.value); setErrors(er => ({ ...er, prescriptor_otro: false })); }}
+                    className={inputClass('creado_por')}
+                  >
+                    <option value="">Seleccionar prescriptor...</option>
+                    {prescriptoresList.map((nombre) => (
+                      <option key={nombre} value={nombre}>{nombre}</option>
+                    ))}
+                    <option value="__otro__">Otro (especificar)</option>
+                  </select>
+                  {form.creado_por === '__otro__' && (
+                    <input
+                      type="text"
+                      placeholder="Escribe el nombre del prescriptor..."
+                      value={prescriptorOtro}
+                      onChange={(e) => { setPrescriptorOtro(e.target.value); setErrors(er => ({ ...er, prescriptor_otro: false })); }}
+                      className={`input-field mt-2 ${errors.prescriptor_otro ? '!border-red-400 focus:!ring-red-300' : ''}`}
+                    />
+                  )}
+                  {errors.creado_por       && <p className="text-red-500 text-xs mt-1">Este campo es obligatorio</p>}
+                  {errors.prescriptor_otro && <p className="text-red-500 text-xs mt-1">Debes especificar el nombre del prescriptor</p>}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Vendido por — solo B2C (B2B copia automáticamente el prescriptor) */}
+          {!isB2B && (
+            <div>
+              <label className="block text-xs font-medium text-google-gray mb-1.5 flex items-center gap-1.5">
+                <ShoppingBag size={13} /> Vendido por *
+              </label>
+              <select
+                value={form.vendido_por}
+                onChange={(e) => { set('vendido_por', e.target.value); setErrors(er => ({ ...er, vendido_por: false })); }}
+                className={inputClass('vendido_por')}
+              >
+                <option value="">Seleccionar vendedor...</option>
+                {prescriptoresList.map((nombre) => (
+                  <option key={nombre} value={nombre}>{nombre}</option>
+                ))}
+              </select>
+              {errors.vendido_por && <p className="text-red-500 text-xs mt-1">Este campo es obligatorio</p>}
+            </div>
+          )}
 
           {/* Descripción */}
           <div>

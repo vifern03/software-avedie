@@ -28,7 +28,7 @@ const BINARY_FIELDS = [
 const CLIENTES_SELECT = [
   'id', 'tipo', 'nombre', 'cif_dni', 'telefono', 'mail', 'cuenta_bancaria',
   'cups', 'tarifa', 'linea_negocio', 'subtipo', 'subtipo_otro', 'id_producto',
-  'creado_por', 'descripcion', 'estado', 'comercial', 'equipo',
+  'creado_por', 'vendido_por', 'descripcion', 'estado', 'comercial', 'equipo',
   'fecha_tramitacion', 'fecha_firma', 'fecha_formalizada', 'created_at',
   'deleted_at', 'consumo_anual_est',
 ].join(',');
@@ -45,6 +45,12 @@ export const fetchSingleDoc = async (clientId, campo) => {
 };
 
 const cacheKey = (username) => `dashboard_cache_${username}`;
+
+// Para contratos antiguos sin vendido_por, usar creado_por como fallback (excepto Canal Directo)
+const normalizeCliente = (c) => ({
+  ...c,
+  vendido_por: c.vendido_por || (c.creado_por && c.creado_por !== 'Canal Directo' && c.creado_por !== 'Directo' ? c.creado_por : ''),
+});
 
 const readCache = (username) => {
   if (!username) return null;
@@ -74,14 +80,22 @@ const writeCache = (username, data) => {
 export function DataProvider({ children }) {
   const { currentUser, users } = useAuth();
 
-  const [clientes,     setClientes]     = useState([]);
-  const [actividades,  setActividades]  = useState([]);
-  const [visitas,      setVisitas]      = useState([]);
-  const [visitasPymes, setVisitasPymes] = useState([]);
-  const [docsFlags,    setDocsFlags]    = useState({});
-  const [isLoading,    setIsLoading]    = useState(true);
+  const [clientes,      setClientes]      = useState([]);
+  const [actividades,   setActividades]   = useState([]);
+  const [visitas,       setVisitas]       = useState([]);
+  const [visitasPymes,  setVisitasPymes]  = useState([]);
+  const [docsFlags,     setDocsFlags]     = useState({});
+  const [isLoading,     setIsLoading]     = useState(true);
+  const [prescriptores, setPrescriptores] = useState([]); // [{id, nombre}]
 
-  // Clave de la última carga completada: evita el double-fetch cuando
+  // ── Carga de prescriptores (tabla independiente del cache SWR) ─────────────
+  useEffect(() => {
+    if (!currentUser) { setPrescriptores([]); return; }
+    supabase.from('prescriptores').select('id,nombre').order('nombre')
+      .then(({ data }) => { if (data) setPrescriptores(data); });
+  }, [currentUser?.username]);
+
+  // ── Clave de la última carga completada: evita el double-fetch cuando
   // AuthContext revalida currentUser con los mismos datos de BD.
   const lastFetchKey = useRef(null);
 
@@ -224,8 +238,8 @@ export function DataProvider({ children }) {
         compartidoData.forEach(r => { compartidoMap[r.id] = r.compartido_con || []; });
       }
 
-      // Fusionar compartido_con en los registros principales
-      const mainClientes = (clientesData || []).map(c => ({
+      // Fusionar compartido_con en los registros principales y normalizar vendido_por
+      const mainClientes = (clientesData || []).map(c => normalizeCliente({
         ...c,
         compartido_con: compartidoMap[c.id] || [],
       }));
@@ -234,7 +248,7 @@ export function DataProvider({ children }) {
       const ownIds = new Set(mainClientes.map(c => c.id));
       const extraShared = (sharedRaw || [])
         .filter(c => !ownIds.has(c.id))
-        .map(c => ({ ...c, compartido_con: compartidoMap[c.id] || [] }));
+        .map(c => normalizeCliente({ ...c, compartido_con: compartidoMap[c.id] || [] }));
 
       const newClientes     = [...mainClientes, ...extraShared];
       const newActividades  = actividadesData  || [];
@@ -527,6 +541,7 @@ export function DataProvider({ children }) {
       subtipo_otro:     data.subtipo_otro    || '',
       id_producto:      data.id_producto     || '',
       creado_por:       data.creado_por      || '',
+      vendido_por:      data.vendido_por     || '',
       descripcion:      data.descripcion     || '',
       estado:           data.estado          || 'Pendiente Firma',
       comercial:        data.agente_gestor   || currentUser?.username || 'Desconocido',
@@ -586,6 +601,7 @@ export function DataProvider({ children }) {
         ['SUBTIPO',           data.subtipo         ?? '',   original.subtipo         ?? ''],
         ['ID PRODUCTO',       data.id_producto     ?? '',   original.id_producto     ?? ''],
         ['CREADO POR',        data.creado_por      ?? '',   original.creado_por      ?? ''],
+        ['VENDIDO POR',       data.vendido_por     ?? '',   original.vendido_por     ?? ''],
         ['DESCRIPCIÓN',       data.descripcion     ?? '',   original.descripcion     ?? ''],
         ['ESTADO',            data.estado,                  original.estado              ],
         ['FECHA TRAMITACIÓN', data.fecha_tramitacion ?? '', original.fecha_tramitacion ?? ''],
@@ -630,6 +646,7 @@ export function DataProvider({ children }) {
       subtipo_otro:      data.subtipo_otro      !== undefined ? data.subtipo_otro      : original?.subtipo_otro,
       id_producto:       data.id_producto       !== undefined ? data.id_producto       : original?.id_producto,
       creado_por:        data.creado_por        !== undefined ? data.creado_por        : original?.creado_por,
+      vendido_por:       data.vendido_por       !== undefined ? data.vendido_por       : original?.vendido_por,
       descripcion:       data.descripcion       !== undefined ? data.descripcion       : original?.descripcion,
       fecha_firma:       data.fecha_firma       !== undefined ? data.fecha_firma       : original?.fecha_firma,
       fecha_formalizada: data.fecha_formalizada !== undefined ? data.fecha_formalizada : original?.fecha_formalizada,
@@ -753,6 +770,57 @@ export function DataProvider({ children }) {
     }
   };
 
+  // ── CRUD de prescriptores ───────────────────────────────────────────────────
+
+  const addPrescriptor = async (nombre) => {
+    const trimmed = nombre.trim().toUpperCase();
+    if (!trimmed) return { error: 'Nombre vacío' };
+    const { data, error } = await supabase
+      .from('prescriptores').insert([{ nombre: trimmed }]).select().single();
+    if (!error && data) {
+      setPrescriptores(prev => [...prev, data].sort((a, b) => a.nombre.localeCompare(b.nombre)));
+    }
+    return { error };
+  };
+
+  const renamePrescriptor = async (id, newNombre) => {
+    const trimmed = newNombre.trim().toUpperCase();
+    if (!trimmed) return { error: 'Nombre vacío' };
+    const { error } = await supabase
+      .from('prescriptores').update({ nombre: trimmed }).eq('id', id);
+    if (!error) {
+      setPrescriptores(prev =>
+        prev.map(p => p.id === id ? { ...p, nombre: trimmed } : p)
+            .sort((a, b) => a.nombre.localeCompare(b.nombre))
+      );
+    }
+    return { error };
+  };
+
+  const deletePrescriptor = async (id) => {
+    const { error } = await supabase.from('prescriptores').delete().eq('id', id);
+    if (!error) setPrescriptores(prev => prev.filter(p => p.id !== id));
+    return { error };
+  };
+
+  // ── Reasignación masiva de prescriptor ─────────────────────────────────────
+
+  const bulkReasignPrescriptor = async (oldName, newName) => {
+    const [{ error: e1 }, { error: e2 }] = await Promise.all([
+      supabase.from('clientes').update({ creado_por: newName }).eq('creado_por', oldName),
+      supabase.from('clientes').update({ vendido_por: newName }).eq('vendido_por', oldName),
+    ]);
+    const error = e1 || e2;
+    if (!error) {
+      setClientes(prev => prev.map(c => ({
+        ...c,
+        creado_por:  c.creado_por  === oldName ? newName : c.creado_por,
+        vendido_por: c.vendido_por === oldName ? newName : c.vendido_por,
+      })));
+    }
+    return { error };
+  };
+
   // ── Ranking ─────────────────────────────────────────────────────────────────
 
   const rankingComerciales = useMemo(() => {
@@ -773,7 +841,8 @@ export function DataProvider({ children }) {
     });
     clientes.forEach((c) => {
       if (!enMesActual(c.fecha_tramitacion)) return;
-      const key = c.creado_por || '';
+      // vendido_por siempre está normalizado (normalizeCliente en carga)
+      const key = c.vendido_por || '';
       if (!key) return;
       if (!map[key]) {
         const knownUser = users.find(u => u.username === key);
@@ -807,6 +876,11 @@ export function DataProvider({ children }) {
       formalizarContrato,
       renovarContrato,
       deleteCliente,
+      prescriptores,
+      addPrescriptor,
+      renamePrescriptor,
+      deletePrescriptor,
+      bulkReasignPrescriptor,
       addActivity,
       clearActividades,
       addVisita,
