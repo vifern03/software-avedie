@@ -240,6 +240,7 @@ export default function AltaClientes({ tipo }) {
   const [formalizarTarget, setFormalizarTarget]  = useState(null);
   const [search,           setSearch]            = useState('');
   const [searchNombre,      setSearchNombre]      = useState('');
+  const [searchVendidoPor,  setSearchVendidoPor]  = useState('');
   const [filterPrescriptor, setFilterPrescriptor] = useState('');
   const [filterComercial,   setFilterComercial]   = useState('');
   const [filterTipo,       setFilterTipo]        = useState('');
@@ -259,7 +260,7 @@ export default function AltaClientes({ tipo }) {
     return [...new Set([...fromUsers, ...fromData])].sort();
   }, [users, clientes]);
 
-  useEffect(() => { setCurrentPage(1); }, [search, searchNombre, filterPrescriptor, filterComercial, dateFilter, timeFilter, filterTipo, filterEstado]);
+  useEffect(() => { setCurrentPage(1); }, [search, searchNombre, searchVendidoPor, filterPrescriptor, filterComercial, dateFilter, timeFilter, filterTipo, filterEstado]);
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
@@ -335,12 +336,13 @@ export default function AltaClientes({ tipo }) {
       const qn = searchNombre.toLowerCase();
       const matchSearch      = !search            || (c.cups || '').toLowerCase().includes(q) || (c.cif_dni || '').toLowerCase().includes(q);
       const matchNombre      = !searchNombre      || (c.nombre    || '').toLowerCase().includes(qn);
+      const matchVendidoPor  = !searchVendidoPor  || (c.vendido_por || '').toLowerCase().includes(searchVendidoPor.toLowerCase());
       const matchPrescriptor = !filterPrescriptor || (c.creado_por || '').toLowerCase().includes(filterPrescriptor.toLowerCase());
       const matchComercial   = !filterComercial   || c.comercial === filterComercial;
       const matchDate        = !dateFilter        || c.fecha_tramitacion === dateFilter;
       const matchTipo        = !filterTipo        || c.tipo === filterTipo;
       const matchEstado      = !filterEstado      || c.estado === filterEstado;
-      return matchSearch && matchNombre && matchPrescriptor && matchComercial && matchDate && matchTipo && matchEstado;
+      return matchSearch && matchNombre && matchVendidoPor && matchPrescriptor && matchComercial && matchDate && matchTipo && matchEstado;
     })
     .sort((a, b) => {
       let va = a[sortField] ?? '';
@@ -465,14 +467,24 @@ export default function AltaClientes({ tipo }) {
           </div>
         </div>
 
-        {/* Fila 2: nombre + prescriptor + tramitador */}
+        {/* Fila 2: nombre + vendido_por + prescriptor + tramitador */}
         <div className="flex flex-wrap items-center gap-3">
-          <div className="relative flex-1 min-w-[200px]">
+          <div className="relative flex-1 min-w-[180px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray" />
             <input type="text" placeholder="Buscar por nombre..." value={searchNombre}
               onChange={(e) => setSearchNombre(e.target.value)} className="input-field pl-9 h-9" />
             {searchNombre && (
               <button onClick={() => setSearchNombre('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-google-gray hover:text-google-dark">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <div className="relative flex-1 min-w-[180px]">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray" />
+            <input type="text" placeholder="Buscar por Vendido por..." value={searchVendidoPor}
+              onChange={(e) => setSearchVendidoPor(e.target.value)} className="input-field pl-9 h-9" />
+            {searchVendidoPor && (
+              <button onClick={() => setSearchVendidoPor('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-google-gray hover:text-google-dark">
                 <X size={14} />
               </button>
             )}

@@ -115,9 +115,12 @@ export default function HistoricaDB() {
   const [deleteTarget,     setDeleteTarget]     = useState(null);
   const [firmaTarget,      setFirmaTarget]      = useState(null);
   const [formalizarTarget, setFormalizarTarget] = useState(null);
-  const [search,           setSearch]           = useState('');
-  const [filterComercial,  setFilterComercial]  = useState('');
-  const [filterEstado,     setFilterEstado]     = useState('');
+  const [search,            setSearch]            = useState('');
+  const [searchNombre,      setSearchNombre]      = useState('');
+  const [searchVendidoPor,  setSearchVendidoPor]  = useState('');
+  const [searchPrescriptor, setSearchPrescriptor] = useState('');
+  const [filterComercial,   setFilterComercial]   = useState('');
+  const [filterEstado,      setFilterEstado]      = useState('');
   const [timeFilter,       setTimeFilter]       = useState('');
   const [dateFrom,         setDateFrom]         = useState('');
   const [dateTo,           setDateTo]           = useState('');
@@ -128,7 +131,7 @@ export default function HistoricaDB() {
   const [currentPage, setCurrentPage] = useState(1);
   const tableScrollRef = useRef(null);
 
-  useEffect(() => { setCurrentPage(1); }, [search, filterComercial, filterEstado, timeFilter, dateFrom, dateTo]);
+  useEffect(() => { setCurrentPage(1); }, [search, searchNombre, searchVendidoPor, searchPrescriptor, filterComercial, filterEstado, timeFilter, dateFrom, dateTo]);
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
@@ -147,17 +150,20 @@ export default function HistoricaDB() {
 
   const clientesFormalizados = clientes.filter((c) => c.estado === 'Formalizado');
   const gestoresUnicos = [...new Set(clientesFormalizados.map((c) => c.comercial).filter(Boolean))].sort();
-  const hasFilters = search || filterComercial || filterEstado || timeFilter || dateFrom || dateTo;
+  const hasFilters = search || searchNombre || searchVendidoPor || searchPrescriptor || filterComercial || filterEstado || timeFilter || dateFrom || dateTo;
 
   const filtered = getTimeFilteredList(clientesFormalizados, timeFilter)
     .filter((c) => {
       const q = search.toLowerCase();
-      const matchSearch    = !search          || (c.cups || '').toLowerCase().includes(q) || (c.cif_dni || '').toLowerCase().includes(q);
-      const matchComercial = !filterComercial || c.comercial === filterComercial;
-      const matchEstado    = !filterEstado    || c.estado    === filterEstado;
-      const matchDateFrom  = !dateFrom        || (c.fecha_formalizada >= dateFrom);
-      const matchDateTo    = !dateTo          || (c.fecha_formalizada <= dateTo);
-      return matchSearch && matchComercial && matchEstado && matchDateFrom && matchDateTo;
+      const matchSearch      = !search            || (c.cups || '').toLowerCase().includes(q) || (c.cif_dni || '').toLowerCase().includes(q);
+      const matchNombre      = !searchNombre      || (c.nombre     || '').toLowerCase().includes(searchNombre.toLowerCase());
+      const matchVendidoPor  = !searchVendidoPor  || (c.vendido_por || '').toLowerCase().includes(searchVendidoPor.toLowerCase());
+      const matchPrescriptor = !searchPrescriptor || (c.creado_por  || '').toLowerCase().includes(searchPrescriptor.toLowerCase());
+      const matchComercial   = !filterComercial   || c.comercial === filterComercial;
+      const matchEstado      = !filterEstado      || c.estado    === filterEstado;
+      const matchDateFrom    = !dateFrom          || (c.fecha_formalizada >= dateFrom);
+      const matchDateTo      = !dateTo            || (c.fecha_formalizada <= dateTo);
+      return matchSearch && matchNombre && matchVendidoPor && matchPrescriptor && matchComercial && matchEstado && matchDateFrom && matchDateTo;
     })
     .sort((a, b) => {
       let va = a[sortField] ?? '';
@@ -324,6 +330,7 @@ export default function HistoricaDB() {
 
         {/* Filters bar */}
         <div className="card px-5 py-4 space-y-3">
+          {/* Fila 1: CUPS/DNI + gestores + estados */}
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative flex-1 min-w-[200px]">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray" />
@@ -346,11 +353,44 @@ export default function HistoricaDB() {
               <option value="Formalizado">Formalizado</option>
             </select>
             {hasFilters && (
-              <button onClick={() => { setSearch(''); setFilterComercial(''); setFilterEstado(''); setTimeFilter(''); setDateFrom(''); setDateTo(''); }}
+              <button onClick={() => { setSearch(''); setSearchNombre(''); setSearchVendidoPor(''); setSearchPrescriptor(''); setFilterComercial(''); setFilterEstado(''); setTimeFilter(''); setDateFrom(''); setDateTo(''); }}
                 className="text-xs text-google-blue hover:underline">
                 Limpiar filtros
               </button>
             )}
+          </div>
+          {/* Fila 2: nombre + vendido_por + prescriptor */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative flex-1 min-w-[180px]">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray" />
+              <input type="text" placeholder="Buscar por nombre..." value={searchNombre}
+                onChange={(e) => setSearchNombre(e.target.value)} className="input-field pl-9 h-9" />
+              {searchNombre && (
+                <button onClick={() => setSearchNombre('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-google-gray hover:text-google-dark">
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            <div className="relative flex-1 min-w-[180px]">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray" />
+              <input type="text" placeholder="Buscar por Vendido por..." value={searchVendidoPor}
+                onChange={(e) => setSearchVendidoPor(e.target.value)} className="input-field pl-9 h-9" />
+              {searchVendidoPor && (
+                <button onClick={() => setSearchVendidoPor('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-google-gray hover:text-google-dark">
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            <div className="relative flex-1 min-w-[180px]">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray" />
+              <input type="text" placeholder="Buscar por Prescriptor..." value={searchPrescriptor}
+                onChange={(e) => setSearchPrescriptor(e.target.value)} className="input-field pl-9 h-9" />
+              {searchPrescriptor && (
+                <button onClick={() => setSearchPrescriptor('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-google-gray hover:text-google-dark">
+                  <X size={14} />
+                </button>
+              )}
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-google-gray mr-1">Tramitación:</span>
