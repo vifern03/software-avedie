@@ -198,6 +198,7 @@ export default function HistoricaDB() {
       { header: 'Tarifa',           key: 'tarifa',            width: 12 },
       { header: 'Id Producto',      key: 'id_producto',       width: 20 },
       { header: 'Prescriptor',      key: 'creado_por',        width: 18 },
+      { header: 'Vendido por',      key: 'vendido_por',       width: 18 },
       { header: 'Tramitado por',    key: 'tramitado_por',     width: 18 },
       { header: 'F. Firma',        key: 'fecha_firma',       width: 14 },
       { header: 'F. Tramitación',  key: 'fecha_tramitacion', width: 16 },
@@ -234,6 +235,7 @@ export default function HistoricaDB() {
         tarifa:            c.tarifa                 || '',
         id_producto:       c.id_producto            || '',
         creado_por:        c.creado_por             || '',
+        vendido_por:       c.vendido_por            || '',
         tramitado_por:     c.comercial              || '',
         fecha_firma:       c.fecha_firma            || '',
         fecha_tramitacion: c.fecha_tramitacion      || '',
@@ -267,7 +269,7 @@ export default function HistoricaDB() {
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const TOTAL_COLS = 21;
+  const TOTAL_COLS = 22;
 
   // Column definitions (20 cols, exact order)
   const sortableCols = [
@@ -395,6 +397,7 @@ export default function HistoricaDB() {
                   {th('tarifa',            'Tarifa')}
                   <th className="table-header">Id Producto</th>
                   <th className="table-header">Prescriptor</th>
+                  <th className="table-header">Vendido por</th>
                   {th('comercial',         'Tramitado por')}
                   {th('fecha_firma',       'F. Firma')}
                   {th('fecha_tramitacion', 'F. Tramitación')}
@@ -434,6 +437,7 @@ export default function HistoricaDB() {
                       </td>
                       <td className="table-cell text-google-gray text-xs">{c.id_producto || '—'}</td>
                       <td className="table-cell text-google-gray text-xs">{c.creado_por || '—'}</td>
+                      <td className="table-cell text-google-gray text-xs">{c.vendido_por || '—'}</td>
                       <td className="table-cell text-google-gray text-xs">{c.comercial}</td>
                       <td className="table-cell tabular-nums text-xs text-google-gray">{formatDate(c.fecha_firma)}</td>
                       <td className="table-cell tabular-nums text-xs text-google-gray">{formatDate(c.fecha_tramitacion)}</td>
