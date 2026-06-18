@@ -41,6 +41,9 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
     ? 'prescriptor'
     : ((!initialCreadoPorValue || initialCreadoPorValue === 'Canal Directo' || initialCreadoPorValue === 'Directo') ? 'directo' : 'prescriptor');
 
+  const initialVendidoPorValue = initialData?.vendido_por || '';
+  const isVendidoPorKnown = !initialVendidoPorValue || prescriptoresDB.some(p => p.nombre === initialVendidoPorValue);
+
   const [form, setForm] = useState({
     nombre:            initialData?.nombre            || '',
     identificacion:    initialData?.identificacion    || '',
@@ -54,7 +57,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
     creado_por:        isB2B
       ? (isCreadoPorKnown ? initialCreadoPorValue : '__otro__')
       : (initialTipoVenta === 'directo' ? 'Canal Directo' : (isCreadoPorKnown ? initialCreadoPorValue : '__otro__')),
-    vendido_por:       initialData?.vendido_por       || '',
+    vendido_por:       isVendidoPorKnown ? initialVendidoPorValue : '__vendido_otro__',
     descripcion:       initialData?.descripcion       || '',
     consumo_anual_est: initialData?.consumo_anual_est != null ? String(initialData.consumo_anual_est) : '',
     estado:            initialData?.estado            || 'Pendiente Firma',
@@ -68,6 +71,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
   const [tipoVenta,         setTipoVenta]          = useState(initialTipoVenta);
   const [agenteGestorOtro,  setAgenteGestorOtro]  = useState(isKnownUser     ? '' : initialAgenteGestorValue);
   const [prescriptorOtro,   setPrescriptorOtro]   = useState((isCreadoPorKnown || initialTipoVenta === 'directo') ? '' : initialCreadoPorValue);
+  const [vendidoPorOtro,    setVendidoPorOtro]    = useState(isVendidoPorKnown ? '' : initialVendidoPorValue);
   const [errors,       setErrors]       = useState({});
   const [saved,        setSaved]        = useState(false);
   const [cupsDbError,  setCupsDbError]  = useState(null);
@@ -172,8 +176,10 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
       e.creado_por = true;
     if (tipoVenta === 'prescriptor' && form.creado_por === '__otro__' && !prescriptorOtro.trim())
       e.prescriptor_otro = true;
-    if (!isB2B && !form.vendido_por.trim())
+    if (!form.vendido_por)
       e.vendido_por = true;
+    else if (form.vendido_por === '__vendido_otro__' && !vendidoPorOtro.trim())
+      e.vendido_por_otro = true;
     if (!form.cuenta_bancaria.trim())             e.cuenta_bancaria = true;
     if (!form.id_producto.trim())                 e.id_producto     = true;
     if (!isB2B && !isEdit && !dniBase64)         e.dni_b2c       = true;
@@ -198,7 +204,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
       ...form,
       agente_gestor:    efectiveAgenteGestor,
       creado_por:       efectivePrescriptor,
-      vendido_por:      isB2B ? efectivePrescriptor : form.vendido_por.trim(),
+      vendido_por:      form.vendido_por === '__vendido_otro__' ? vendidoPorOtro.trim() : form.vendido_por.trim(),
       tipo,
       compartido_con:   !isEdit && quiereCompartir ? compartidoCon : [],
       dni_escaneado:    dniBase64,
@@ -646,25 +652,34 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
             </div>
           )}
 
-          {/* Vendido por — solo B2C (B2B copia automáticamente el prescriptor) */}
-          {!isB2B && (
-            <div>
-              <label className="block text-xs font-medium text-google-gray mb-1.5 flex items-center gap-1.5">
-                <ShoppingBag size={13} /> Vendido por *
-              </label>
-              <select
-                value={form.vendido_por}
-                onChange={(e) => { set('vendido_por', e.target.value); setErrors(er => ({ ...er, vendido_por: false })); }}
-                className={inputClass('vendido_por')}
-              >
-                <option value="">Seleccionar vendedor...</option>
-                {prescriptoresList.map((nombre) => (
-                  <option key={nombre} value={nombre}>{nombre}</option>
-                ))}
-              </select>
-              {errors.vendido_por && <p className="text-red-500 text-xs mt-1">Este campo es obligatorio</p>}
-            </div>
-          )}
+          {/* Vendido por — B2C y B2B (independiente del prescriptor) */}
+          <div>
+            <label className="block text-xs font-medium text-google-gray mb-1.5 flex items-center gap-1.5">
+              <ShoppingBag size={13} /> Vendido por *
+            </label>
+            <select
+              value={form.vendido_por}
+              onChange={(e) => { set('vendido_por', e.target.value); setErrors(er => ({ ...er, vendido_por: false, vendido_por_otro: false })); }}
+              className={inputClass('vendido_por')}
+            >
+              <option value="">Seleccionar vendedor...</option>
+              {prescriptoresList.map((nombre) => (
+                <option key={nombre} value={nombre}>{nombre}</option>
+              ))}
+              <option value="__vendido_otro__">Otro (especificar)</option>
+            </select>
+            {form.vendido_por === '__vendido_otro__' && (
+              <input
+                type="text"
+                placeholder="Escribe el nombre del vendedor..."
+                value={vendidoPorOtro}
+                onChange={(e) => { setVendidoPorOtro(e.target.value); setErrors(er => ({ ...er, vendido_por_otro: false })); }}
+                className={`input-field mt-2 ${errors.vendido_por_otro ? '!border-red-400 focus:!ring-red-300' : ''}`}
+              />
+            )}
+            {errors.vendido_por      && <p className="text-red-500 text-xs mt-1">Este campo es obligatorio</p>}
+            {errors.vendido_por_otro && <p className="text-red-500 text-xs mt-1">Debes especificar el nombre del vendedor</p>}
+          </div>
 
           {/* Descripción */}
           <div>

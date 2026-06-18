@@ -222,7 +222,8 @@ function ConsumoModal({ cliente, onClose, onSave }) {
 
 export default function AltaClientes({ tipo }) {
   const isB2B = tipo === 'B2B';
-  const { clientes: allClientes, clientesB2C, clientesB2B, addCliente, updateCliente, updateCompartidoCon, setConsumoAnualEst, firmarContrato, formalizarContrato, deleteCliente, rankingComerciales, docsFlags, prescriptores, addPrescriptor, renamePrescriptor, deletePrescriptor, bulkReasignPrescriptor } = useData();
+  const { clientes: allClientes, clientesB2C, clientesB2B, addCliente, updateCliente, updateCompartidoCon, setConsumoAnualEst, firmarContrato, formalizarContrato, deleteCliente, rankingB2C, rankingB2B, docsFlags, prescriptores, addPrescriptor, renamePrescriptor, deletePrescriptor, bulkReasignPrescriptor } = useData();
+  const rankingActivo = isB2B ? rankingB2B : rankingB2C;
 
   const allCups = useMemo(
     () => new Set(allClientes.map(c => (c.cups || '').toUpperCase().trim()).filter(Boolean)),
@@ -430,13 +431,15 @@ export default function AltaClientes({ tipo }) {
         <div className="card overflow-hidden">
           <div className="px-5 py-4 border-b border-google-border flex items-center gap-2">
             <Trophy size={16} className="text-yellow-500" />
-            <h2 className="text-sm font-semibold text-google-dark">Ranking Ventas {monthName(0)}</h2>
+            <h2 className="text-sm font-semibold text-google-dark">
+              Ranking Ventas {isB2B ? 'B2B' : 'B2C'} · {monthName(0)}
+            </h2>
           </div>
-          {rankingComerciales.length === 0 ? (
-            <p className="text-center text-google-gray py-6 text-sm">Sin contratos registrados</p>
+          {rankingActivo.length === 0 ? (
+            <p className="text-center text-google-gray py-6 text-sm">Sin contratos registrados este mes</p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-x divide-google-border">
-              {rankingComerciales.map((c, i) => (
+              {rankingActivo.map((c, i) => (
                 <div key={c.id} className="px-4 py-4 text-center hover:bg-google-bg transition-colors">
                   <div className={`w-9 h-9 rounded-full mx-auto mb-2 flex items-center justify-center text-xs font-bold text-white ${i < 3 ? MEDAL_COLORS[i] : 'bg-google-gray'}`}>
                     {c.avatar}

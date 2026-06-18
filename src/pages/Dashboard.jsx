@@ -36,26 +36,67 @@ const typeColors = {
   'Eliminación':   'bg-red-100 text-red-700',
 };
 
+function RankingCard({ title, ranking, avatarBg, barBg, iconClass }) {
+  const maxCerrados = Math.max(1, ...ranking.map((c) => c.cerrados));
+  return (
+    <div className="card overflow-hidden">
+      <div className="px-5 py-4 border-b border-google-border flex items-center gap-2">
+        <BarChart2 size={16} className={iconClass} />
+        <h2 className="text-sm font-semibold text-google-dark">{title}</h2>
+      </div>
+      <div className="divide-y divide-google-border">
+        {ranking.map((c, i) => (
+          <div key={c.id} className="px-5 py-3 flex items-center gap-4 hover:bg-google-bg transition-colors">
+            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+              i === 0 ? 'bg-yellow-400 text-white'
+              : i === 1 ? 'bg-gray-300 text-gray-700'
+              : i === 2 ? 'bg-amber-600 text-white'
+              : 'bg-google-bg text-google-gray'
+            }`}>
+              {i + 1}
+            </span>
+            <div className={`w-8 h-8 rounded-full ${avatarBg} flex items-center justify-center text-white text-xs font-semibold`}>
+              {c.avatar}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-google-dark truncate">{c.nombre}</p>
+              <div className="flex items-center gap-1 mt-0.5">
+                <div
+                  className={`h-1.5 rounded-full ${barBg} transition-all`}
+                  style={{ width: `${(c.cerrados / maxCerrados) * 100}%`, minWidth: 4 }}
+                />
+                <span className="text-xs text-google-gray">{c.cerrados} cerrados</span>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-semibold text-google-dark">{c.cerrados}</p>
+              <p className="text-xs text-yellow-600">{c.pendientes} pend.</p>
+            </div>
+          </div>
+        ))}
+        {ranking.length === 0 && (
+          <p className="text-center text-google-gray py-8 text-sm">Sin contratos registrados</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard({ onNavigate }) {
-  const { clientes, clientesB2C, clientesB2B, actividades, rankingComerciales } = useData();
+  const { clientes, clientesB2C, clientesB2B, actividades, rankingB2C, rankingB2B } = useData();
 
   const now = new Date();
   const curMonth = now.getMonth();
   const curYear  = now.getFullYear();
 
-  // Texto "de Junio 2026" calculado dinámicamente sin riesgo de zona horaria
   const mesActual = (() => { const m = now.toLocaleString('es-ES', { month: 'long' }); return m.charAt(0).toUpperCase() + m.slice(1); })();
   const subtitleMes = `de ${mesActual} ${curYear}`;
 
-  // Comparación de fecha puramente sobre el string YYYY-MM-DD para evitar
-  // el salto de día que provoca Date('YYYY-MM-DD') al interpretar UTC midnight
-  // en zonas horarias con offset negativo.
   const enMesActual = (fechaStr) => {
     const [y, m] = (fechaStr || '').split('-').map(Number);
     return m - 1 === curMonth && y === curYear;
   };
 
-  // Altas del Mes: SOLO contratos Formalizados cuya fecha_formalizada sea del mes en curso
   const altasMesB2C = clientesB2C.filter(
     (c) => c.estado === 'Formalizado' && enMesActual(c.fecha_formalizada)
   ).length;
@@ -64,13 +105,10 @@ export default function Dashboard({ onNavigate }) {
     (c) => c.estado === 'Formalizado' && enMesActual(c.fecha_formalizada)
   ).length;
 
-  // Acumulado histórico absoluto — sin ningún filtro de fecha
-  const totalContratos    = clientes.length;
-  const formalizados      = clientes.filter((c) => c.estado === 'Formalizado').length;
-  const tramitados        = clientes.filter((c) => c.estado === 'Tramitado').length;
-  const pendientesFirma   = clientes.filter((c) => c.estado === 'Pendiente Firma').length;
-
-  const maxCerrados = Math.max(1, ...rankingComerciales.map((c) => c.cerrados));
+  const totalContratos  = clientes.length;
+  const formalizados    = clientes.filter((c) => c.estado === 'Formalizado').length;
+  const tramitados      = clientes.filter((c) => c.estado === 'Tramitado').length;
+  const pendientesFirma = clientes.filter((c) => c.estado === 'Pendiente Firma').length;
 
   return (
     <div className="p-3 md:p-6 space-y-4 md:space-y-6 max-w-7xl">
@@ -99,106 +137,79 @@ export default function Dashboard({ onNavigate }) {
         <AltasMesCard icon={Building2} label="Altas del Mes B2B" value={altasMesB2B} color="bg-indigo-500" subtitle={subtitleMes} />
       </div>
 
-      {/* Two-column: ranking + activity */}
+      {/* Rankings independientes B2C / B2B */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Commercial ranking */}
-        <div className="card overflow-hidden">
-          <div className="px-5 py-4 border-b border-google-border flex items-center gap-2">
-            <BarChart2 size={16} className="text-google-blue" />
-            <h2 className="text-sm font-semibold text-google-dark">Ranking Ventas {mesActual}</h2>
-          </div>
-          <div className="divide-y divide-google-border">
-            {rankingComerciales.map((c, i) => (
-              <div key={c.id} className="px-5 py-3 flex items-center gap-4 hover:bg-google-bg transition-colors">
-                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                  i === 0 ? 'bg-yellow-400 text-white'
-                  : i === 1 ? 'bg-gray-300 text-gray-700'
-                  : i === 2 ? 'bg-amber-600 text-white'
-                  : 'bg-google-bg text-google-gray'
-                }`}>
-                  {i + 1}
-                </span>
-                <div className="w-8 h-8 rounded-full bg-google-blue flex items-center justify-center text-white text-xs font-semibold">
-                  {c.avatar}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-google-dark truncate">{c.nombre}</p>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <div
-                      className="h-1.5 rounded-full bg-google-blue transition-all"
-                      style={{ width: `${(c.cerrados / maxCerrados) * 100}%`, minWidth: 4 }}
-                    />
-                    <span className="text-xs text-google-gray">{c.cerrados} cerrados</span>
+        <RankingCard
+          title={`Ranking Ventas B2C · ${mesActual}`}
+          ranking={rankingB2C}
+          avatarBg="bg-google-blue"
+          barBg="bg-google-blue"
+          iconClass="text-google-blue"
+        />
+        <RankingCard
+          title={`Ranking Ventas B2B · ${mesActual}`}
+          ranking={rankingB2B}
+          avatarBg="bg-indigo-500"
+          barBg="bg-indigo-500"
+          iconClass="text-indigo-500"
+        />
+      </div>
+
+      {/* Actividad Reciente — ancho completo */}
+      <div className="card overflow-hidden">
+        <div className="px-5 py-4 border-b border-google-border flex items-center gap-2">
+          <Activity size={16} className="text-google-blue" />
+          <h2 className="text-sm font-semibold text-google-dark">Actividad Reciente</h2>
+        </div>
+        <div className="divide-y divide-google-border">
+          {actividades.slice(0, 8).map((a) => {
+            let header = a.descripcion;
+            let changes = null;
+            try {
+              const parsed = JSON.parse(a.descripcion);
+              if (parsed?.type === 'structured') {
+                header  = parsed.header;
+                changes = parsed.changes;
+              }
+            } catch {}
+
+            return (
+              <div key={a.id} className="px-5 py-3 hover:bg-google-bg transition-colors">
+                <div className="flex items-start gap-3">
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full mt-0.5 whitespace-nowrap ${typeColors[a.tipo] || 'bg-gray-100 text-gray-600'}`}>
+                    {a.tipo}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-google-dark">{header}</p>
+                    {changes && changes.length > 0 && (
+                      <ul className="mt-1 space-y-0.5">
+                        {changes.map((ch, i) => (
+                          <li key={i} className="text-xs text-google-gray">
+                            <span className="text-google-blue">•</span>{' '}
+                            <strong className="text-google-dark">{ch.campo}</strong>: de{' '}
+                            <span className={!ch.de ? 'italic' : ''}>{ch.de || 'Vacío'}</span>
+                            {' ➔ '}
+                            <span className={ch.a ? 'font-medium text-google-dark' : 'italic'}>{ch.a || 'Vacío'}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <p className="text-xs text-google-gray mt-0.5">{a.hora}</p>
                   </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold text-google-dark">{c.cerrados}</p>
-                  <p className="text-xs text-yellow-600">{c.pendientes} pend.</p>
                 </div>
               </div>
-            ))}
-            {rankingComerciales.length === 0 && (
-              <p className="text-center text-google-gray py-8 text-sm">Sin contratos registrados</p>
-            )}
-          </div>
+            );
+          })}
+          {actividades.length === 0 && (
+            <p className="text-center text-google-gray py-8 text-sm">Sin actividades recientes</p>
+          )}
         </div>
-
-        {/* Recent activity */}
-        <div className="card overflow-hidden">
-          <div className="px-5 py-4 border-b border-google-border flex items-center gap-2">
-            <Activity size={16} className="text-google-blue" />
-            <h2 className="text-sm font-semibold text-google-dark">Actividad Reciente</h2>
-          </div>
-          <div className="divide-y divide-google-border">
-            {actividades.slice(0, 8).map((a) => {
-              let header = a.descripcion;
-              let changes = null;
-              try {
-                const parsed = JSON.parse(a.descripcion);
-                if (parsed?.type === 'structured') {
-                  header  = parsed.header;
-                  changes = parsed.changes;
-                }
-              } catch {}
-
-              return (
-                <div key={a.id} className="px-5 py-3 hover:bg-google-bg transition-colors">
-                  <div className="flex items-start gap-3">
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full mt-0.5 whitespace-nowrap ${typeColors[a.tipo] || 'bg-gray-100 text-gray-600'}`}>
-                      {a.tipo}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-google-dark">{header}</p>
-                      {changes && changes.length > 0 && (
-                        <ul className="mt-1 space-y-0.5">
-                          {changes.map((ch, i) => (
-                            <li key={i} className="text-xs text-google-gray">
-                              <span className="text-google-blue">•</span>{' '}
-                              <strong className="text-google-dark">{ch.campo}</strong>: de{' '}
-                              <span className={!ch.de ? 'italic' : ''}>{ch.de || 'Vacío'}</span>
-                              {' ➔ '}
-                              <span className={ch.a ? 'font-medium text-google-dark' : 'italic'}>{ch.a || 'Vacío'}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                      <p className="text-xs text-google-gray mt-0.5">{a.hora}</p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-            {actividades.length === 0 && (
-              <p className="text-center text-google-gray py-8 text-sm">Sin actividades recientes</p>
-            )}
-          </div>
-          <button
-            onClick={() => onNavigate?.('historial')}
-            className="w-full block text-center py-3 text-sm text-google-blue font-medium hover:bg-google-bg transition-colors border-t border-google-border"
-          >
-            Ver todo el historial →
-          </button>
-        </div>
+        <button
+          onClick={() => onNavigate?.('historial')}
+          className="w-full block text-center py-3 text-sm text-google-blue font-medium hover:bg-google-bg transition-colors border-t border-google-border"
+        >
+          Ver todo el historial →
+        </button>
       </div>
     </div>
   );

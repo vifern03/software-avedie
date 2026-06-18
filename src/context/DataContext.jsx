@@ -821,9 +821,9 @@ export function DataProvider({ children }) {
     return { error };
   };
 
-  // ── Ranking ─────────────────────────────────────────────────────────────────
+  // ── Rankings ─────────────────────────────────────────────────────────────────
 
-  const rankingComerciales = useMemo(() => {
+  const { rankingComerciales, rankingB2C, rankingB2B } = useMemo(() => {
     const now = new Date();
     const curMonth = now.getMonth();
     const curYear  = now.getFullYear();
@@ -833,17 +833,17 @@ export function DataProvider({ children }) {
       return m - 1 === curMonth && y === curYear;
     };
 
-    const map = {};
-    users.forEach((u) => {
-      const initials = (u.displayName || u.username)
-        .split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
-      map[u.username] = { id: u.username, nombre: u.displayName || u.username, avatar: initials, cerrados: 0, pendientes: 0 };
-    });
-    clientes.forEach((c) => {
-      if (!enMesActual(c.fecha_tramitacion)) return;
-      // vendido_por siempre está normalizado (normalizeCliente en carga)
-      const key = c.vendido_por || '';
-      if (!key) return;
+    const makeMap = () => {
+      const m = {};
+      users.forEach((u) => {
+        const initials = (u.displayName || u.username)
+          .split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+        m[u.username] = { id: u.username, nombre: u.displayName || u.username, avatar: initials, cerrados: 0, pendientes: 0 };
+      });
+      return m;
+    };
+
+    const addEntry = (map, key, c) => {
       if (!map[key]) {
         const knownUser = users.find(u => u.username === key);
         const av = knownUser
@@ -853,8 +853,34 @@ export function DataProvider({ children }) {
       }
       if (c.estado === 'Formalizado') map[key].cerrados++;
       else if (c.estado === 'Tramitado' || c.estado === 'Pendiente Firma') map[key].pendientes++;
+    };
+
+    const mapAll = makeMap();
+    const mapB2C = makeMap();
+    const mapB2B = makeMap();
+
+    clientes.forEach((c) => {
+      if (!enMesActual(c.fecha_tramitacion)) return;
+      const key = c.vendido_por || '';
+      if (!key) return;
+      addEntry(mapAll, key, c);
+      if (c.tipo === 'B2C' || c.tipo === 'CUR')     addEntry(mapB2C, key, c);
+      if (c.tipo === 'B2B' || c.tipo === 'CUR_B2B') addEntry(mapB2B, key, c);
     });
-    return Object.values(map).sort((a, b) => b.cerrados - a.cerrados || b.pendientes - a.pendientes);
+
+    const toRanking = (map) =>
+      Object.values(map).sort((a, b) => b.cerrados - a.cerrados || b.pendientes - a.pendientes);
+
+    const toRankingFiltered = (map) =>
+      Object.values(map)
+        .filter(e => e.cerrados > 0 || e.pendientes > 0)
+        .sort((a, b) => b.cerrados - a.cerrados || b.pendientes - a.pendientes);
+
+    return {
+      rankingComerciales: toRanking(mapAll),
+      rankingB2C:         toRankingFiltered(mapB2C),
+      rankingB2B:         toRankingFiltered(mapB2B),
+    };
   }, [clientes, users]);
 
   return (
@@ -867,6 +893,8 @@ export function DataProvider({ children }) {
       visitasPymes,
       docsFlags,
       rankingComerciales,
+      rankingB2C,
+      rankingB2B,
       isLoading,
       addCliente,
       updateCliente,

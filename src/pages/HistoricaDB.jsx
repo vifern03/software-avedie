@@ -10,23 +10,19 @@ import ShareButton from '../components/ShareButton';
 import { useData, fetchSingleDoc } from '../context/DataContext';
 import DateInput from '../components/DateInput';
 
-function openBase64(base64, clientName = 'documento') {
+function openBase64(base64) {
   const mime = base64.split(';')[0].replace('data:', '');
-  const ext  = mime === 'application/pdf' ? 'pdf' : mime === 'image/jpeg' ? 'jpg' : mime === 'image/png' ? 'png' : 'bin';
   const bytes = atob(base64.split(',')[1]);
   const ab = new ArrayBuffer(bytes.length);
   const ia = new Uint8Array(ab);
   for (let i = 0; i < bytes.length; i++) ia[i] = bytes.charCodeAt(i);
   const url = URL.createObjectURL(new Blob([ab], { type: mime }));
-  // Abrir en nueva pestaña y disparar descarga con nombre del cliente
-  const a = document.createElement('a');
-  a.href = url; a.download = `${clientName.replace(/\s+/g, '_')}.${ext}`; a.target = '_blank';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  window.open(url, '_blank', 'noopener,noreferrer');
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
-// Celda lazy — muestra ojo si el flag indica que hay doc; descarga al hacer clic
-function FileCell({ hasDoc, clientId, campo, clientName }) {
+// Celda lazy — muestra ojo si el flag indica que hay doc; abre en nueva pestaña al hacer clic
+function FileCell({ hasDoc, clientId, campo }) {
   const [loading, setLoading] = useState(false);
   if (!hasDoc) return <span className="text-google-gray">—</span>;
   const handleClick = async () => {
@@ -34,14 +30,14 @@ function FileCell({ hasDoc, clientId, campo, clientName }) {
     setLoading(true);
     try {
       const data = await fetchSingleDoc(clientId, campo);
-      if (data) openBase64(data, clientName);
+      if (data) openBase64(data);
     } finally {
       setLoading(false);
     }
   };
   return (
     <button onClick={handleClick} disabled={loading}
-      className="p-1 rounded hover:bg-slate-100 transition-colors" title="Descargar archivo">
+      className="p-1 rounded hover:bg-slate-100 transition-colors" title="Ver archivo">
       {loading
         ? <Loader2 size={15} className="text-slate-400 animate-spin" />
         : <Eye size={15} className="text-slate-500 hover:text-slate-800 transition-colors" />}
@@ -119,9 +115,10 @@ export default function HistoricaDB() {
   const [searchNombre,      setSearchNombre]      = useState('');
   const [searchVendidoPor,  setSearchVendidoPor]  = useState('');
   const [searchPrescriptor, setSearchPrescriptor] = useState('');
-  const [filterComercial,   setFilterComercial]   = useState('');
-  const [filterEstado,      setFilterEstado]      = useState('');
-  const [timeFilter,       setTimeFilter]       = useState('');
+  const [filterComercial,    setFilterComercial]    = useState('');
+  const [filterTipo,         setFilterTipo]         = useState('');
+  const [filterLineaNegocio, setFilterLineaNegocio] = useState('');
+  const [timeFilter,         setTimeFilter]         = useState('');
   const [dateFrom,         setDateFrom]         = useState('');
   const [dateTo,           setDateTo]           = useState('');
   const [sortField,        setSortField]        = useState('fecha_tramitacion');
@@ -131,7 +128,7 @@ export default function HistoricaDB() {
   const [currentPage, setCurrentPage] = useState(1);
   const tableScrollRef = useRef(null);
 
-  useEffect(() => { setCurrentPage(1); }, [search, searchNombre, searchVendidoPor, searchPrescriptor, filterComercial, filterEstado, timeFilter, dateFrom, dateTo]);
+  useEffect(() => { setCurrentPage(1); }, [search, searchNombre, searchVendidoPor, searchPrescriptor, filterComercial, filterTipo, filterLineaNegocio, timeFilter, dateFrom, dateTo]);
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
@@ -150,7 +147,7 @@ export default function HistoricaDB() {
 
   const clientesFormalizados = clientes.filter((c) => c.estado === 'Formalizado');
   const gestoresUnicos = [...new Set(clientesFormalizados.map((c) => c.comercial).filter(Boolean))].sort();
-  const hasFilters = search || searchNombre || searchVendidoPor || searchPrescriptor || filterComercial || filterEstado || timeFilter || dateFrom || dateTo;
+  const hasFilters = search || searchNombre || searchVendidoPor || searchPrescriptor || filterComercial || filterTipo || filterLineaNegocio || timeFilter || dateFrom || dateTo;
 
   const filtered = getTimeFilteredList(clientesFormalizados, timeFilter)
     .filter((c) => {
@@ -159,11 +156,12 @@ export default function HistoricaDB() {
       const matchNombre      = !searchNombre      || (c.nombre     || '').toLowerCase().includes(searchNombre.toLowerCase());
       const matchVendidoPor  = !searchVendidoPor  || (c.vendido_por || '').toLowerCase().includes(searchVendidoPor.toLowerCase());
       const matchPrescriptor = !searchPrescriptor || (c.creado_por  || '').toLowerCase().includes(searchPrescriptor.toLowerCase());
-      const matchComercial   = !filterComercial   || c.comercial === filterComercial;
-      const matchEstado      = !filterEstado      || c.estado    === filterEstado;
-      const matchDateFrom    = !dateFrom          || (c.fecha_formalizada >= dateFrom);
-      const matchDateTo      = !dateTo            || (c.fecha_formalizada <= dateTo);
-      return matchSearch && matchNombre && matchVendidoPor && matchPrescriptor && matchComercial && matchEstado && matchDateFrom && matchDateTo;
+      const matchComercial    = !filterComercial    || c.comercial === filterComercial;
+      const matchTipo         = !filterTipo         || (filterTipo === 'CUR' ? (c.tipo === 'CUR' || c.tipo === 'CUR_B2B') : c.tipo === filterTipo);
+      const matchLineaNegocio = !filterLineaNegocio || c.linea_negocio === filterLineaNegocio;
+      const matchDateFrom     = !dateFrom           || (c.fecha_formalizada >= dateFrom);
+      const matchDateTo       = !dateTo             || (c.fecha_formalizada <= dateTo);
+      return matchSearch && matchNombre && matchVendidoPor && matchPrescriptor && matchComercial && matchTipo && matchLineaNegocio && matchDateFrom && matchDateTo;
     })
     .sort((a, b) => {
       let va = a[sortField] ?? '';
@@ -345,15 +343,14 @@ export default function HistoricaDB() {
                 {gestoresUnicos.map((g) => <option key={g} value={g}>{g}</option>)}
               </select>
             </div>
-            <select value={filterEstado} onChange={(e) => setFilterEstado(e.target.value)}
-              className="input-field h-9 w-auto text-xs">
-              <option value="">Todos los estados</option>
-              <option value="Pendiente Firma">Pendiente Firma</option>
-              <option value="Tramitado">Tramitado</option>
-              <option value="Formalizado">Formalizado</option>
+            <select value={filterLineaNegocio} onChange={(e) => setFilterLineaNegocio(e.target.value)}
+              className="input-field h-9 w-auto text-xs min-w-[160px]">
+              <option value="">Todas las líneas</option>
+              <option value="Electricidad">Electricidad</option>
+              <option value="Gas">Gas</option>
             </select>
             {hasFilters && (
-              <button onClick={() => { setSearch(''); setSearchNombre(''); setSearchVendidoPor(''); setSearchPrescriptor(''); setFilterComercial(''); setFilterEstado(''); setTimeFilter(''); setDateFrom(''); setDateTo(''); }}
+              <button onClick={() => { setSearch(''); setSearchNombre(''); setSearchVendidoPor(''); setSearchPrescriptor(''); setFilterComercial(''); setFilterTipo(''); setFilterLineaNegocio(''); setTimeFilter(''); setDateFrom(''); setDateTo(''); }}
                 className="text-xs text-google-blue hover:underline">
                 Limpiar filtros
               </button>
@@ -416,6 +413,13 @@ export default function HistoricaDB() {
                 </button>
               )}
             </div>
+            <div className="flex items-center gap-1 ml-4 border-l border-google-border pl-4">
+              <span className="text-xs text-google-gray mr-1">Tipo:</span>
+              <FilterPill label="Todos" active={filterTipo === ''}    onClick={() => setFilterTipo('')}    />
+              <FilterPill label="B2C"   active={filterTipo === 'B2C'} onClick={() => setFilterTipo('B2C')} />
+              <FilterPill label="CUR"   active={filterTipo === 'CUR'} onClick={() => setFilterTipo('CUR')} />
+              <FilterPill label="B2B"   active={filterTipo === 'B2B'} onClick={() => setFilterTipo('B2B')} />
+            </div>
           </div>
         </div>
 
@@ -463,7 +467,13 @@ export default function HistoricaDB() {
                     <tr key={c.id} className="hover:bg-google-bg transition-colors group">
                       <td className="table-cell font-medium text-google-dark whitespace-nowrap">{c.nombre}</td>
                       <td className="table-cell">
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${c.tipo === 'B2B' ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'}`}>{c.tipo}</span>
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                          c.tipo === 'B2B'                             ? 'bg-green-100 text-green-700'
+                          : (c.tipo === 'CUR' || c.tipo === 'CUR_B2B') ? 'bg-red-100 text-red-700'
+                          : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {(c.tipo === 'CUR' || c.tipo === 'CUR_B2B') ? 'CUR' : c.tipo}
+                        </span>
                       </td>
                       <td className="table-cell text-google-gray text-xs">{c.linea_negocio || '—'}</td>
                       <td className="table-cell text-google-gray text-xs max-w-[140px] truncate" title={subtipo(c)}>{subtipo(c)}</td>
@@ -487,8 +497,8 @@ export default function HistoricaDB() {
                           : <span className="text-google-gray italic">—</span>}
                       </td>
                       <td className="table-cell"><StatusBadge estado={c.estado} /></td>
-                      <td className="table-cell text-center"><FileCell hasDoc={docsFlags[c.id]?.tiene_dni}     clientId={c.id} campo="dni_escaneado"  clientName={`DNI_${c.nombre}`} /></td>
-                      <td className="table-cell text-center"><FileCell hasDoc={docsFlags[c.id]?.tiene_factura} clientId={c.id} campo="ultima_factura" clientName={`Factura_${c.nombre}`} /></td>
+                      <td className="table-cell text-center"><FileCell hasDoc={docsFlags[c.id]?.tiene_dni}     clientId={c.id} campo="dni_escaneado"  /></td>
+                      <td className="table-cell text-center"><FileCell hasDoc={docsFlags[c.id]?.tiene_factura} clientId={c.id} campo="ultima_factura" /></td>
                       <td className="table-cell text-google-gray text-xs max-w-[180px] truncate" title={c.descripcion || ''}>{c.descripcion || '—'}</td>
                       <td className="table-cell text-center">
                         <div className="flex items-center justify-center gap-1">
