@@ -36,6 +36,7 @@ export function AuthProvider({ children }) {
   const [users,           setUsers]           = useState([]);
   const [pin,             setPin]             = useState('1234');
   const [userPermissions, setUserPermissions] = useState({});
+  const [callesPermisos,  setCallesPermisos]  = useState({});
   const [isLoading,       setIsLoading]       = useState(true);
   const [dbError,         setDbError]         = useState(null);
 
@@ -66,9 +67,10 @@ export function AuthProvider({ children }) {
       setUsers((usersData || []).map(dbToUser));
 
       for (const row of (configData || [])) {
-        if (row.clave === 'permissions')      setPermissions(row.valor);
-        if (row.clave === 'pin')              setPin(String(row.valor));
-        if (row.clave === 'user_permissions') setUserPermissions(row.valor || {});
+        if (row.clave === 'permissions')         setPermissions(row.valor);
+        if (row.clave === 'pin')               setPin(String(row.valor));
+        if (row.clave === 'user_permissions')  setUserPermissions(row.valor || {});
+        if (row.clave === 'telemarketing_calles') setCallesPermisos(row.valor || {});
       }
 
       // ── C-2: Verificación de integridad de sesión ─────────────────────────
@@ -138,6 +140,25 @@ export function AuthProvider({ children }) {
     setCurrentUser(null);
     localStorage.removeItem(SESSION_KEY);
   }, []);
+
+  const updateProvinciaAccess = useCallback((username, provincia, enabled) => {
+    setCallesPermisos(prev => {
+      const updated = {
+        ...prev,
+        [username]: { ...(prev[username] || {}), [provincia]: enabled },
+      };
+      supabase.from('configuracion')
+        .upsert([{ clave: 'telemarketing_calles', valor: updated }])
+        .then(({ error }) => { if (error) console.error('updateProvinciaAccess:', error); });
+      return updated;
+    });
+  }, []);
+
+  const hasProvinciaAccess = useCallback((provincia) => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'admin') return true;
+    return callesPermisos[currentUser.username]?.[provincia] === true;
+  }, [currentUser, callesPermisos]);
 
   const hasAccess = useCallback((section) => {
     if (!currentUser) return false;
@@ -277,11 +298,11 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{
-      currentUser, permissions, users, pin, userPermissions, isLoading, dbError,
+      currentUser, permissions, users, pin, userPermissions, callesPermisos, isLoading, dbError,
       login, logout, updatePermissions, hasAccess,
       addUser, editUser, deleteUser, changePin,
       updateUserPermission, removeUserPermission, resetUserPermissions,
-      updateUserEquipo,
+      updateUserEquipo, updateProvinciaAccess, hasProvinciaAccess,
     }}>
       {children}
     </AuthContext.Provider>

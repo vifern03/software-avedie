@@ -396,6 +396,7 @@ export default function GestionUsuarios() {
 
     } else if (type === 'newUser') {
       setUserFormState({ mode: 'new' });
+
     }
 
     setPendingAction(null);
