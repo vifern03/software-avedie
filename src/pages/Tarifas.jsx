@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Zap, Flame, Factory, Info, X, AlertTriangle } from 'lucide-react';
+import { Zap, Flame, Factory, Info, X, AlertTriangle, Calculator } from 'lucide-react';
+import EstudioComparativo from './EstudioComparativo';
 
 /* ── Datos B2C/Residencial extraídos de PDFs Endesa (09/06/2026 – 14/07/2026) ─ */
 
@@ -177,9 +178,10 @@ const B2B_SUBTABS = [
 ];
 
 const TABS = [
-  { id: 'luz',        label: 'Luz Residencial / Negocios (2.0TD)', icon: Zap,     activeText: 'text-google-blue',  activeBorder: 'border-google-blue'  },
-  { id: 'gas',        label: 'Gas (RL.1 – RL.3)',                  icon: Flame,   activeText: 'text-orange-500',   activeBorder: 'border-orange-500'   },
-  { id: 'industrial', label: 'Industriales y Negocios (B2B)',      icon: Factory, activeText: 'text-gray-700',     activeBorder: 'border-gray-600'     },
+  { id: 'luz',        label: 'Luz Residencial / Negocios (2.0TD)', icon: Zap,        activeText: 'text-google-blue',  activeBorder: 'border-google-blue'  },
+  { id: 'gas',        label: 'Gas (RL.1 – RL.3)',                  icon: Flame,      activeText: 'text-orange-500',   activeBorder: 'border-orange-500'   },
+  { id: 'industrial', label: 'Industriales y Negocios (B2B)',      icon: Factory,    activeText: 'text-gray-700',     activeBorder: 'border-gray-600'     },
+  { id: 'estudio',    label: 'Estudio Comparativo 2.0',            icon: Calculator, activeText: 'text-green-600',    activeBorder: 'border-green-600'    },
 ];
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
@@ -752,8 +754,22 @@ export default function Tarifas() {
 
       {/* Tab: Luz */}
       {tab === 'luz' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {LUZ.map(t => <LuzCard key={t.id} tarifa={t} />)}
+        <div className="flex flex-col gap-6">
+          {/* Tarjetas: en mobile quedan debajo del botón (order-2), en desktop arriba (order-1) */}
+          <div className="order-2 md:order-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {LUZ.map(t => <LuzCard key={t.id} tarifa={t} />)}
+          </div>
+
+          {/* Botón CTA: en mobile aparece primero (order-1), en desktop debajo centrado (order-2) */}
+          <div className="order-1 md:order-2 flex justify-center">
+            <button
+              onClick={() => setTab('estudio')}
+              className="flex items-center gap-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-sm px-7 py-3 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
+            >
+              <Calculator size={17} />
+              Realizar Comparativa 2.0
+            </button>
+          </div>
         </div>
       )}
 
@@ -805,6 +821,9 @@ export default function Tarifas() {
           )}
         </div>
       )}
+
+      {/* Tab: Estudio Comparativo */}
+      {tab === 'estudio' && <EstudioComparativo />}
     </div>
   );
 }
