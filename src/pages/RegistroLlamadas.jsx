@@ -208,10 +208,20 @@ function GestionModal({ contacto, onClose, onSave }) {
     ev.preventDefault();
     if (!validate()) return;
     setSaving(true);
-    const result = await onSave({ estado, comentarios, tiempoLlamada, capturaFile });
-    if (result?.error) { setSaving(false); return; }
-    setSaved(true);
-    setTimeout(() => onClose(), 700);
+    try {
+      const result = await onSave({ estado, comentarios, tiempoLlamada, capturaFile });
+      if (result?.error) {
+        setSaving(false);
+        setErrors(e => ({ ...e, submit: result.error }));
+        return;
+      }
+      setSaved(true);
+      setTimeout(() => onClose(), 700);
+    } catch (err) {
+      console.error('handleSubmit error:', err);
+      setSaving(false);
+      setErrors(e => ({ ...e, submit: 'Error inesperado. Inténtalo de nuevo.' }));
+    }
   };
 
   return (
@@ -324,6 +334,12 @@ function GestionModal({ contacto, onClose, onSave }) {
             />
           </div>
 
+          {errors.submit && (
+            <p className="text-red-600 text-xs bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {errors.submit}
+            </p>
+          )}
+
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-google-border">
             <button type="button" onClick={onClose} className="btn-secondary">Cancelar</button>
             <button
@@ -367,8 +383,21 @@ function ContactoRow({ contacto, gestiones, onGestion }) {
       .eq('id', ultimaGestion.id)
       .single();
     setLoadingCaptura(false);
-    if (data?.captura_url) {
-      window.open(data.captura_url, '_blank', 'noopener,noreferrer');
+    const url = data?.captura_url;
+    if (!url) return;
+
+    if (url.startsWith('data:')) {
+      // Base64 data URL → convertir a Blob para que window.open funcione en Chrome
+      const [header, b64] = url.split(',');
+      const mime = header.match(/data:(.*);base64/)?.[1] || 'image/jpeg';
+      const bytes = atob(b64);
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      const objUrl = URL.createObjectURL(new Blob([arr], { type: mime }));
+      const win = window.open(objUrl, '_blank', 'noopener,noreferrer');
+      if (win) setTimeout(() => URL.revokeObjectURL(objUrl), 30000);
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -566,16 +595,14 @@ export default function RegistroLlamadas() {
     loadData();
   }, [calleActual, provincia]);
 
-  // Upload de captura al bucket
-  const uploadCaptura = async (file) => {
-    const ext  = (file.name.split('.').pop() || 'jpg').toLowerCase();
-    const name = `tm_${Date.now()}_${currentUser?.username || 'anon'}.${ext}`;
-    const { error } = await supabase.storage
-      .from('llamadas-capturas')
-      .upload(name, file, { upsert: false });
-    if (error) { console.error('uploadCaptura:', error); return null; }
-    return supabase.storage.from('llamadas-capturas').getPublicUrl(name).data.publicUrl;
-  };
+  // Convierte el archivo a base64 data-URL y lo guarda en la BD (sin dependencia de Storage/RLS)
+  const uploadCaptura = (file) =>
+    new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload  = (e) => resolve(e.target.result);
+      reader.onerror = ()  => resolve(null);
+      reader.readAsDataURL(file);
+    });
 
   // Guardar gestión
   const handleSave = async ({ estado, comentarios, tiempoLlamada, capturaFile }) => {
