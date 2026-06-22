@@ -144,11 +144,11 @@ const B2B_SUBTABS = [
 ];
 
 const TABS = [
-  { id: 'luz',          label: 'Luz Residencial / Negocios (2.0TD)', icon: Zap,        activeText: 'text-google-blue',  activeBorder: 'border-google-blue'  },
-  { id: 'gas',          label: 'Gas (RL.1 – RL.3)',                  icon: Flame,      activeText: 'text-orange-500',   activeBorder: 'border-orange-500'   },
-  { id: 'industrial',   label: 'Industriales y Negocios (B2B)',      icon: Factory,    activeText: 'text-gray-700',     activeBorder: 'border-gray-600'     },
-  { id: 'estudio',      label: 'Estudio Comparativo 2.0',            icon: Calculator, activeText: 'text-green-600',    activeBorder: 'border-green-600'    },
-  { id: 'estudio-gas',  label: 'Estudio Comparativo Gas',            icon: Calculator, activeText: 'text-orange-500',   activeBorder: 'border-orange-500'   },
+  { id: 'luz',          label: 'Luz Residencial (2.0TD)',  icon: Zap,        activeText: 'text-google-blue',  activeBorder: 'border-google-blue'  },
+  { id: 'gas',          label: 'Gas (RL.1 – RL.3)',        icon: Flame,      activeText: 'text-orange-500',   activeBorder: 'border-orange-500'   },
+  { id: 'industrial',   label: 'Luz 3.0 y 6.1 (B2B)',     icon: Factory,    activeText: 'text-gray-700',     activeBorder: 'border-gray-600'     },
+  { id: 'estudio',      label: 'Comparativas 2.0',         icon: Calculator, activeText: 'text-green-600',    activeBorder: 'border-green-600'    },
+  { id: 'estudio-gas',  label: 'Comparativas Gas',         icon: Calculator, activeText: 'text-orange-500',   activeBorder: 'border-orange-500'   },
 ];
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
