@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { Zap, Flame, Factory, Info, X, AlertTriangle, Calculator } from 'lucide-react';
 import EstudioComparativo from './EstudioComparativo';
+import EstudioComparativoGas from './EstudioComparativoGas';
+import { GAS } from '../data/tarifasGas';
+
+/* GAS importado desde src/data/tarifasGas.js (fuente única de verdad) */
 
 /* ── Datos B2C/Residencial extraídos de PDFs Endesa (09/06/2026 – 14/07/2026) ─ */
 
@@ -57,44 +61,6 @@ const LUZ = [
   },
 ];
 
-const GAS = [
-  {
-    id: 'rl1',
-    title: 'Gas RL.1',
-    consumo: '0 – 5.000 kWh/año',
-    terFijo: 7.181000,
-    sinMant: { promo: 0.065590, noPromo: 0.093700 },
-    conMant: { promo: 0.062779, noPromo: 0.093700 },
-    hasMant: true,
-    descuentos: ['20% — 1 año (electricidad en misma dirección)', '10% — 1 año (nuevas contrataciones)'],
-    mantLabel: '3% — Dto. por Mantenimiento',
-    validez: '12/05/2026 – 14/07/2026',
-  },
-  {
-    id: 'rl2',
-    title: 'Gas RL.2',
-    consumo: '5.001 – 15.000 kWh/año',
-    terFijo: 14.600000,
-    sinMant: { promo: 0.065100, noPromo: 0.093000 },
-    conMant: { promo: 0.062310, noPromo: 0.093000 },
-    hasMant: true,
-    descuentos: ['20% — 1 año (electricidad en misma dirección)', '10% — 1 año (nuevas contrataciones)'],
-    mantLabel: '3% — Dto. por Mantenimiento',
-    validez: '12/05/2026 – 14/07/2026',
-  },
-  {
-    id: 'rl3',
-    title: 'Gas RL.3',
-    consumo: '15.001 – 50.000 kWh/año',
-    terFijo: 30.672000,
-    sinMant: { promo: 0.061600, noPromo: 0.088000 },
-    conMant: { promo: 0.061600, noPromo: 0.088000 },
-    hasMant: false,
-    descuentos: ['20% — 1 año (electricidad en misma dirección)', '10% — 1 año (nuevas contrataciones)'],
-    mantLabel: null,
-    validez: '12/05/2026 – 14/07/2026',
-  },
-];
 
 /* ── Datos B2B extraídos de PDFs Endesa (09/06/2026 – 23/06/2026) ───────────── */
 
@@ -178,10 +144,11 @@ const B2B_SUBTABS = [
 ];
 
 const TABS = [
-  { id: 'luz',        label: 'Luz Residencial / Negocios (2.0TD)', icon: Zap,        activeText: 'text-google-blue',  activeBorder: 'border-google-blue'  },
-  { id: 'gas',        label: 'Gas (RL.1 – RL.3)',                  icon: Flame,      activeText: 'text-orange-500',   activeBorder: 'border-orange-500'   },
-  { id: 'industrial', label: 'Industriales y Negocios (B2B)',      icon: Factory,    activeText: 'text-gray-700',     activeBorder: 'border-gray-600'     },
-  { id: 'estudio',    label: 'Estudio Comparativo 2.0',            icon: Calculator, activeText: 'text-green-600',    activeBorder: 'border-green-600'    },
+  { id: 'luz',          label: 'Luz Residencial / Negocios (2.0TD)', icon: Zap,        activeText: 'text-google-blue',  activeBorder: 'border-google-blue'  },
+  { id: 'gas',          label: 'Gas (RL.1 – RL.3)',                  icon: Flame,      activeText: 'text-orange-500',   activeBorder: 'border-orange-500'   },
+  { id: 'industrial',   label: 'Industriales y Negocios (B2B)',      icon: Factory,    activeText: 'text-gray-700',     activeBorder: 'border-gray-600'     },
+  { id: 'estudio',      label: 'Estudio Comparativo 2.0',            icon: Calculator, activeText: 'text-green-600',    activeBorder: 'border-green-600'    },
+  { id: 'estudio-gas',  label: 'Estudio Comparativo Gas',            icon: Calculator, activeText: 'text-orange-500',   activeBorder: 'border-orange-500'   },
 ];
 
 /* ── Helpers ────────────────────────────────────────────────────────────────── */
@@ -775,8 +742,19 @@ export default function Tarifas() {
 
       {/* Tab: Gas */}
       {tab === 'gas' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {GAS.map(t => <GasCard key={t.id} tarifa={t} />)}
+        <div className="flex flex-col gap-6">
+          <div className="order-2 md:order-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {GAS.map(t => <GasCard key={t.id} tarifa={t} />)}
+          </div>
+          <div className="order-1 md:order-2 flex justify-center">
+            <button
+              onClick={() => setTab('estudio-gas')}
+              className="flex items-center gap-2.5 bg-orange-500 hover:bg-orange-600 active:bg-orange-700 text-white font-semibold text-sm px-7 py-3 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
+            >
+              <Calculator size={17} />
+              Realizar Comparativa Gas
+            </button>
+          </div>
         </div>
       )}
 
@@ -822,8 +800,11 @@ export default function Tarifas() {
         </div>
       )}
 
-      {/* Tab: Estudio Comparativo */}
+      {/* Tab: Estudio Comparativo Luz */}
       {tab === 'estudio' && <EstudioComparativo />}
+
+      {/* Tab: Estudio Comparativo Gas */}
+      {tab === 'estudio-gas' && <EstudioComparativoGas />}
     </div>
   );
 }
