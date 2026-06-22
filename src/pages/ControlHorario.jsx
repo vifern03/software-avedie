@@ -976,11 +976,11 @@ export default function ControlHorario() {
                           {f.hora_entrada ?? '—'}
                         </td>
                         {/* Pausas */}
-                        <td className="px-4 py-3 text-center">
+                        <td className="px-4 py-3 text-center whitespace-nowrap">
                           {pausas.length === 0 ? (
                             <span className="text-google-gray text-xs">—</span>
                           ) : (
-                            <span className="text-xs text-indigo-600 font-semibold bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                            <span className="inline-block whitespace-nowrap text-xs text-indigo-600 font-semibold bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
                               {pausas.length} pausa{pausas.length !== 1 ? 's' : ''}
                               {pausas[pausas.length - 1]?.durMin != null
                                 ? ` · ${pausas.reduce((a, p) => a + (p.durMin ?? 0), 0)}m total`
@@ -989,14 +989,14 @@ export default function ControlHorario() {
                           )}
                         </td>
                         {/* Acciones */}
-                        <td className="px-4 py-3 text-center">
-                          <div className="flex items-center justify-center gap-2 flex-wrap">
+                        <td className="px-4 py-3 text-center whitespace-nowrap">
+                          <div className="flex items-center justify-center gap-2">
                             {est === 'En_Jornada' && (
                               <>
                                 <button
                                   onClick={() => accionAdmin(f, 'pausa')}
                                   disabled={isBusy}
-                                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white
+                                  className="whitespace-nowrap flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white
                                     bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                                 >
                                   <Pause size={12} />
@@ -1005,7 +1005,7 @@ export default function ControlHorario() {
                                 <button
                                   onClick={() => accionAdmin(f, 'salida')}
                                   disabled={isBusy}
-                                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white
+                                  className="whitespace-nowrap flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white
                                     bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                                 >
                                   <StopCircle size={12} />
@@ -1017,7 +1017,7 @@ export default function ControlHorario() {
                               <button
                                 onClick={() => accionAdmin(f, 'vuelta')}
                                 disabled={isBusy}
-                                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white
+                                className="whitespace-nowrap flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white
                                   bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                               >
                                 <Play size={12} />
