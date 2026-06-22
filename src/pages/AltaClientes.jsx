@@ -279,8 +279,11 @@ export default function AltaClientes({ tipo }) {
   const userEquipo   = currentUser?.equipo || 'Ambos';
   const isTeamMember = !isPrivileged && (userEquipo === 'Palencia' || userEquipo === 'Valladolid');
 
-  // Nombres de prescriptor vinculados a la cuenta del usuario actual
-  const myUser = (currentUser?.username || '').toLowerCase();
+  // Identificadores del usuario actual para matching de visibilidad
+  const myUser        = (currentUser?.username    || '').toLowerCase();
+  const myDisplayName = (currentUser?.displayName || '').toLowerCase();
+
+  // Prescriptores vinculados explícitamente via admin (PrescriptoresModal)
   const myLinkedPrescriptors = Object.entries(prescriptorLinks)
     .filter(([, uname]) => uname.toLowerCase() === myUser)
     .map(([nombre]) => nombre.toLowerCase());
@@ -290,12 +293,16 @@ export default function AltaClientes({ tipo }) {
     ? clientes
     : clientes.filter((c) => {
         const sharedWithMe = (c.compartido_con || []).includes(currentUser?.displayName || currentUser?.username);
-        if (sharedWithMe) return true; // contratos compartidos siempre visibles
+        if (sharedWithMe) return true;
         const d = new Date(c.fecha_tramitacion || '');
         if (isNaN(d) || d < cutoff) return false;
+        const vendidoPor = (c.vendido_por || '').toLowerCase();
+        const creadoPor  = (c.creado_por  || '').toLowerCase();
         const isOwn = c.comercial?.toLowerCase() === myUser
-                   || c.creado_por?.toLowerCase() === myUser
-                   || myLinkedPrescriptors.some(p => (c.vendido_por || '').toLowerCase() === p);
+                   // Vendedor/prescriptor vía vínculo explícito en PrescriptoresModal
+                   || myLinkedPrescriptors.some(p => vendidoPor === p || creadoPor === p)
+                   // Vendedor/prescriptor vía displayName (fallback automático)
+                   || (myDisplayName && (vendidoPor === myDisplayName || creadoPor === myDisplayName));
         return isOwn;
       });
 

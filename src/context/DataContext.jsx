@@ -203,6 +203,17 @@ export function DataProvider({ children }) {
             .order('created_at', { ascending: false })
         : null;
 
+      // ── Contratos donde el usuario es vendedor o prescriptor (por displayName)
+      // Cubre el caso: Elisa tramita, Oscar vende → Oscar debe ver el contrato.
+      const vendedorQuery = (!isAdmin && !isManager)
+        ? supabase
+            .from('clientes')
+            .select(CLIENTES_SELECT)
+            .is('deleted_at', null)
+            .or(`vendido_por.eq.${userDisplayName},creado_por.eq.${userDisplayName}`)
+            .order('created_at', { ascending: false })
+        : null;
+
       // Consultas de existencia de documentos — builders independientes
       const mkFlag = (col) => supabase.from('clientes').select('id').is('deleted_at', null).not(col, 'is', null);
 
@@ -213,6 +224,7 @@ export function DataProvider({ children }) {
         { data: visitasPymesData },
         { data: compartidoData,   error: compartidoErr },
         { data: sharedRaw },
+        { data: vendedorRaw },
         { data: dniData    },
         { data: factData   },
         { data: cifData    },
@@ -224,7 +236,8 @@ export function DataProvider({ children }) {
         visitasQuery,
         visitasPymesQuery,
         compartidoQuery,
-        sharedQuery || Promise.resolve({ data: [], error: null }),
+        sharedQuery    || Promise.resolve({ data: [], error: null }),
+        vendedorQuery  || Promise.resolve({ data: [], error: null }),
         mkFlag('dni_escaneado'),
         mkFlag('ultima_factura'),
         mkFlag('cif_autonomo_url'),
@@ -252,13 +265,18 @@ export function DataProvider({ children }) {
         compartido_con: compartidoMap[c.id] || [],
       }));
 
-      // Añadir contratos compartidos que no estén ya en mainClientes
+      // Añadir contratos compartidos y contratos vendidos/prescritos que no estén ya en mainClientes
       const ownIds = new Set(mainClientes.map(c => c.id));
       const extraShared = (sharedRaw || [])
         .filter(c => !ownIds.has(c.id))
         .map(c => normalizeCliente({ ...c, compartido_con: compartidoMap[c.id] || [] }));
 
-      const newClientes     = [...mainClientes, ...extraShared];
+      const sharedIds = new Set([...ownIds, ...extraShared.map(c => c.id)]);
+      const extraVendedor = (vendedorRaw || [])
+        .filter(c => !sharedIds.has(c.id))
+        .map(c => normalizeCliente({ ...c, compartido_con: compartidoMap[c.id] || [] }));
+
+      const newClientes     = [...mainClientes, ...extraShared, ...extraVendedor];
       const newActividades  = actividadesData  || [];
       const newVisitas      = visitasData      || [];
       const newVisitasPymes = visitasPymesData || [];
