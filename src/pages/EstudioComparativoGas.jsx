@@ -561,6 +561,21 @@ export default function EstudioComparativoGas() {
                 </div>
               </div>
 
+              {/* ── Término Fijo (solo si switch ON) ── */}
+              {incluyeTF && (
+                <div className="px-6 pt-5 pb-4">
+                  <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-3">Término Fijo</p>
+                  <div className="flex justify-between items-baseline text-sm">
+                    <span className="text-google-gray">
+                      {tarifa.terFijo.toFixed(3)} €/mes × {dias} días ÷ {DIAS_MES.toFixed(0)} días/mes
+                    </span>
+                    <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(tfEndesa)}</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="border-t border-gray-100 mx-6" />
+
               {/* ── Término de Energía ── */}
               <div className="px-6 pt-5 pb-4">
                 <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-3">Término de Energía (Gas)</p>
@@ -578,22 +593,6 @@ export default function EstudioComparativoGas() {
                   </div>
                 </div>
               </div>
-
-              {/* ── Término Fijo (solo si switch ON) ── */}
-              {incluyeTF && (
-                <>
-                  <div className="border-t border-gray-100 mx-6" />
-                  <div className="px-6 py-4">
-                    <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-3">Término Fijo</p>
-                    <div className="flex justify-between items-baseline text-sm">
-                      <span className="text-google-gray">
-                        {tarifa.terFijo.toFixed(3)} €/mes × {dias} días ÷ {DIAS_MES.toFixed(0)} días/mes
-                      </span>
-                      <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(tfEndesa)}</span>
-                    </div>
-                  </div>
-                </>
-              )}
 
               <div className="border-t border-gray-100 mx-6" />
 
