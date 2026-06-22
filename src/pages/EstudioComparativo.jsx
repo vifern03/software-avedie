@@ -43,8 +43,8 @@ const TARIFAS = [
   },
 ];
 
-/* Impuesto Eléctrico (Ley 24/2013) */
-const IE_RATE = 0.005;
+/* Impuesto Especial sobre la Electricidad — tipo vigente 5,113% */
+const IE_RATE = 0.05113;
 
 const PROXY_URL = '/api/gemini';
 
@@ -659,7 +659,7 @@ export default function EstudioComparativo() {
               {/* Impuestos */}
               <div className="px-6 py-4 space-y-2">
                 <div className="flex justify-between items-baseline text-sm">
-                  <span className="text-google-gray">Impuesto Eléctrico (0,5%) sobre {eur(baseIE)}</span>
+                  <span className="text-google-gray">Impuesto Eléctrico (5,11%) sobre {eur(baseIE)}</span>
                   <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(impElec)}</span>
                 </div>
                 {bono > 0 && (
