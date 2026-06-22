@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Clock, LogIn, LogOut, Pause, Play, FileSpreadsheet, Users,
   CalendarDays, CheckCircle, AlertCircle, Lock, Smartphone,
+  Radio, StopCircle,
 } from 'lucide-react';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
@@ -140,8 +141,6 @@ function runMockTests() {
 
   // Caso C — Corte automático 8h05m (simulación a 5 seg del límite)
   {
-    // Jornada: entrada 08:00, pausa 10:00, vuelta 11:00 (2h trabajo previo)
-    // Para neto=8h04m55s: desde vuelta necesitamos 6h04m55s → now=17:04:55
     const ev = [
       { tipo: 'entrada', hora: '08:00:00' },
       { tipo: 'pausa',   hora: '10:00:00' },
@@ -163,13 +162,11 @@ function runMockTests() {
   // Caso D — Cierre retroactivo En_Jornada (sin pausas → salida = entrada + 8h05m)
   {
     const ev = [{ tipo: 'entrada', hora: '09:00:00' }];
-    // lastWorkSec = 9*3600 = 32400; workedBefore = 0; remaining = JORNADA_MAX_SEC
     const lastWorkSec     = timeToSec('09:00:00');
     const workedBeforeSec = calcTiempos(ev, lastWorkSec).trabajadoSec;
     const remainingSec    = Math.max(0, JORNADA_MAX_SEC - workedBeforeSec);
     const salidaSec       = Math.min(lastWorkSec + remainingSec, 86399);
     const hora_salida     = secToHms(salidaSec);
-    // Con la salida añadida, el total neto debe ser exactamente JORNADA_MAX_SEC
     const evConSalida  = [...ev, { tipo: 'salida', hora: hora_salida, retroactivo: true }];
     const { trabajadoSec } = calcTiempos(evConSalida, salidaSec);
     const pass = hora_salida === '17:05:00' && trabajadoSec === JORNADA_MAX_SEC;
@@ -275,6 +272,11 @@ export default function ControlHorario() {
   const [filtroDesde,   setFiltroDesde]   = useState('');
   const [filtroHasta,   setFiltroHasta]   = useState('');
 
+  // ── Panel en directo ─────────────────────────────────────────────────────
+  const [liveWorkers,  setLiveWorkers]  = useState([]);
+  const [loadingLive,  setLoadingLive]  = useState(false);
+  const [savingAdmin,  setSavingAdmin]  = useState(null); // id fichaje en proceso
+
   // ── Refs para evitar re-triggers ─────────────────────────────────────────
   const savingRef      = useRef(false);
   const autoTriggerRef = useRef(null); // hora del último evento work que disparó auto-pausa
@@ -321,12 +323,6 @@ export default function ControlHorario() {
 
     const registros = (data ?? []).map(r => ({ ...r, eventos: r.eventos ?? [] }));
 
-    // ── Cierre retroactivo de jornadas olvidadas ────────────────────────────
-    // Si el usuario se marchó sin fichar salida, al día siguiente el sistema
-    // detecta el registro abierto y lo cierra automáticamente:
-    //   • En_Pausa  → hora_salida = hora de inicio de la última pausa.
-    //   • En_Jornada → hora_salida = hora en que se habrían completado 8h05m
-    //                  netas desde la hora de entrada (incluyendo las pausas).
     const hoy = todayStr();
     const staleRecords = registros.filter(f => {
       if (f.fecha >= hoy || f.hora_salida) return false;
@@ -340,19 +336,15 @@ export default function ControlHorario() {
       let hora_salida = null;
 
       if (estado === 'En_Pausa') {
-        // La última pausa registrada es el momento en que dejaron de trabajar
         hora_salida = eventos[eventos.length - 1].hora;
       } else {
-        // En_Jornada: encontrar cuándo se habrían cumplido 8h05m netas
         const lastWorkEv = [...eventos].reverse().find(
           e => e.tipo === 'entrada' || e.tipo === 'vuelta'
         );
         if (lastWorkEv) {
           const lastWorkSec     = timeToSec(lastWorkEv.hora);
-          // Tiempo neto trabajado ANTES del último tramo activo
           const workedBeforeSec = calcTiempos(eventos, lastWorkSec).trabajadoSec;
           const remainingSec    = Math.max(0, JORNADA_MAX_SEC - workedBeforeSec);
-          // Hora de salida = inicio del último tramo + segundos restantes (max medianoche)
           hora_salida = secToHms(Math.min(lastWorkSec + remainingSec, 86399));
         }
       }
@@ -366,7 +358,6 @@ export default function ControlHorario() {
     }
 
     if (staleRecords.length > 0) {
-      // Recargar los registros actualizados tras los cierres retroactivos
       const { data: data2 } = await supabase
         .from('fichajes')
         .select('id, fecha, hora_entrada, hora_salida, eventos')
@@ -396,8 +387,46 @@ export default function ControlHorario() {
     setLoadingAll(false);
   }, [isAdmin, filtroUsuario, filtroDesde, filtroHasta]);
 
+  // ── Cargar trabajadores activos ahora (admin) ────────────────────────────
+  const loadLiveWorkers = useCallback(async () => {
+    if (!isAdmin) return;
+    setLoadingLive(true);
+    const { data } = await supabase
+      .from('fichajes')
+      .select('id, usuario, hora_entrada, hora_salida, eventos')
+      .eq('fecha', todayStr())
+      .is('hora_salida', null);
+    setLiveWorkers((data ?? []).map(r => ({ ...r, eventos: r.eventos ?? [] })));
+    setLoadingLive(false);
+  }, [isAdmin]);
+
   useEffect(() => { loadHoy(); loadHistorico(); }, [loadHoy, loadHistorico]);
-  useEffect(() => { if (isAdmin) loadAll(); }, [loadAll, isAdmin]);
+  useEffect(() => { if (isAdmin) { loadAll(); loadLiveWorkers(); } }, [loadAll, loadLiveWorkers, isAdmin]);
+
+  // Supabase Realtime + Page Visibility API para el panel en directo.
+  // - Realtime dispara loadLiveWorkers al instante cuando cambia cualquier fichaje.
+  // - Si la pestaña está oculta, se descarta el evento (sin peticiones en background).
+  // - Al recuperar el foco se lanza una carga fresca para cubrir eventos perdidos.
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const channel = supabase
+      .channel('live-fichajes-hoy')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'fichajes' },
+        () => { if (!document.hidden) loadLiveWorkers(); }
+      )
+      .subscribe();
+
+    const onVisibility = () => { if (!document.hidden) loadLiveWorkers(); };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      supabase.removeChannel(channel);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [isAdmin, loadLiveWorkers]);
 
   // ── Registrar evento en BD ───────────────────────────────────────────────
   const registrarEvento = useCallback(async (tipo, obligatoria = false, autoParado = false) => {
@@ -444,10 +473,28 @@ export default function ControlHorario() {
     }
 
     await loadHistorico();
-    if (isAdmin) await loadAll();
+    if (isAdmin) { await loadAll(); await loadLiveWorkers(); }
     savingRef.current = false;
     setSaving(false);
-  }, [username, isAdmin, loadHistorico, loadAll]);
+  }, [username, isAdmin, loadHistorico, loadAll, loadLiveWorkers]);
+
+  // ── Acción admin sobre fichaje de otro trabajador ────────────────────────
+  const accionAdmin = useCallback(async (fichaje, tipo) => {
+    setSavingAdmin(fichaje.id);
+    const hora  = nowTimeStr();
+    const newEv = tipo === 'pausa'
+      ? { tipo: 'pausa', hora, obligatoria: false }
+      : tipo === 'salida'
+        ? { tipo: 'salida', hora }
+        : { tipo: 'vuelta', hora };
+    const eventos = [...fichaje.eventos, newEv];
+    const updates = { eventos };
+    if (tipo === 'salida') updates.hora_salida = hora;
+    await supabase.from('fichajes').update(updates).eq('id', fichaje.id);
+    await loadLiveWorkers();
+    await loadAll();
+    setSavingAdmin(null);
+  }, [loadLiveWorkers, loadAll]);
 
   // ── Auto-pausa obligatoria (corre en cada tick de `now`) ─────────────────
   useEffect(() => {
@@ -458,7 +505,6 @@ export default function ControlHorario() {
     const nowSec = timeToSec(nowTimeStr());
     const { consecutivoSec } = calcTiempos(eventos, nowSec);
     if (consecutivoSec < PAUSA_OBLIG_SEC) return;
-    // Identificar el evento work actual para no disparar dos veces
     const lastWork = [...eventos].reverse().find(e => e.tipo === 'entrada' || e.tipo === 'vuelta');
     if (!lastWork || autoTriggerRef.current === lastWork.hora) return;
     autoTriggerRef.current = lastWork.hora;
@@ -469,7 +515,7 @@ export default function ControlHorario() {
   useEffect(() => {
     const rec = hoyRef.current;
     if (!rec || savingRef.current) return;
-    if (autoStopRef.current === rec.id) return; // ya procesado para este fichaje
+    if (autoStopRef.current === rec.id) return;
     const eventos = rec.eventos ?? [];
     const estado  = deriveEstado(eventos);
     if (estado === 'Finalizada' || estado === 'No_Iniciada') return;
@@ -613,12 +659,22 @@ export default function ControlHorario() {
         <p className="text-sm text-google-gray mt-0.5">Registra tu entrada y salida diaria</p>
       </div>
 
-      {/* Aviso móvil */}
-      {isMobile && (
+      {/* Aviso móvil — solo para trabajadores estándar, no para admins */}
+      {isMobile && !isAdmin && (
         <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
           <Smartphone size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
           <p className="text-sm text-amber-700 font-medium">
             Los fichajes solo pueden registrarse desde un ordenador. El historial está disponible en modo lectura.
+          </p>
+        </div>
+      )}
+
+      {/* Aviso admin en móvil */}
+      {isMobile && isAdmin && (
+        <div className="flex items-start gap-3 bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3">
+          <Smartphone size={18} className="text-indigo-600 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-indigo-700 font-medium">
+            Acceso de administrador — fichaje habilitado desde cualquier dispositivo.
           </p>
         </div>
       )}
@@ -662,8 +718,8 @@ export default function ControlHorario() {
           </div>
         </div>
 
-        {/* Botones de fichaje — ocultos en móvil (política: solo desde PC) */}
-        {!isMobile && (
+        {/* Botones de fichaje — visibles para todos en PC, y para admin también en móvil */}
+        {(!isMobile || isAdmin) && (
           <div className="flex items-center justify-center gap-3 flex-wrap">
 
             {/* Entrada */}
@@ -854,6 +910,134 @@ export default function ControlHorario() {
           </div>
         )}
       </div>
+
+      {/* ── Panel en Directo — Trabajadores Activos ────────────────────────── */}
+      {isAdmin && (
+        <div className="bg-white rounded-2xl shadow-google border border-google-border overflow-hidden">
+          <div className="px-6 py-4 border-b border-google-border bg-emerald-50 flex items-center gap-2">
+            <Radio size={18} className="text-emerald-600 animate-pulse" />
+            <h2 className="text-base font-semibold text-google-dark">Trabajadores en Directo</h2>
+            <span className="ml-1 text-xs text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full font-medium">
+              Hoy · En tiempo real
+            </span>
+            <button
+              onClick={loadLiveWorkers}
+              className="ml-auto text-xs text-emerald-700 hover:text-emerald-900 underline underline-offset-2"
+            >
+              Actualizar
+            </button>
+          </div>
+
+          {loadingLive ? (
+            <div className="py-10 text-center text-google-gray text-sm">Cargando…</div>
+          ) : liveWorkers.length === 0 ? (
+            <div className="py-10 text-center text-google-gray text-sm">
+              Ningún trabajador con jornada abierta en este momento
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-google-bg border-b border-google-border text-xs font-semibold text-google-gray uppercase tracking-wide">
+                    <th className="px-4 py-3 text-center whitespace-nowrap">Estado</th>
+                    <th className="px-5 py-3 text-left whitespace-nowrap">Trabajador</th>
+                    <th className="px-4 py-3 text-center whitespace-nowrap">H. Entrada</th>
+                    <th className="px-4 py-3 text-center whitespace-nowrap">Pausas</th>
+                    <th className="px-4 py-3 text-center whitespace-nowrap">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-google-border">
+                  {liveWorkers.map((f) => {
+                    const est    = deriveEstado(f.eventos);
+                    const pausas = extractPausas(f.eventos);
+                    const isBusy = savingAdmin === f.id;
+                    return (
+                      <tr key={f.id} className="hover:bg-google-bg/40 transition-colors">
+                        {/* Estado */}
+                        <td className="px-4 py-3 text-center">
+                          {est === 'En_Jornada' ? (
+                            <span className="inline-flex items-center gap-1.5 text-green-700 text-xs font-semibold bg-green-50 border border-green-200 px-2.5 py-1 rounded-full">
+                              <span className="w-2 h-2 rounded-full bg-green-500 inline-block animate-pulse" />
+                              Trabajando
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 text-orange-700 text-xs font-semibold bg-orange-50 border border-orange-200 px-2.5 py-1 rounded-full">
+                              <span className="w-2 h-2 rounded-full bg-orange-400 inline-block" />
+                              En Pausa
+                            </span>
+                          )}
+                        </td>
+                        {/* Trabajador */}
+                        <td className="px-5 py-3 font-medium text-google-dark capitalize">
+                          {f.usuario}
+                        </td>
+                        {/* Hora entrada */}
+                        <td className="px-4 py-3 text-center font-mono text-blue-600 text-xs font-semibold">
+                          {f.hora_entrada ?? '—'}
+                        </td>
+                        {/* Pausas */}
+                        <td className="px-4 py-3 text-center">
+                          {pausas.length === 0 ? (
+                            <span className="text-google-gray text-xs">—</span>
+                          ) : (
+                            <span className="text-xs text-indigo-600 font-semibold bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                              {pausas.length} pausa{pausas.length !== 1 ? 's' : ''}
+                              {pausas[pausas.length - 1]?.durMin != null
+                                ? ` · ${pausas.reduce((a, p) => a + (p.durMin ?? 0), 0)}m total`
+                                : ''}
+                            </span>
+                          )}
+                        </td>
+                        {/* Acciones */}
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-2 flex-wrap">
+                            {est === 'En_Jornada' && (
+                              <>
+                                <button
+                                  onClick={() => accionAdmin(f, 'pausa')}
+                                  disabled={isBusy}
+                                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white
+                                    bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  <Pause size={12} />
+                                  Pausar
+                                </button>
+                                <button
+                                  onClick={() => accionAdmin(f, 'salida')}
+                                  disabled={isBusy}
+                                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white
+                                    bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                >
+                                  <StopCircle size={12} />
+                                  Cerrar
+                                </button>
+                              </>
+                            )}
+                            {est === 'En_Pausa' && (
+                              <button
+                                onClick={() => accionAdmin(f, 'vuelta')}
+                                disabled={isBusy}
+                                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white
+                                  bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                              >
+                                <Play size={12} />
+                                Reanudar
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <p className="px-6 py-2 text-xs text-google-gray border-t border-google-border">
+                {liveWorkers.length} trabajador{liveWorkers.length !== 1 ? 'es' : ''} con jornada abierta · Sincronización optimizada en tiempo real
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Panel de administración ────────────────────────────────────────── */}
       {isAdmin && (
