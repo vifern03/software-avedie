@@ -281,7 +281,7 @@ export default function AltaClientes({ tipo }) {
 
   // Identificadores del usuario actual para matching de visibilidad
   const myUser        = (currentUser?.username    || '').toLowerCase();
-  const myDisplayName = (currentUser?.displayName || '').toLowerCase();
+  const myDisplayName = (currentUser?.displayName || '').trim().toLowerCase();
 
   // Prescriptores vinculados explícitamente via admin (PrescriptoresModal)
   const myLinkedPrescriptors = Object.entries(prescriptorLinks)

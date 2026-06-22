@@ -193,7 +193,7 @@ export function DataProvider({ children }) {
       // ── Contratos compartidos con el usuario (solo para no-admin/manager)
       // IMPORTANTE: compartido_con almacena displayName ("CARMEN BALLESTEROS"),
       // no username ("CARMENBALLESTEROS") — filtrar siempre por displayName.
-      const userDisplayName = currentUser.displayName || currentUser.username;
+      const userDisplayName = (currentUser.displayName || currentUser.username).trim();
       const sharedQuery = (!isAdmin && !isManager)
         ? supabase
             .from('clientes')
