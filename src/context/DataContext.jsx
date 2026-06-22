@@ -203,16 +203,41 @@ export function DataProvider({ children }) {
             .order('created_at', { ascending: false })
         : null;
 
-      // ── Contratos donde el usuario es vendedor o prescriptor (por displayName)
-      // Cubre el caso: Elisa tramita, Oscar vende → Oscar debe ver el contrato.
-      const vendedorQuery = (!isAdmin && !isManager)
-        ? supabase
+      // ── Contratos donde el usuario es vendedor/prescriptor ────────────────────
+      // Busca por:
+      //   1. Nombres de prescriptor vinculados a este usuario en prescriptorLinks
+      //      (ej: ANGELGARCIA → "ANGEL LUIS", displayName "ANGEL LUIS GARCIA")
+      //   2. El displayName propio como fallback (ej: OSCARFERNANDEZ → "OSCAR FERNANDEZ")
+      // Esto cubre todos los casos sin depender de que displayName == nombre prescriptor.
+      let vendedorQuery = null;
+      if (!isAdmin && !isManager) {
+        // Cargar prescriptorLinks frescos desde BD para tener los vínculos actualizados
+        const { data: freshLinksData } = await supabase
+          .from('configuracion').select('valor').eq('clave', 'prescriptor_links').maybeSingle();
+        let freshLinks = {};
+        if (freshLinksData?.valor) { try { freshLinks = JSON.parse(freshLinksData.valor); } catch {} }
+        setPrescriptorLinks(freshLinks);
+
+        // Nombres de prescriptor vinculados a este usuario (ej: ["ANGEL LUIS", "OSCAR FERNANDEZ"])
+        const linkedNames = Object.entries(freshLinks)
+          .filter(([, uname]) => uname === currentUser.username)
+          .map(([nombre]) => nombre);
+
+        // Unión de linked names + displayName (sin duplicados)
+        const vendedorNames = [...new Set([...linkedNames, userDisplayName])].filter(Boolean);
+
+        if (vendedorNames.length > 0) {
+          const orClause = vendedorNames
+            .flatMap(n => [`vendido_por.eq.${n}`, `creado_por.eq.${n}`])
+            .join(',');
+          vendedorQuery = supabase
             .from('clientes')
             .select(CLIENTES_SELECT)
             .is('deleted_at', null)
-            .or(`vendido_por.eq.${userDisplayName},creado_por.eq.${userDisplayName}`)
-            .order('created_at', { ascending: false })
-        : null;
+            .or(orClause)
+            .order('created_at', { ascending: false });
+        }
+      }
 
       // Consultas de existencia de documentos — builders independientes
       const mkFlag = (col) => supabase.from('clientes').select('id').is('deleted_at', null).not(col, 'is', null);
