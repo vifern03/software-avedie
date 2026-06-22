@@ -279,6 +279,12 @@ export default function AltaClientes({ tipo }) {
   const userEquipo   = currentUser?.equipo || 'Ambos';
   const isTeamMember = !isPrivileged && (userEquipo === 'Palencia' || userEquipo === 'Valladolid');
 
+  // Nombres de prescriptor vinculados a la cuenta del usuario actual
+  const myUser = (currentUser?.username || '').toLowerCase();
+  const myLinkedPrescriptors = Object.entries(prescriptorLinks)
+    .filter(([, uname]) => uname.toLowerCase() === myUser)
+    .map(([nombre]) => nombre.toLowerCase());
+
   // Contadores: admin/manager ven histórico completo; comercial solo sus registros últimos 30 días
   const baseClientes = isPrivileged
     ? clientes
@@ -287,14 +293,10 @@ export default function AltaClientes({ tipo }) {
         if (sharedWithMe) return true; // contratos compartidos siempre visibles
         const d = new Date(c.fecha_tramitacion || '');
         if (isNaN(d) || d < cutoff) return false;
-        const myUser = (currentUser?.username || '').toLowerCase();
-        const myName = (currentUser?.displayName || currentUser?.username || '').toLowerCase();
-        const isOwn  = c.comercial?.toLowerCase() === myUser
-                     || c.creado_por?.toLowerCase() === myUser
-                     || (c.vendido_por || '').toLowerCase() === myName
-                     || (c.vendido_por || '').toLowerCase() === myUser;
-        if (!isOwn) return false;
-        return true;
+        const isOwn = c.comercial?.toLowerCase() === myUser
+                   || c.creado_por?.toLowerCase() === myUser
+                   || myLinkedPrescriptors.some(p => (c.vendido_por || '').toLowerCase() === p);
+        return isOwn;
       });
 
   const totalPendienteFirma = baseClientes.filter((c) => c.estado === 'Pendiente Firma').length;
