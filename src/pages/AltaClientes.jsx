@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Plus, FileCheck, Clock, AlertCircle, Trophy, Search, ChevronUp, ChevronDown, Trash2, Pencil, PenTool, X, Eye, Loader2, BarChart2, CheckCircle } from 'lucide-react';
+import { Plus, FileCheck, Clock, AlertCircle, Trophy, Search, ChevronUp, ChevronDown, Trash2, Pencil, PenTool, X, Eye, Loader2, BarChart2, CheckCircle, Lock } from 'lucide-react';
 import NewClientModal from '../components/NewClientModal';
 import DeleteConfirmModal from '../components/DeleteConfirmModal';
 import ConfirmActionModal from '../components/ConfirmActionModal';
@@ -41,6 +41,17 @@ function getTimeFilteredList(list, filter) {
 const monthName = (offset) => {
   const m = new Date(YEAR, MONTH + offset, 1).toLocaleString('es-ES', { month: 'long' });
   return m.charAt(0).toUpperCase() + m.slice(1);
+};
+
+// ── Enmascaramiento de datos sensibles (rol Comercial) ─────────────────────────
+const maskCuenta = (v) => {
+  if (!v) return '—';
+  const d = v.replace(/\D/g, '');
+  return `**** **** **** ${d.length >= 4 ? d.slice(-4) : '****'}`;
+};
+const maskField = (v, keep = 4) => {
+  if (!v) return '—';
+  return v.length > keep ? `${'*'.repeat(v.length - keep)}${v.slice(-keep)}` : '****';
 };
 
 const FilterPill = ({ label, active, onClick }) => (
@@ -222,7 +233,7 @@ function ConsumoModal({ cliente, onClose, onSave }) {
 
 export default function AltaClientes({ tipo }) {
   const isB2B = tipo === 'B2B';
-  const { clientes: allClientes, clientesB2C, clientesB2B, addCliente, updateCliente, updateCompartidoCon, setConsumoAnualEst, firmarContrato, formalizarContrato, deleteCliente, rankingB2C, rankingB2B, docsFlags, prescriptores, addPrescriptor, renamePrescriptor, deletePrescriptor, bulkReasignPrescriptor } = useData();
+  const { clientes: allClientes, clientesB2C, clientesB2B, addCliente, updateCliente, updateCompartidoCon, setConsumoAnualEst, firmarContrato, formalizarContrato, deleteCliente, rankingB2C, rankingB2B, docsFlags, prescriptores, prescriptorLinks, addPrescriptor, renamePrescriptor, deletePrescriptor, bulkReasignPrescriptor, linkPrescriptor } = useData();
   const rankingActivo = isB2B ? rankingB2B : rankingB2C;
 
   const allCups = useMemo(
@@ -279,6 +290,13 @@ export default function AltaClientes({ tipo }) {
   const userEquipo   = currentUser?.equipo || 'Ambos';
   const isTeamMember = !isPrivileged && (userEquipo === 'Palencia' || userEquipo === 'Valladolid');
 
+  // Comerciales solo pueden editar/eliminar sus propios contratos en estado Pendiente Firma
+  const canEditDelete = (c) => {
+    if (isPrivileged) return true;
+    const myUser = currentUser?.username || '';
+    return (c.comercial === myUser || c.creado_por === myUser) && c.estado === 'Pendiente Firma';
+  };
+
   // Contadores: admin/manager ven histórico completo; comercial solo sus registros últimos 30 días
   const baseClientes = isPrivileged
     ? clientes
@@ -287,7 +305,13 @@ export default function AltaClientes({ tipo }) {
         if (sharedWithMe) return true; // contratos compartidos siempre visibles
         const d = new Date(c.fecha_tramitacion || '');
         if (isNaN(d) || d < cutoff) return false;
-        if (c.comercial !== currentUser?.username && c.creado_por !== currentUser?.username) return false;
+        const myUser = (currentUser?.username || '').toLowerCase();
+        const myName = (currentUser?.displayName || currentUser?.username || '').toLowerCase();
+        const isOwn  = c.comercial?.toLowerCase() === myUser
+                     || c.creado_por?.toLowerCase() === myUser
+                     || (c.vendido_por || '').toLowerCase() === myName
+                     || (c.vendido_por || '').toLowerCase() === myUser;
+        if (!isOwn) return false;
         return true;
       });
 
@@ -622,11 +646,11 @@ export default function AltaClientes({ tipo }) {
                     </td>
                     <td className="table-cell text-google-gray text-xs">{c.linea_negocio || '—'}</td>
                     <td className="table-cell text-google-gray text-xs max-w-[140px] truncate" title={subtipo(c)}>{subtipo(c)}</td>
-                    <td className="table-cell text-google-gray font-mono text-xs">{c.cif_dni}</td>
-                    <td className="table-cell text-google-gray">{c.telefono}</td>
+                    <td className="table-cell text-google-gray font-mono text-xs">{isPrivileged ? c.cif_dni : maskField(c.cif_dni, 3)}</td>
+                    <td className="table-cell text-google-gray">{isPrivileged ? c.telefono : maskField(c.telefono)}</td>
                     <td className="table-cell text-google-gray text-xs">{c.mail || '—'}</td>
-                    <td className="table-cell text-google-gray font-mono text-xs">{c.cuenta_bancaria || '—'}</td>
-                    <td className="table-cell text-google-gray font-mono text-xs truncate max-w-[130px]">{c.cups}</td>
+                    <td className="table-cell text-google-gray font-mono text-xs">{isPrivileged ? (c.cuenta_bancaria || '—') : maskCuenta(c.cuenta_bancaria)}</td>
+                    <td className="table-cell text-google-gray font-mono text-xs truncate max-w-[130px]">{isPrivileged ? c.cups : maskField(c.cups, 4)}</td>
                     <td className="table-cell">
                       <span className="bg-blue-50 text-google-blue text-xs font-medium px-2 py-0.5 rounded">{c.tarifa}</span>
                     </td>
@@ -643,7 +667,9 @@ export default function AltaClientes({ tipo }) {
                     </td>
                     <td className="table-cell"><StatusBadge estado={c.estado} /></td>
                     <td className="table-cell text-center">
-                      {isB2B ? (
+                      {!isPrivileged ? (
+                        <Lock size={13} className="mx-auto text-gray-300" title="Acceso restringido" />
+                      ) : isB2B ? (
                         <div className="flex items-center justify-center gap-0.5">
                           <DocIcon hasDoc={docsFlags[c.id]?.tiene_cif}         clientId={c.id} campo="cif_autonomo_url" label="Ver CIF / Autónomo" />
                           <DocIcon hasDoc={docsFlags[c.id]?.tiene_dni}         clientId={c.id} campo="dni_escaneado"    label="Ver DNI" />
@@ -657,7 +683,11 @@ export default function AltaClientes({ tipo }) {
                         <FileCell hasDoc={docsFlags[c.id]?.tiene_dni} clientId={c.id} campo="dni_escaneado" />
                       )}
                     </td>
-                    <td className="table-cell text-center"><FileCell hasDoc={docsFlags[c.id]?.tiene_factura} clientId={c.id} campo="ultima_factura" /></td>
+                    <td className="table-cell text-center">
+                      {!isPrivileged
+                        ? <Lock size={13} className="mx-auto text-gray-300" title="Acceso restringido" />
+                        : <FileCell hasDoc={docsFlags[c.id]?.tiene_factura} clientId={c.id} campo="ultima_factura" />}
+                    </td>
                     <td className="table-cell text-google-gray text-xs max-w-[180px] truncate" title={c.descripcion || ''}>{c.descripcion || '—'}</td>
                     {isB2B && (
                       <td className="table-cell text-center">
@@ -691,15 +721,19 @@ export default function AltaClientes({ tipo }) {
                             <FileCheck size={15} className="text-green-600" />
                           </button>
                         )}
-                        <ShareButton cliente={c} onUpdate={updateCompartidoCon} />
-                        <button onClick={() => setEditClient(c)}
-                          className="p-1 rounded hover:bg-blue-50 transition-colors" title="Editar">
-                          <Pencil size={15} className="text-google-blue" />
-                        </button>
-                        <button onClick={() => setDeleteTarget(c)}
-                          className="p-1 rounded hover:bg-red-50 transition-colors" title="Eliminar">
-                          <Trash2 size={15} className="text-red-500" />
-                        </button>
+                        {isPrivileged && <ShareButton cliente={c} onUpdate={updateCompartidoCon} />}
+                        {canEditDelete(c) && (
+                          <button onClick={() => setEditClient(c)}
+                            className="p-1 rounded hover:bg-blue-50 transition-colors" title="Editar">
+                            <Pencil size={15} className="text-google-blue" />
+                          </button>
+                        )}
+                        {canEditDelete(c) && (
+                          <button onClick={() => setDeleteTarget(c)}
+                            className="p-1 rounded hover:bg-red-50 transition-colors" title="Eliminar">
+                            <Trash2 size={15} className="text-red-500" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -760,6 +794,9 @@ export default function AltaClientes({ tipo }) {
           onClose={() => setShowPrescriptoresModal(false)}
           allClientes={allClientes}
           prescriptores={prescriptores}
+          prescriptorLinks={prescriptorLinks}
+          linkPrescriptor={linkPrescriptor}
+          users={users}
           addPrescriptor={addPrescriptor}
           renamePrescriptor={renamePrescriptor}
           deletePrescriptor={deletePrescriptor}

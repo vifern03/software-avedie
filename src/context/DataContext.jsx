@@ -86,13 +86,21 @@ export function DataProvider({ children }) {
   const [visitasPymes,  setVisitasPymes]  = useState([]);
   const [docsFlags,     setDocsFlags]     = useState({});
   const [isLoading,     setIsLoading]     = useState(true);
-  const [prescriptores, setPrescriptores] = useState([]); // [{id, nombre}]
+  const [prescriptores,    setPrescriptores]    = useState([]); // [{id, nombre}]
+  const [prescriptorLinks, setPrescriptorLinks] = useState({}); // {nombre_prescriptor: username_crm}
 
-  // ── Carga de prescriptores (tabla independiente del cache SWR) ─────────────
+  // ── Carga de prescriptores + vínculos CRM ────────────────────────────────────
   useEffect(() => {
-    if (!currentUser) { setPrescriptores([]); return; }
-    supabase.from('prescriptores').select('id,nombre').order('nombre')
-      .then(({ data }) => { if (data) setPrescriptores(data); });
+    if (!currentUser) { setPrescriptores([]); setPrescriptorLinks({}); return; }
+    Promise.all([
+      supabase.from('prescriptores').select('id,nombre').order('nombre'),
+      supabase.from('configuracion').select('valor').eq('clave', 'prescriptor_links').maybeSingle(),
+    ]).then(([presResp, linksResp]) => {
+      if (presResp.data) setPrescriptores(presResp.data);
+      if (linksResp.data?.valor) {
+        try { setPrescriptorLinks(JSON.parse(linksResp.data.valor)); } catch {}
+      }
+    });
   }, [currentUser?.username]);
 
   // ── Clave de la última carga completada: evita el double-fetch cuando
@@ -821,6 +829,18 @@ export function DataProvider({ children }) {
     return { error };
   };
 
+  // ── Vinculación prescriptor ↔ cuenta CRM ──────────────────────────────────────
+  const linkPrescriptor = async (nombre, username) => {
+    const updated = username
+      ? { ...prescriptorLinks, [nombre]: username }
+      : (() => { const c = { ...prescriptorLinks }; delete c[nombre]; return c; })();
+    const { error } = await supabase
+      .from('configuracion')
+      .upsert({ clave: 'prescriptor_links', valor: JSON.stringify(updated) }, { onConflict: 'clave' });
+    if (!error) setPrescriptorLinks(updated);
+    return { error };
+  };
+
   // ── Rankings ─────────────────────────────────────────────────────────────────
 
   const { rankingComerciales, rankingB2C, rankingB2B } = useMemo(() => {
@@ -905,10 +925,12 @@ export function DataProvider({ children }) {
       renovarContrato,
       deleteCliente,
       prescriptores,
+      prescriptorLinks,
       addPrescriptor,
       renamePrescriptor,
       deletePrescriptor,
       bulkReasignPrescriptor,
+      linkPrescriptor,
       addActivity,
       clearActividades,
       addVisita,

@@ -1,10 +1,13 @@
 import { useState, useMemo } from 'react';
-import { X, Plus, Trash2, Pencil, Check, AlertCircle, CheckCircle, Users } from 'lucide-react';
+import { X, Plus, Trash2, Pencil, Check, AlertCircle, CheckCircle, Users, Link, Unlink } from 'lucide-react';
 
 export default function PrescriptoresModal({
   onClose,
   allClientes,
-  prescriptores,       // [{id, nombre}] desde DataContext
+  prescriptores,          // [{id, nombre}]
+  prescriptorLinks = {},  // {nombre_prescriptor: username_crm}
+  linkPrescriptor,
+  users = [],
   addPrescriptor,
   renamePrescriptor,
   deletePrescriptor,
@@ -90,6 +93,33 @@ export default function PrescriptoresModal({
     }
   };
 
+  // ── Vinculación prescriptor ↔ cuenta CRM ─────────────────────────────────
+  const [linkingName, setLinkingName] = useState(null);
+  const [linkingUser, setLinkingUser] = useState('');
+  const [savingLink,  setSavingLink]  = useState(false);
+
+  const handleLink = async (nombre) => {
+    setSavingLink(true);
+    await linkPrescriptor(nombre, linkingUser);
+    setSavingLink(false);
+    setLinkingName(null);
+    setLinkingUser('');
+  };
+
+  const handleUnlink = async (nombre) => {
+    if (!window.confirm(`¿Desvincular "${nombre}" de la cuenta CRM "${prescriptorLinks[nombre]}"?`)) return;
+    setSavingLink(true);
+    await linkPrescriptor(nombre, '');
+    setSavingLink(false);
+  };
+
+  // Usuarios comerciales disponibles para vincular
+  const comerciales = useMemo(() =>
+    users.filter(u => u.role === 'comercial').sort((a, b) =>
+      (a.displayName || a.username).localeCompare(b.displayName || b.username)
+    )
+  , [users]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center modal-backdrop bg-black/30">
       <div className="bg-white rounded-2xl shadow-google w-full max-w-lg mx-4 flex flex-col max-h-[92vh] overflow-hidden">
@@ -102,7 +132,7 @@ export default function PrescriptoresModal({
             </div>
             <div>
               <h2 className="text-base font-semibold text-google-dark">Gestión de Prescriptores</h2>
-              <p className="text-xs text-google-gray">Añade, edita y reasigna · cambios en tiempo real</p>
+              <p className="text-xs text-google-gray">Añade, edita, reasigna y vincula cuentas CRM</p>
             </div>
           </div>
           <button onClick={onClose} className="text-google-gray hover:text-google-dark transition-colors">
@@ -155,100 +185,173 @@ export default function PrescriptoresModal({
               <p className="text-center text-google-gray text-sm py-4">Sin prescriptores. Añade el primero arriba.</p>
             ) : (
               <div className="space-y-1.5">
-                {prescriptores.map(p => (
-                  <div key={p.id} className="rounded-xl border border-google-border bg-google-bg px-3 py-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      {/* Vista normal / modo edición */}
-                      {editingId === p.id ? (
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <input
-                            autoFocus
-                            type="text"
-                            value={editingName}
-                            onChange={e => setEditingName(e.target.value.toUpperCase())}
-                            onKeyDown={e => { if (e.key === 'Enter') handleRename(p.id); if (e.key === 'Escape') cancelEdit(); }}
-                            className="input-field flex-1 h-8 text-sm py-0"
-                          />
-                          <button onClick={() => handleRename(p.id)} disabled={savingEdit}
-                            className="p-1.5 rounded-lg bg-google-blue text-white hover:bg-blue-700 transition-colors flex-shrink-0">
-                            <Check size={13} />
-                          </button>
-                          <button onClick={cancelEdit}
-                            className="p-1.5 rounded-lg border border-google-border text-google-gray hover:bg-red-50 hover:text-red-500 transition-colors flex-shrink-0">
-                            <X size={13} />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-sm font-medium text-google-dark truncate">{p.nombre}</span>
-                          {counts[p.nombre] ? (
-                            <span className="text-xs text-google-gray bg-white border border-google-border px-1.5 py-0.5 rounded-full flex-shrink-0">
-                              {counts[p.nombre]} contrato{counts[p.nombre] !== 1 ? 's' : ''}
+                {prescriptores.map(p => {
+                  const linkedUser = prescriptorLinks[p.nombre];
+                  const linkedDisplay = linkedUser
+                    ? (users.find(u => u.username === linkedUser)?.displayName || linkedUser)
+                    : null;
+
+                  return (
+                    <div key={p.id} className={`rounded-xl border px-3 py-2.5 transition-colors ${
+                      linkedUser ? 'border-blue-200 bg-blue-50' : 'border-google-border bg-google-bg'
+                    }`}>
+                      <div className="flex items-center justify-between gap-2">
+                        {/* Vista normal / modo edición */}
+                        {editingId === p.id ? (
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <input
+                              autoFocus
+                              type="text"
+                              value={editingName}
+                              onChange={e => setEditingName(e.target.value.toUpperCase())}
+                              onKeyDown={e => { if (e.key === 'Enter') handleRename(p.id); if (e.key === 'Escape') cancelEdit(); }}
+                              className="input-field flex-1 h-8 text-sm py-0"
+                            />
+                            <button onClick={() => handleRename(p.id)} disabled={savingEdit}
+                              className="p-1.5 rounded-lg bg-google-blue text-white hover:bg-blue-700 transition-colors flex-shrink-0">
+                              <Check size={13} />
+                            </button>
+                            <button onClick={cancelEdit}
+                              className="p-1.5 rounded-lg border border-google-border text-google-gray hover:bg-red-50 hover:text-red-500 transition-colors flex-shrink-0">
+                              <X size={13} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                            <span className={`text-sm font-medium truncate ${linkedUser ? 'text-google-blue' : 'text-google-dark'}`}>
+                              {p.nombre}
                             </span>
-                          ) : (
-                            <span className="text-xs text-google-gray italic flex-shrink-0">sin contratos</span>
-                          )}
+                            {linkedUser && (
+                              <span className="flex-shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold text-white bg-google-blue px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                                <Link size={9} />
+                                Cuenta CRM · {linkedDisplay}
+                              </span>
+                            )}
+                            {counts[p.nombre] ? (
+                              <span className="text-xs text-google-gray bg-white border border-google-border px-1.5 py-0.5 rounded-full flex-shrink-0">
+                                {counts[p.nombre]} contrato{counts[p.nombre] !== 1 ? 's' : ''}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-google-gray italic flex-shrink-0">sin contratos</span>
+                            )}
+                          </div>
+                        )}
+
+                        {editingId !== p.id && (
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <button onClick={() => startEdit(p)} title="Renombrar"
+                              className="p-1.5 rounded hover:bg-blue-50 transition-colors">
+                              <Pencil size={13} className="text-google-blue" />
+                            </button>
+                            <button onClick={() => handleDelete(p)} title="Eliminar"
+                              className="p-1.5 rounded hover:bg-red-50 transition-colors">
+                              <Trash2 size={13} className="text-red-400" />
+                            </button>
+                            {/* Botón vincular / desvincular */}
+                            {linkedUser ? (
+                              <button
+                                onClick={() => handleUnlink(p.nombre)}
+                                disabled={savingLink}
+                                title={`Desvincular cuenta: ${linkedUser}`}
+                                className="p-1.5 rounded hover:bg-red-50 transition-colors"
+                              >
+                                <Unlink size={13} className="text-red-400" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  setLinkingName(linkingName === p.nombre ? null : p.nombre);
+                                  setLinkingUser('');
+                                  setReasignTarget(null);
+                                }}
+                                title="Vincular a cuenta CRM"
+                                className={`p-1.5 rounded transition-colors ${
+                                  linkingName === p.nombre
+                                    ? 'bg-google-blue text-white'
+                                    : 'hover:bg-blue-50 text-google-gray hover:text-google-blue'
+                                }`}
+                              >
+                                <Link size={13} />
+                              </button>
+                            )}
+                            {(counts[p.nombre] ?? 0) > 0 && (
+                              <button
+                                onClick={() => {
+                                  setReasignTarget(reasignTarget === p.nombre ? null : p.nombre);
+                                  setLinkingName(null);
+                                  setReasignTo('');
+                                }}
+                                className={`px-2 py-0.5 rounded-lg border text-xs font-semibold transition-colors ml-1 ${
+                                  reasignTarget === p.nombre
+                                    ? 'bg-amber-500 text-white border-amber-500'
+                                    : 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                }`}
+                              >
+                                Reasignar
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Panel vinculación usuario CRM */}
+                      {linkingName === p.nombre && !linkedUser && (
+                        <div className="mt-2.5 pt-2.5 border-t border-blue-200 space-y-2">
+                          <p className="text-xs text-google-gray">
+                            Vincular <strong>{p.nombre}</strong> a una cuenta CRM:
+                          </p>
+                          <div className="flex gap-2">
+                            <select value={linkingUser} onChange={e => setLinkingUser(e.target.value)}
+                              className="input-field flex-1 text-sm">
+                              <option value="">Seleccionar usuario...</option>
+                              {comerciales.map(u => (
+                                <option key={u.username} value={u.username}>
+                                  {u.displayName || u.username}
+                                </option>
+                              ))}
+                            </select>
+                            <button onClick={() => handleLink(p.nombre)} disabled={savingLink || !linkingUser}
+                              className="btn-primary text-xs px-3 whitespace-nowrap">
+                              {savingLink ? 'Guardando...' : 'Vincular'}
+                            </button>
+                          </div>
+                          <p className="text-xs text-blue-600 flex items-center gap-1">
+                            <Link size={11} />
+                            El usuario vinculado verá sus contratos filtrados automáticamente
+                          </p>
                         </div>
                       )}
 
-                      {editingId !== p.id && (
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          <button onClick={() => startEdit(p)} title="Renombrar"
-                            className="p-1.5 rounded hover:bg-blue-50 transition-colors">
-                            <Pencil size={13} className="text-google-blue" />
-                          </button>
-                          <button onClick={() => handleDelete(p)} title="Eliminar"
-                            className="p-1.5 rounded hover:bg-red-50 transition-colors">
-                            <Trash2 size={13} className="text-red-400" />
-                          </button>
-                          {(counts[p.nombre] ?? 0) > 0 && (
-                            <button
-                              onClick={() => {
-                                setReasignTarget(reasignTarget === p.nombre ? null : p.nombre);
-                                setReasignTo('');
-                              }}
-                              className={`px-2 py-0.5 rounded-lg border text-xs font-semibold transition-colors ml-1 ${
-                                reasignTarget === p.nombre
-                                  ? 'bg-amber-500 text-white border-amber-500'
-                                  : 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
-                              }`}
-                            >
-                              Reasignar
+                      {/* Panel reasignación inline */}
+                      {reasignTarget === p.nombre && (
+                        <div className="mt-2.5 pt-2.5 border-t border-google-border space-y-2">
+                          <p className="text-xs text-google-gray">
+                            Mover <strong>{counts[p.nombre]}</strong> registro(s) de <strong>"{p.nombre}"</strong> a:
+                          </p>
+                          <div className="flex gap-2">
+                            <select value={reasignTo} onChange={e => setReasignTo(e.target.value)}
+                              className="input-field flex-1 text-sm">
+                              <option value="">Seleccionar destino...</option>
+                              {allNames.filter(n => n !== p.nombre).map(n => (
+                                <option key={n} value={n}>{n}</option>
+                              ))}
+                            </select>
+                            <button onClick={handleReasign} disabled={reasigning || !reasignTo}
+                              className="btn-primary text-xs px-3 whitespace-nowrap">
+                              {reasigning ? 'Procesando...' : 'Confirmar'}
                             </button>
+                          </div>
+                          {reasignTo && (
+                            <p className="text-xs text-amber-700 flex items-center gap-1">
+                              <AlertCircle size={12} />
+                              Se actualizarán {counts[p.nombre]} registro(s) en Supabase (creado_por + vendido_por)
+                            </p>
                           )}
                         </div>
                       )}
                     </div>
-
-                    {/* Panel reasignación inline */}
-                    {reasignTarget === p.nombre && (
-                      <div className="mt-2.5 pt-2.5 border-t border-google-border space-y-2">
-                        <p className="text-xs text-google-gray">
-                          Mover <strong>{counts[p.nombre]}</strong> registro(s) de <strong>"{p.nombre}"</strong> a:
-                        </p>
-                        <div className="flex gap-2">
-                          <select value={reasignTo} onChange={e => setReasignTo(e.target.value)}
-                            className="input-field flex-1 text-sm">
-                            <option value="">Seleccionar destino...</option>
-                            {allNames.filter(n => n !== p.nombre).map(n => (
-                              <option key={n} value={n}>{n}</option>
-                            ))}
-                          </select>
-                          <button onClick={handleReasign} disabled={reasigning || !reasignTo}
-                            className="btn-primary text-xs px-3 whitespace-nowrap">
-                            {reasigning ? 'Procesando...' : 'Confirmar'}
-                          </button>
-                        </div>
-                        {reasignTo && (
-                          <p className="text-xs text-amber-700 flex items-center gap-1">
-                            <AlertCircle size={12} />
-                            Se actualizarán {counts[p.nombre]} registro(s) en Supabase (creado_por + vendido_por)
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
