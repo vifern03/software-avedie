@@ -277,7 +277,9 @@ export default function EstudioComparativo() {
         kwhP2:            '0',
         kwhP3:            '0',
         kwPunta:          ex.kwPotenciaPunta        != null    ? String(ex.kwPotenciaPunta)              : f.kwPunta,
-        kwValle:          ex.kwPotenciaValle        != null    ? String(ex.kwPotenciaValle)              : f.kwValle,
+        kwValle:          (ex.kwPotenciaValle != null && ex.kwPotenciaValle !== 0)
+                            ? String(ex.kwPotenciaValle)
+                            : (ex.kwPotenciaPunta != null ? String(ex.kwPotenciaPunta) : f.kwValle),
         facturaActual:    ex.importeTotalFacturaActual != null ? String(ex.importeTotalFacturaActual)    : f.facturaActual,
         alquilerContador: ex.costeAlquilerContador  != null    ? String(ex.costeAlquilerContador)        : f.alquilerContador,
         bonoSocial:       ex.costeBonoSocial        != null    ? String(ex.costeBonoSocial)              : f.bonoSocial,

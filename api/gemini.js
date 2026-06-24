@@ -65,10 +65,10 @@ export default async function handler(req, res) {
   try {
     const { text, history = [], file } = req.body;
 
-    const contents = history.map((msg) => ({
-      role: msg.role,
-      parts: [{ text: msg.content }],
-    }));
+    const contents = history.map((msg) => {
+      if (msg.parts) return msg;
+      return { role: msg.role, parts: [{ text: msg.content }] };
+    });
 
     const currentParts = [];
     if (file?.data && file?.mimeType) {
