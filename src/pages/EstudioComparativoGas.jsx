@@ -47,7 +47,7 @@ El JSON debe tener exactamente estos campos (usa null para strings no encontrado
   "importeTotalFactura": importe TOTAL a pagar de la factura en euros (importe final con todos los impuestos incluidos),
   "costeTerminoFijo": importe exacto cobrado en esta factura por el término fijo o de capacidad en euros del período facturado (0 si no aparece),
   "costeAlquilerContador": coste del alquiler del contador en euros (0 si no aparece),
-  "tipoIVA": tipo de IVA en formato decimal. Localiza la línea con formato "IVA X % s/YY,YY €  ZZ,ZZ €": X es el PORCENTAJE, conviértelo a decimal (10→0.10, 21→0.21, 7→0.07). ZZ,ZZ es el importe en euros — NUNCA lo uses como tipo. Devuelve solo el decimal del porcentaje (0.10, 0.21 o 0.07).
+  "tipoIVA": tipo de IVA en formato decimal. Localiza la línea con formato "IVA X % s/YY,YY €  ZZ,ZZ €": X es el PORCENTAJE, conviértelo a decimal (10→0.10, 21→0.21, 7→0.07). ZZ,ZZ es el importe en euros — NUNCA lo uses como tipo. Ejemplo: "IVA 10 % s/47,62 €  4,76 €" → devuelve 0.10 (NO 4.76). NUNCA extraigas el importe en euros como tipo de IVA.
 }
 
 ════════ REGLAS OBLIGATORIAS ════════
