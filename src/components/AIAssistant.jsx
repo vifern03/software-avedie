@@ -5,11 +5,14 @@ import { Sparkles, X, Send, Paperclip, Copy, Check } from 'lucide-react';
 // middleware de Vite en desarrollo local). La API key nunca llega al bundle del cliente.
 const PROXY_URL = '/api/gemini';
 
-// Máximo de adjuntos: 4 MB → base64 ~5.3 MB, dentro del límite de 6 MB de Netlify Functions
-const MAX_FILE_MB = 4;
+// Máximo de adjuntos: 3 MB → base64 ~4 MB, bajo el límite de body de Vercel (4.5 MB)
+const MAX_FILE_MB = 3;
 
 // Turnos de conversación que se envían al modelo (evita payloads infinitos)
 const MAX_HISTORY_TURNS = 20;
+// Con archivo adjunto se reduce el historial para no superar el límite de body
+const MAX_HISTORY_WITH_FILE = 10;
+const MAX_HISTORY_WITH_LARGE_FILE = 6; // archivos > 500 KB
 
 const QUICK_ACTIONS = [
   {
@@ -112,7 +115,10 @@ export default function AIAssistant({ isOpen, onOpenChange }) {
     setIsLoading(true);
 
     try {
-      const recentMessages = messages.slice(-MAX_HISTORY_TURNS);
+      const historyLimit = currentFile
+        ? (currentFile.size > 500 * 1024 ? MAX_HISTORY_WITH_LARGE_FILE : MAX_HISTORY_WITH_FILE)
+        : MAX_HISTORY_TURNS;
+      const recentMessages = messages.slice(-historyLimit);
 
       const history = recentMessages.map(m => ({
         role:  m.role,

@@ -13,7 +13,8 @@ async function callGeminiWithRetry(apiKey, body, maxAttempts = 3) {
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    // 55s por intento — margen suficiente para Gemini 2.5 Pro con thinking
+    const timeout = setTimeout(() => controller.abort(), 55000);
 
     try {
       const response = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
@@ -51,6 +52,15 @@ async function callGeminiWithRetry(apiKey, body, maxAttempts = 3) {
 
   throw lastError;
 }
+
+// Sube el límite de body a 10 MB (Vercel/Next.js API routes)
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: "10mb",
+    },
+  },
+};
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -100,7 +110,15 @@ export default async function handler(req, res) {
       throw new Error("Respuesta vacía del modelo.");
     }
 
-    return res.status(200).json({ response: responseText });
+    // Log temporal para medir tokens (ver Vercel logs)
+    const usage = data.usageMetadata;
+    if (usage) {
+      console.log(
+        `[gemini] tokens — input:${usage.promptTokenCount} output:${usage.candidatesTokenCount} thinking:${usage.thoughtsTokenCount ?? 0} total:${usage.totalTokenCount}`
+      );
+    }
+
+    return res.status(200).json({ response: responseText, usage });
 
   } catch (err) {
     console.error("[gemini-proxy] Error tras reintentos:", err.message);
