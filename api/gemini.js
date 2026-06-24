@@ -1,97 +1,108 @@
-// Vercel Serverless Function — /api/gemini
-// La API key vive exclusivamente en process.env.GEMINI_API_KEY (variables de entorno de Vercel).
-// Nunca se incluye en el bundle del cliente.
+const GEMINI_URL =
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent";
 
-const GEMINI_ENDPOINT =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const SYSTEM_PROMPT =
-  process.env.SYSTEM_PROMPT ||
-  'Eres el asistente de IA de Grupo Avedie, empresa española de comercialización de energía ' +
-  'y servicios. Ayudas a los comerciales y gestores del CRM interno con tareas profesionales: ' +
-  'redacción de correos formales, análisis de documentos, traducciones corporativas, revisión ' +
-  'y extracción de datos de facturas eléctricas españolas, y consultas generales de negocio. ' +
-  'Tienes conocimiento experto del mercado eléctrico español: tarifas de acceso (2.0TD, 3.0TD, ' +
-  '6.1), IVA reducido 10% sobre energía y potencia en Península/Baleares, IGIC 7% en Canarias, ' +
-  'Impuesto Especial de la Electricidad (IEE/IVPEE 5,11%), código CUPS (20-22 caracteres ES...), ' +
-  'períodos de facturación P1-P6, bono social y alquiler de contador. ' +
-  'Responde siempre en español con tono profesional, conciso y orientado al cliente empresarial.';
+async function callGeminiWithRetry(apiKey, body, maxAttempts = 3) {
+  let lastError;
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt > 0) {
+      const delay = 2000 * Math.pow(2, attempt - 1) + Math.random() * 500;
+      await sleep(delay);
+    }
 
-  if (req.method === 'OPTIONS') {
-    res.statusCode = 200;
-    res.end();
-    return;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    try {
+      const response = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (response.status === 429 || response.status === 503) {
+        lastError = new Error(`Google ${response.status} — reintentando...`);
+        continue;
+      }
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Gemini error ${response.status}: ${errText}`);
+      }
+
+      return await response.json();
+
+    } catch (err) {
+      clearTimeout(timeout);
+
+      if (err.name === "AbortError") {
+        lastError = new Error(`Timeout en intento ${attempt + 1}`);
+        continue;
+      }
+
+      throw err;
+    }
   }
 
-  if (req.method !== 'POST') {
-    res.statusCode = 405;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: 'Method Not Allowed' }));
-    return;
+  throw lastError;
+}
+
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Método no permitido" });
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    console.error('[gemini] Falta GEMINI_API_KEY en las variables de entorno de Vercel.');
-    res.statusCode = 500;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: 'El servicio de IA no está configurado. Contacta con el administrador.' }));
-    return;
+    return res.status(500).json({ error: "API key no configurada" });
   }
 
   try {
-    // Vercel parsea automáticamente el body JSON cuando Content-Type es application/json
-    const { text, history = [], file } = req.body || {};
+    const { text, history = [], file } = req.body;
 
-    if (!text && !file) {
-      res.statusCode = 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ error: 'Se requiere al menos texto o un archivo.' }));
-      return;
-    }
+    const contents = history.map((msg) => ({
+      role: msg.role,
+      parts: [{ text: msg.content }],
+    }));
 
     const currentParts = [];
-    if (text) currentParts.push({ text });
     if (file?.data && file?.mimeType) {
-      currentParts.push({ inlineData: { mimeType: file.mimeType, data: file.data } });
+      currentParts.push({
+        inlineData: { mimeType: file.mimeType, data: file.data },
+      });
     }
-
-    const contents = [
-      { role: 'user',  parts: [{ text: SYSTEM_PROMPT }] },
-      { role: 'model', parts: [{ text: 'Entendido. Estoy listo para asistirte como asistente de Grupo Avedie.' }] },
-      ...history,
-      { role: 'user',  parts: currentParts },
-    ];
-
-    const geminiRes = await fetch(`${GEMINI_ENDPOINT}?key=${apiKey}`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ contents }),
-    });
-
-    const geminiData = await geminiRes.json();
-
-    if (!geminiRes.ok) {
-      const msg = geminiData?.error?.message || `Gemini API ${geminiRes.status}`;
-      console.error('[gemini] API error:', msg);
-      throw new Error(msg);
+    if (text) {
+      currentParts.push({ text });
     }
+    contents.push({ role: "user", parts: currentParts });
 
-    const responseText = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!responseText) throw new Error('Respuesta vacía del modelo.');
+    const geminiBody = {
+      contents,
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 2048,
+      },
+    };
 
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ response: responseText }));
+    const data = await callGeminiWithRetry(apiKey, geminiBody);
+
+    const responseText =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+
+    return res.status(200).json({ response: responseText });
+
   } catch (err) {
-    console.error('[gemini] Error:', err.message || err);
-    res.statusCode = 500;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: err.message || 'Error al procesar la solicitud con la IA.' }));
+    console.error("[gemini-proxy] Error tras reintentos:", err.message);
+
+    return res.status(503).json({
+      error:
+        "El servicio de IA no está disponible en este momento. Por favor, introduce los datos manualmente o inténtalo de nuevo en unos segundos.",
+      retryable: true,
+    });
   }
 }

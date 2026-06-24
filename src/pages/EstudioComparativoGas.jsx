@@ -228,7 +228,7 @@ export default function EstudioComparativoGas() {
       setExtractionDone(true);
     } catch (err) {
       console.error('[EC-GAS] Extracción IA:', err);
-      setExtractionError('No se pudo extraer la información automáticamente. Revise que el archivo es legible o introduzca los datos manualmente.');
+      setExtractionError(err.message || 'No se pudo extraer la información automáticamente. Introduce los datos manualmente o inténtalo de nuevo.');
     } finally {
       setIsExtracting(false);
     }

@@ -137,7 +137,7 @@ export default function AIAssistant({ isOpen, onOpenChange }) {
       console.error('AI error:', err.message || err);
       setMessages(prev => [...prev, {
         role:    'model',
-        content: err.message || 'Lo siento, ha ocurrido un error al contactar con el asistente. Comprueba la conexión e inténtalo de nuevo.',
+        content: err.message || 'El asistente no está disponible en este momento. Inténtalo de nuevo en unos segundos.',
         isError: true,
       }]);
     } finally {
@@ -190,7 +190,7 @@ export default function AIAssistant({ isOpen, onOpenChange }) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-white leading-tight">Asistente IA</p>
-            <p className="text-xs text-blue-100">Gemini 2.5 Flash · Grupo Avedie</p>
+            <p className="text-xs text-blue-100">Gemini 2.5 Pro · Grupo Avedie</p>
           </div>
           <button
             onClick={() => onOpenChange(false)}
