@@ -85,14 +85,20 @@ export default async function handler(req, res) {
       contents,
       generationConfig: {
         temperature: 0,
-        maxOutputTokens: 2048,
+        maxOutputTokens: 8192,
       },
     };
 
     const data = await callGeminiWithRetry(apiKey, geminiBody);
 
-    const responseText =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    // Gemini 2.5 Pro devuelve partes de "thinking" con { thought: true }.
+    // Tomamos la primera parte que NO sea thinking para obtener el texto real.
+    const parts = data?.candidates?.[0]?.content?.parts ?? [];
+    const responseText = parts.find((p) => !p.thought)?.text ?? "";
+
+    if (!responseText) {
+      throw new Error("Respuesta vacía del modelo.");
+    }
 
     return res.status(200).json({ response: responseText });
 
