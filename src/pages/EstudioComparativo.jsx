@@ -88,20 +88,19 @@ El JSON debe tener exactamente estos campos (usa null para strings no encontrado
   "importeTotalFacturaActual": importe TOTAL a pagar de la factura en euros (el importe final con todos los impuestos incluidos, el que paga el cliente),
   "costeAlquilerContador": coste del alquiler del equipo de medida en euros (0 si no aparece),
   "costeBonoSocial": importe del bono social en euros (0 si no aparece),
-  "tipoIVA": tipo de IVA aplicado sobre energía y potencia eléctrica, en formato decimal (0.10, 0.21 o 0.07)
+  "tipoIVA": tipo de IVA en formato decimal. Localiza la línea con formato "IVA X % s/YY,YY €  ZZ,ZZ €": X es el PORCENTAJE, conviértelo a decimal (21→0.21, 10→0.10, 7→0.07). ZZ,ZZ es el importe en euros — NUNCA lo uses como tipo. Ejemplo: "IVA (*) 21 % s/47,62 €  10,00 €" → devuelve 0.21 (NO 0.10). NUNCA extraigas el importe en euros como tipo de IVA.
 }
 
 ════════ REGLAS OBLIGATORIAS — MERCADO ELÉCTRICO ESPAÑOL ════════
 
-REGLA 1 — IVA ELÉCTRICO (LEY 37/1992, ART. 91):
-En España peninsular e Islas Baleares, el suministro de electricidad tributa SIEMPRE al tipo REDUCIDO.
-Desde 2013, ese tipo reducido es el 10%. Por tanto:
-• tipoIVA = 0.10 en TODAS las facturas de suministro eléctrico peninsular (Iberdrola, Endesa, Naturgy, Repsol, TotalEnergies, Gesternova, Nordy, LOGOS, Octopus, Plenitude, etc.)
-• La única excepción es Islas Canarias (IGIC): tipoIVA = 0.07
+REGLA 1 — IVA ELÉCTRICO — LEE SIEMPRE EL TIPO DE LA FACTURA:
+El tipo de IVA sobre la electricidad varía según el decreto vigente en la fecha de factura:
+• 0.21 (21%): tipo general, vigente desde el Real Decreto-ley 7/2026 (marzo 2026)
+• 0.10 (10%): tipo reducido, en períodos con decreto de reducción temporal activo
+• 0.07 (7%): IGIC, solo en Canarias
+NO asumas un tipo fijo. Lee el número del porcentaje que aparece ANTES del símbolo % en la línea del IVA y conviértelo a decimal.
 
-REGLA 2 — IVA MIXTO (Plenitude/Eni y otros):
-Algunas comercializadoras incluyen en la misma factura conceptos de energía + potencia (IVA reducido 10%) y gastos de gestión / servicios adicionales (IVA general 21%).
-En estos casos DEBES seleccionar 0.10, porque la base imponible principal (energía+potencia) tributa al 10%.
+REGLA 2 — IVA MIXTO: Si la factura incluye conceptos con distintos tipos de IVA, usa el tipo aplicado sobre energía y potencia (el concepto principal). Lee ese porcentaje directamente de la factura.
 
 REGLA 3 — NO confundas el Impuesto Especial de la Electricidad (IEE/IVPEE, 5,11%) con el IVA.
 El IEE aparece como un porcentaje distinto antes del IVA. No lo uses para el campo tipoIVA.
