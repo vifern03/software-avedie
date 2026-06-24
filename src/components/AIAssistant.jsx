@@ -3,7 +3,7 @@ import { Sparkles, X, Send, Paperclip, Copy, Check } from 'lucide-react';
 
 // Todas las llamadas a Gemini pasan por /api/gemini (Vercel Function en producción,
 // middleware de Vite en desarrollo local). La API key nunca llega al bundle del cliente.
-const PROXY_URL = '/api/gemini';
+const PROXY_URL = '/api/gemini-flash';
 
 // Máximo de adjuntos: 3 MB → base64 ~4 MB, bajo el límite de body de Vercel (4.5 MB)
 const MAX_FILE_MB = 3;
