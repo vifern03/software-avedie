@@ -110,15 +110,7 @@ export default async function handler(req, res) {
       throw new Error("Respuesta vacía del modelo.");
     }
 
-    // Log temporal para medir tokens (ver Vercel logs)
-    const usage = data.usageMetadata;
-    if (usage) {
-      console.log(
-        `[gemini] tokens — input:${usage.promptTokenCount} output:${usage.candidatesTokenCount} thinking:${usage.thoughtsTokenCount ?? 0} total:${usage.totalTokenCount}`
-      );
-    }
-
-    return res.status(200).json({ response: responseText, usage });
+    return res.status(200).json({ response: responseText });
 
   } catch (err) {
     console.error("[gemini-proxy] Error tras reintentos:", err.message);
