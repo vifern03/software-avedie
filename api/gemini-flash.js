@@ -5,12 +5,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function callGeminiWithRetry(apiKey, body, maxAttempts = 3) {
   let lastError;
+  let isRateLimit = false;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (attempt > 0) {
-      const delay = 2000 * Math.pow(2, attempt - 1) + Math.random() * 500;
+      // 429/503 necesitan más tiempo de espera (Gemini tarda ~10-20s en recuperarse)
+      const base = isRateLimit ? 8000 : 2000;
+      const delay = base * Math.pow(2, attempt - 1) + Math.random() * 1000;
       await sleep(delay);
     }
+    isRateLimit = false;
 
     const controller = new AbortController();
     // 25s por intento — Flash responde en 2-5s, margen amplio para picos
@@ -27,6 +31,7 @@ async function callGeminiWithRetry(apiKey, body, maxAttempts = 3) {
       clearTimeout(timeout);
 
       if (response.status === 429 || response.status === 503) {
+        isRateLimit = true;
         lastError = new Error(`Google ${response.status} — reintentando...`);
         continue;
       }
