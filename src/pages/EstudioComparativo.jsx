@@ -85,7 +85,8 @@ El JSON debe tener exactamente estos campos (usa null para strings no encontrado
   "totalKwhFacturados": suma total en kWh de TODOS los períodos de consumo de energía activa CONSUMIDA DE LA RED (P1+P2+P3+P4+P5+P6). NO incluir energía reactiva, excesos de potencia ni los kWh de excedentes exportados a la red que aparecen en la línea "Compensación de excedentes",
   "kwPotenciaPunta": potencia contratada en kW para el período punta (P1). Si solo hay una potencia única, ponla aquí,
   "kwPotenciaValle": potencia contratada en kW para el período valle (P2). Pon 0 si es tarifa monopunto o si solo hay una potencia,
-  "importeTotalFacturaActual": importe TOTAL a pagar de la factura en euros (el importe final con todos los impuestos incluidos, el que paga el cliente, ya con cualquier compensación de excedentes descontada),
+  "importeTotalFacturaActual": importe TOTAL de la factura en euros ANTES de cualquier descuento comercial/fidelización post-IVA (líneas como "PARA TI", "Bienvenida", "Fidelización" que aparecen en una fila separada DESPUÉS del TOTAL y ANTES del "TOTAL A PAGAR"). Este valor representa el coste energético real con todos los impuestos incluidos. Si no existe descuento post-IVA, coincide con el TOTAL A PAGAR,
+  "descuentoCupon": descuento comercial/fidelización post-IVA en euros como número POSITIVO (ej: si aparece "PARA TI -5,00 €" tras el TOTAL, devuelve 5.0). Devuelve 0 si no hay ningún descuento comercial post-IVA,
   "costeAlquilerContador": coste del alquiler del equipo de medida en euros (0 si no aparece),
   "costeBonoSocial": importe del bono social en euros (0 si no aparece),
   "compensacionExcedentes": importe de compensación por excedentes de autoconsumo en euros como número POSITIVO (ej: si la factura muestra "-29,72 €" de compensación de excedentes, devuelve 29.72). Devuelve 0 si no hay compensación de excedentes,
@@ -134,7 +135,17 @@ Si el crédito se aplica tras el IVA (ej: "Solar Wallet: -39,68€" aparece al f
 - Pon 0 en "compensacionExcedentes"
 
 REGLA 8 — CUPS ENMASCARADO:
-Si el CUPS aparece como "*" o está completamente oculto, devuelve null para el campo cups.`;
+Si el CUPS aparece como "*" o está completamente oculto, devuelve null para el campo cups.
+
+REGLA 9 — DESCUENTOS COMERCIALES POST-IVA ("PARA TI", "Bienvenida", "Fidelización", etc.):
+Algunos comercializadores aplican un cupón/descuento de fidelización en una línea propia DESPUÉS del total impositivo:
+  TOTAL 56,94 €
+  PARA TI -5,00 €
+  TOTAL A PAGAR 51,94 €
+En ese caso:
+- "importeTotalFacturaActual" = 56.94  (el TOTAL energético ANTES del cupón)
+- "descuentoCupon" = 5.00              (el importe del cupón, como número positivo)
+NUNCA pongas el TOTAL A PAGAR (51,94 €) en "importeTotalFacturaActual" cuando exista un descuento post-IVA de esta naturaleza.`;
 
 /* ── Toggle mini ─────────────────────────────────────────────────────────────── */
 
@@ -160,6 +171,7 @@ const INIT = {
   bonoSocial: '0', alquilerContador: '0',
   compensacionExcedentes: '0',
   facturaActual: '',
+  dtoCupones: '0',
   asesor: '', asesorLibre: '',
   iva: '0.21',
   descuento: '0',
@@ -199,6 +211,8 @@ export default function EstudioComparativo() {
   const bono     = n(form.bonoSocial);
   const alqCont  = n(form.alquilerContador);
   const factActual = n(form.facturaActual);
+  const dtoCup   = n(form.dtoCupones);
+  const factBase = factActual - dtoCup; // coste real aislando cupones efímeros
   const ivaRate  = n(form.iva, 0.21);
   const dto      = n(form.descuento) / 100;
 
@@ -221,8 +235,8 @@ export default function EstudioComparativo() {
   const ivaImp  = baseIVA * ivaRate;
   const total   = baseIVA + ivaImp;
 
-  const dif           = factActual - total;
-  const ahorroPercent = total > 0 ? (factActual / total - 1) : 0;
+  const dif           = factBase - total;
+  const ahorroPercent = total > 0 ? (factBase / total - 1) : 0;
   const ahorroAnual   = dias  > 0 ? (dif / dias) * 365 : 0;
   const isReady = kwhP1 > 0 && kwPunta > 0 && dias > 0 && factActual > 0;
 
@@ -298,6 +312,7 @@ export default function EstudioComparativo() {
         alquilerContador:       ex.costeAlquilerContador    != null ? String(ex.costeAlquilerContador)        : f.alquilerContador,
         bonoSocial:             ex.costeBonoSocial          != null ? String(ex.costeBonoSocial)              : f.bonoSocial,
         compensacionExcedentes: ex.compensacionExcedentes   != null ? String(ex.compensacionExcedentes)       : f.compensacionExcedentes,
+        dtoCupones:             ex.descuentoCupon           != null ? String(ex.descuentoCupon)                : f.dtoCupones,
         iva:                    ivaValue,
       }));
       setExtractionDone(true);
@@ -539,8 +554,37 @@ export default function EstudioComparativo() {
                   <input type="text" inputMode="decimal" value={form.compensacionExcedentes} onChange={set('compensacionExcedentes')} placeholder="0.00" className="input-field text-sm" />
                 </div>
                 <div>
-                  <label className="text-[10px] font-medium text-google-gray mb-1 block">Factura actual (€) <span className="text-red-400">*</span></label>
+                  <label className="text-[10px] font-medium text-google-gray mb-1 block">Factura actual — bruta (€) <span className="text-red-400">*</span></label>
                   <input type="text" inputMode="decimal" value={form.facturaActual} onChange={set('facturaActual')} placeholder="0.00" className="input-field text-sm" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-medium text-google-gray mb-1 block">
+                    Dto. fidelización / Cupones (€)
+                    <span className="ml-1 text-[9px] text-google-gray font-normal italic">PARA TI, Bienvenida…</span>
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={form.dtoCupones}
+                    onChange={set('dtoCupones')}
+                    placeholder="0.00"
+                    className="input-field text-sm"
+                  />
+                </div>
+                <div className="flex items-end">
+                  {dtoCup > 0 && factActual > 0 ? (
+                    <div className="w-full bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                      <p className="text-[10px] text-orange-600 font-medium leading-none mb-0.5">Base para comparar</p>
+                      <p className="text-sm font-bold text-orange-700 tabular-nums">{eur(factBase)}</p>
+                      <p className="text-[9px] text-orange-400 mt-0.5">{eur(factActual)} − {eur(dtoCup)}</p>
+                    </div>
+                  ) : (
+                    <div className="w-full text-[10px] text-google-gray leading-snug px-1">
+                      Introduce el importe de descuentos de fidelización post-IVA que no forman parte del coste energético
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -724,7 +768,12 @@ export default function EstudioComparativo() {
                   <div className="grid grid-cols-2 gap-3 mb-4">
                     <div className="bg-white rounded-xl p-3 text-center border border-green-100">
                       <p className="text-[10px] text-google-gray mb-1">Factura actual</p>
-                      <p className="text-xl font-bold text-google-dark tabular-nums">{eur(factActual)}</p>
+                      <p className="text-xl font-bold text-google-dark tabular-nums">{eur(factBase)}</p>
+                      {dtoCup > 0 && (
+                        <p className="text-[9px] text-orange-500 mt-0.5 leading-tight">
+                          Bruta {eur(factActual)} · dto. cupón −{eur(dtoCup)}
+                        </p>
+                      )}
                     </div>
                     <div className="bg-white rounded-xl p-3 text-center border border-blue-200">
                       <p className="text-[10px] text-google-blue font-medium mb-1">Con Endesa</p>
