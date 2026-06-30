@@ -82,12 +82,13 @@ El JSON debe tener exactamente estos campos (usa null para strings no encontrado
   "nombreCliente": "razón social o nombre completo del titular",
   "cups": "código CUPS limpio: extrae SOLO los 20-22 caracteres alfanuméricos que empiezan por ES (elimina espacios, saltos de línea y guiones)",
   "diasFacturacion": número entero de días del período de facturación,
-  "totalKwhFacturados": suma total en kWh de TODOS los períodos de consumo (P1+P2+P3+P4+P5+P6 y cualquier subtotal de energía activa). No incluir energía reactiva ni excesos de potencia,
+  "totalKwhFacturados": suma total en kWh de TODOS los períodos de consumo de energía activa CONSUMIDA DE LA RED (P1+P2+P3+P4+P5+P6). NO incluir energía reactiva, excesos de potencia ni los kWh de excedentes exportados a la red que aparecen en la línea "Compensación de excedentes",
   "kwPotenciaPunta": potencia contratada en kW para el período punta (P1). Si solo hay una potencia única, ponla aquí,
   "kwPotenciaValle": potencia contratada en kW para el período valle (P2). Pon 0 si es tarifa monopunto o si solo hay una potencia,
-  "importeTotalFacturaActual": importe TOTAL a pagar de la factura en euros (el importe final con todos los impuestos incluidos, el que paga el cliente),
+  "importeTotalFacturaActual": importe TOTAL a pagar de la factura en euros (el importe final con todos los impuestos incluidos, el que paga el cliente, ya con cualquier compensación de excedentes descontada),
   "costeAlquilerContador": coste del alquiler del equipo de medida en euros (0 si no aparece),
   "costeBonoSocial": importe del bono social en euros (0 si no aparece),
+  "compensacionExcedentes": importe de compensación por excedentes de autoconsumo en euros como número POSITIVO (ej: si la factura muestra "-29,72 €" de compensación de excedentes, devuelve 29.72). Devuelve 0 si no hay compensación de excedentes,
   "tipoIVA": tipo de IVA en formato decimal. Localiza la línea con formato "IVA X % s/YY,YY €  ZZ,ZZ €": X es el PORCENTAJE, conviértelo a decimal (21→0.21, 10→0.10, 7→0.07). ZZ,ZZ es el importe en euros — NUNCA lo uses como tipo. Ejemplo: "IVA (*) 21 % s/47,62 €  10,00 €" → devuelve 0.21 (NO 0.10). NUNCA extraigas el importe en euros como tipo de IVA.
 }
 
@@ -110,15 +111,27 @@ Los caracteres del CUPS en el PDF pueden tener "O" (letra O) en lugar de "0" (ce
 Corrige: las posiciones 3-6 del CUPS son SIEMPRE dígitos numéricos (ej. "ES0021", no "ESOO21").
 
 REGLA 5 — kWh TOTALES:
-Suma TODOS los consumos de energía activa (P1, P2, P3 y sus equivalentes).
+Suma TODOS los consumos de energía activa CONSUMIDA DE LA RED (P1, P2, P3 y sus equivalentes).
 Si la factura es combinada (luz+gas), extrae solo el consumo eléctrico en kWh, no el gas.
+NUNCA incluyas los kWh de excedentes exportados a la red: en facturas con autoconsumo, los kWh que aparecen en "Compensación de excedentes" son energía que la instalación solar exporta, NO energía que el cliente consume.
 
 REGLA 6 — IMPORTE TOTAL:
-Usa el importe TOTAL FINAL a pagar, que incluye energía + potencia + IEE + IVA + bono social + alquiler.
+Usa el importe TOTAL FINAL a pagar, que incluye energía + potencia + IEE + IVA + bono social + alquiler (y con la compensación de excedentes ya descontada si la hay).
 
-REGLA 7 — AUTOCONSUMO / SOLAR WALLET / EXCEDENTES:
-Si la factura incluye un crédito por excedente de autoconsumo, usa el SUBTOTAL BRUTO ANTES de aplicar ese crédito.
-Ejemplo: si la factura dice "Total: 42,44€ — Solar Wallet: -39,68€ — Total a pagar: 2,76€", usa 42.44.
+REGLA 7 — AUTOCONSUMO Y EXCEDENTES:
+
+7A — COMPENSACIÓN DE EXCEDENTES (línea negativa dentro del desglose de energía, ANTES del IEE e IVA):
+Si la factura incluye una línea "Compensación de excedentes" con importe negativo (ej: "-29,72 €"), esa compensación reduce la base imponible del IEE y del IVA:
+- Extrae ese importe como número POSITIVO en "compensacionExcedentes" (ej: 29.72)
+- En "importeTotalFacturaActual" usa el TOTAL FINAL de la factura (con la compensación ya descontada, que es lo que el cliente paga)
+- En "totalKwhFacturados" usa SOLO los kWh consumidos de la red (Punta + Llano + Valle consumidos), NO los kWh de excedentes exportados
+Ejemplo Iberdrola: energía bruta 41,61€ − compensación excedentes 29,72€ → IEE sobre base neta → total final 34,90€
+→ importeTotalFacturaActual = 34.90, compensacionExcedentes = 29.72, totalKwhFacturados = 296.69 (NO 495.38)
+
+7B — CRÉDITO POST-IVA / SOLAR WALLET / SALDO ENERGÉTICO (crédito aplicado DESPUÉS de todos los impuestos):
+Si el crédito se aplica tras el IVA (ej: "Solar Wallet: -39,68€" aparece al final, después del total con IVA):
+- Usa el SUBTOTAL BRUTO ANTES del crédito en "importeTotalFacturaActual" (ej: 42.44)
+- Pon 0 en "compensacionExcedentes"
 
 REGLA 8 — CUPS ENMASCARADO:
 Si el CUPS aparece como "*" o está completamente oculto, devuelve null para el campo cups.`;
@@ -145,6 +158,7 @@ const INIT = {
   dias: '',
   cliente: '', cups: '',
   bonoSocial: '0', alquilerContador: '0',
+  compensacionExcedentes: '0',
   facturaActual: '',
   asesor: '', asesorLibre: '',
   iva: '0.21',
@@ -200,11 +214,12 @@ export default function EstudioComparativo() {
   const imtEnP3  = kwhP3 * precioP1;
   const subtotEn = imtEnP1 + imtEnP2 + imtEnP3;
 
-  const baseIE  = subtotPot + subtotEn + bono;
+  const excedentes = n(form.compensacionExcedentes);
+  const baseIE  = subtotPot + subtotEn - excedentes + bono;
   const impElec = baseIE * IE_RATE;
-  const baseIVA = subtotPot + subtotEn + impElec + bono + alqCont;
+  const baseIVA = subtotPot + subtotEn - excedentes + impElec + bono + alqCont;
   const ivaImp  = baseIVA * ivaRate;
-  const total   = subtotPot + subtotEn + impElec + bono + alqCont + ivaImp;
+  const total   = baseIVA + ivaImp;
 
   const dif           = factActual - total;
   const ahorroPercent = total > 0 ? (factActual / total - 1) : 0;
@@ -244,7 +259,7 @@ export default function EstudioComparativo() {
           text: EXTRACTION_PROMPT,
           history: [
             { role: 'user',  parts: [{ text: 'Actúa como experto en el mercado eléctrico español. Extrae datos estructurados de facturas eléctricas y devuelve JSON válido. Aplica correctamente las reglas de IVA españolas del sector eléctrico.' }] },
-            { role: 'model', parts: [{ text: 'Entendido. Soy experto en facturas eléctricas españolas. Aplicaré las reglas de IVA correctas: tipo reducido 10% en Península/Baleares, IGIC 7% en Canarias. En facturas con IVA mixto (10% energía + 21% servicios), seleccionaré siempre el 10%. Devolveré exclusivamente el objeto JSON solicitado.' }] },
+            { role: 'model', parts: [{ text: 'Entendido. Soy experto en facturas eléctricas españolas. Leeré el tipo de IVA directamente de la factura (21% general desde RD-ley 7/2026, 10% reducido, 7% IGIC en Canarias). Para compensación de excedentes de autoconsumo (reducción pre-IEE/IVA): extraeré el importe como número positivo en "compensacionExcedentes" y usaré el total final pagado en "importeTotalFacturaActual". Para créditos post-IVA tipo Solar Wallet: usaré el subtotal bruto y pondré 0 en "compensacionExcedentes". NUNCA incluiré los kWh de excedentes exportados en "totalKwhFacturados". Devolveré exclusivamente el objeto JSON solicitado.' }] },
           ],
           file: { mimeType: file.type || 'application/octet-stream', data: base64 },
         }),
@@ -279,10 +294,11 @@ export default function EstudioComparativo() {
         kwValle:          (ex.kwPotenciaValle != null && ex.kwPotenciaValle !== 0)
                             ? String(ex.kwPotenciaValle)
                             : (ex.kwPotenciaPunta != null ? String(ex.kwPotenciaPunta) : f.kwValle),
-        facturaActual:    ex.importeTotalFacturaActual != null ? String(ex.importeTotalFacturaActual)    : f.facturaActual,
-        alquilerContador: ex.costeAlquilerContador  != null    ? String(ex.costeAlquilerContador)        : f.alquilerContador,
-        bonoSocial:       ex.costeBonoSocial        != null    ? String(ex.costeBonoSocial)              : f.bonoSocial,
-        iva:              ivaValue,
+        facturaActual:          ex.importeTotalFacturaActual != null ? String(ex.importeTotalFacturaActual)    : f.facturaActual,
+        alquilerContador:       ex.costeAlquilerContador    != null ? String(ex.costeAlquilerContador)        : f.alquilerContador,
+        bonoSocial:             ex.costeBonoSocial          != null ? String(ex.costeBonoSocial)              : f.bonoSocial,
+        compensacionExcedentes: ex.compensacionExcedentes   != null ? String(ex.compensacionExcedentes)       : f.compensacionExcedentes,
+        iva:                    ivaValue,
       }));
       setExtractionDone(true);
     } catch (err) {
@@ -507,7 +523,7 @@ export default function EstudioComparativo() {
                   <input type="text" value={form.cups} onChange={set('cups')} placeholder="ES..." className="input-field text-sm font-mono" />
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] font-medium text-google-gray mb-1 block">Bono Social (€)</label>
                   <input type="text" inputMode="decimal" value={form.bonoSocial} onChange={set('bonoSocial')} placeholder="0.00" className="input-field text-sm" />
@@ -515,6 +531,12 @@ export default function EstudioComparativo() {
                 <div>
                   <label className="text-[10px] font-medium text-google-gray mb-1 block">Alq. Contador (€)</label>
                   <input type="text" inputMode="decimal" value={form.alquilerContador} onChange={set('alquilerContador')} placeholder="0.00" className="input-field text-sm" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-medium text-google-gray mb-1 block">Comp. excedentes (€)</label>
+                  <input type="text" inputMode="decimal" value={form.compensacionExcedentes} onChange={set('compensacionExcedentes')} placeholder="0.00" className="input-field text-sm" />
                 </div>
                 <div>
                   <label className="text-[10px] font-medium text-google-gray mb-1 block">Factura actual (€) <span className="text-red-400">*</span></label>
@@ -652,6 +674,12 @@ export default function EstudioComparativo() {
                     <span className="text-xs font-semibold text-google-dark">Subtotal Energía</span>
                     <span className="text-sm font-bold text-google-dark tabular-nums">{eur(subtotEn)}</span>
                   </div>
+                  {excedentes > 0 && (
+                    <div className="flex justify-between items-baseline text-sm mt-1.5">
+                      <span className="text-[12px] text-green-700">Compensación excedentes (autoconsumo)</span>
+                      <span className="font-semibold text-green-700 tabular-nums ml-4">−{eur(excedentes)}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
