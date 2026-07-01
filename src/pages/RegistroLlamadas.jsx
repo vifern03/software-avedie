@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import {
-  Phone, Search, X, Loader2, Camera, Eye, CheckCircle,
+  Phone, PhoneCall, Search, X, Loader2, Camera, Eye, CheckCircle,
   MapPin, Clock, AlertCircle, Plus, Users,
   Shield, Briefcase, UserCheck, Download, Pencil, ChevronDown, ChevronUp, History,
 } from 'lucide-react';
@@ -12,37 +12,16 @@ import Pagination from '../components/Pagination';
 // ─── Constantes ────────────────────────────────────────────────────────────────
 
 export const CALLES_PALENCIA = [
-  'AV SANTANDER',
-  'MAYOR ANTIGUA',
-  'VICTORIO MACHO',
-  'P. LA JULIA',
-  'SANTIAGO AMON',
-  'MARIA DE MOLINA',
-  'FELIPE II',
-  'CASAÑÉ',
-  'SANTIAGO',
-  'TELLO TELLEZ DE MENESES',
-  'URB LOS OLMILLOS',
-  'COMUNIDADES PROPIETARIOS',
+  'AV SANTANDER', 'MAYOR ANTIGUA', 'VICTORIO MACHO', 'P. LA JULIA',
+  'SANTIAGO AMON', 'MARIA DE MOLINA', 'FELIPE II', 'CASAÑÉ',
+  'SANTIAGO', 'TELLO TELLEZ DE MENESES', 'URB LOS OLMILLOS', 'COMUNIDADES PROPIETARIOS',
 ];
 
 export const CALLES_VALLADOLID = [
-  'DON SANCHO',
-  'PORTILLO DE BALBOA',
-  'TIRSO DE MOLINA',
-  'LOPE DE RUEDA',
-  'MORADAS',
-  'LEON',
-  'SAN QUIRCE',
-  'ALBERTO FERNANDEZ',
-  'MIRABEL',
-  'TORRECILLA',
-  'CARDENAL TORQUEMADA',
-  'CARDENAL CISNEROS',
-  'CALLE CERRADA',
-  'AVENIDA PALENCIA',
-  'CALLE LINARES',
-  'CALLE GONZALEZ DUEÑAS',
+  'DON SANCHO', 'PORTILLO DE BALBOA', 'TIRSO DE MOLINA', 'LOPE DE RUEDA',
+  'MORADAS', 'LEON', 'SAN QUIRCE', 'ALBERTO FERNANDEZ',
+  'MIRABEL', 'TORRECILLA', 'CARDENAL TORQUEMADA', 'CARDENAL CISNEROS',
+  'CALLE CERRADA', 'AVENIDA PALENCIA', 'CALLE LINARES', 'CALLE GONZALEZ DUEÑAS',
   'CALLE REAL DE BURGOS',
 ];
 
@@ -180,7 +159,7 @@ function EstadoBadge({ estado, size = 'sm' }) {
   );
 }
 
-// ─── Botones de estado (compartido entre GestionModal y EditarGestionModal) ────
+// ─── Botones de estado (compartido entre modales) ─────────────────────────────
 
 function EstadosGrid({ estados, onToggle }) {
   return (
@@ -204,21 +183,24 @@ function EstadosGrid({ estados, onToggle }) {
   );
 }
 
-// ─── Modal: Registrar gestión ──────────────────────────────────────────────────
+// ─── Modal: Registrar gestión (simple o múltiple) ─────────────────────────────
+// bulkCount > 1  →  modo registro múltiple; la captura pasa a ser opcional
 
-function GestionModal({ contacto, onClose, onSave }) {
-  const [estados,       setEstados]       = useState(['No contesta']);
-  const [comentarios,   setComentarios]   = useState('');
-  const [tiempoLlamada, setTiempoLlamada] = useState('');
-  const [capturaFile,   setCapturaFile]   = useState(null);
-  const [capturaPreview,setCapturaPreview]= useState('');
-  const [saving,        setSaving]        = useState(false);
-  const [saved,         setSaved]         = useState(false);
-  const [errors,        setErrors]        = useState({});
+function GestionModal({ contacto, bulkCount = 1, onClose, onSave }) {
+  const isBulk = bulkCount > 1;
+
+  const [estados,        setEstados]        = useState(['No contesta']);
+  const [comentarios,    setComentarios]    = useState('');
+  const [tiempoLlamada,  setTiempoLlamada]  = useState('');
+  const [capturaFile,    setCapturaFile]    = useState(null);
+  const [capturaPreview, setCapturaPreview] = useState('');
+  const [saving,         setSaving]         = useState(false);
+  const [saved,          setSaved]          = useState(false);
+  const [errors,         setErrors]         = useState({});
   const capturaRef = useRef(null);
 
   const fechaHoraAuto = useMemo(() => fmtFechaHora(new Date().toISOString()), []);
-  const toggleEstado = (id) =>
+  const toggleEstado  = (id) =>
     setEstados(prev => prev.includes(id) ? prev.filter(e => e !== id) : [...prev, id]);
 
   useEffect(() => {
@@ -227,7 +209,8 @@ function GestionModal({ contacto, onClose, onSave }) {
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  const canSubmit = tiempoLlamada.trim().length > 0 && capturaFile !== null && estados.length > 0 && !saving;
+  const canSubmit = tiempoLlamada.trim().length > 0 && estados.length > 0
+    && capturaFile !== null && !saving;
 
   const handleCapturaFile = (e) => {
     const file = e.target.files?.[0];
@@ -243,7 +226,7 @@ function GestionModal({ contacto, onClose, onSave }) {
   const validate = () => {
     const e = {};
     if (!tiempoLlamada.trim())  e.tiempo  = true;
-    if (!capturaFile)            e.captura = true;
+    if (!capturaFile)           e.captura = true;
     if (estados.length === 0)   e.estado  = true;
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -274,10 +257,21 @@ function GestionModal({ contacto, onClose, onSave }) {
               <Phone size={16} className="text-white" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-sm font-semibold text-google-dark truncate">Registrar Gestión</h2>
-              <p className="text-xs text-google-gray truncate">
-                {contacto.nombre || 'Sin nombre'} — {contacto.direccion || contacto.calle}
-              </p>
+              {isBulk ? (
+                <>
+                  <h2 className="text-sm font-semibold text-google-dark">Registro múltiple simultáneo</h2>
+                  <p className="text-xs text-violet-600 font-medium">
+                    Se registrará en {bulkCount} contactos seleccionados
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-sm font-semibold text-google-dark truncate">Registrar Gestión</h2>
+                  <p className="text-xs text-google-gray truncate">
+                    {contacto?.nombre || 'Sin nombre'} — {contacto?.direccion || contacto?.calle}
+                  </p>
+                </>
+              )}
             </div>
           </div>
           <button onClick={onClose} className="text-google-gray hover:text-google-dark transition-colors flex-shrink-0 ml-3">
@@ -286,6 +280,20 @@ function GestionModal({ contacto, onClose, onSave }) {
         </div>
 
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5 overflow-y-auto">
+
+          {/* Banner bulk */}
+          {isBulk && (
+            <div className="flex items-start gap-2.5 bg-violet-50 border border-violet-200 rounded-xl px-4 py-3">
+              <PhoneCall size={15} className="text-violet-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-semibold text-violet-700 mb-0.5">Registro en lote — {bulkCount} contactos</p>
+                <p className="text-[11px] text-violet-600 leading-snug">
+                  La misma gestión y captura se insertarán en los {bulkCount} contactos marcados. Solo contará como <span className="font-semibold">1 llamada real</span> en los contadores.
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="flex items-center gap-2 bg-google-bg rounded-xl px-4 py-2.5">
             <Clock size={14} className="text-google-gray flex-shrink-0" />
             <div>
@@ -319,7 +327,11 @@ function GestionModal({ contacto, onClose, onSave }) {
 
           <div>
             <label className="block text-xs font-medium text-google-gray mb-1.5">
-              Captura del tiempo de llamada <span className="text-red-500">* (obligatoria)</span>
+              Captura del tiempo de llamada{' '}
+              <span className="text-red-500">* (obligatoria)</span>
+              {isBulk && (
+                <span className="text-google-gray font-normal ml-1">— se adjuntará a los {bulkCount} contactos</span>
+              )}
             </label>
             <input ref={capturaRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handleCapturaFile} />
             <button
@@ -365,13 +377,14 @@ function GestionModal({ contacto, onClose, onSave }) {
             <button
               type="submit"
               disabled={!canSubmit}
-              title={!canSubmit ? 'Rellena el tiempo de llamada y sube la captura para continuar' : undefined}
+              title={!canSubmit ? 'Rellena el tiempo y el estado para continuar' : undefined}
               className={`btn-primary flex items-center gap-2 transition-all ${
                 saved ? '!bg-green-500 hover:!bg-green-500' : !canSubmit ? '!opacity-40 !cursor-not-allowed' : ''
               }`}
             >
               {saving && !saved ? <><Loader2 size={15} className="animate-spin" /> Guardando…</>
                 : saved ? <><CheckCircle size={15} /> Guardado</>
+                : isBulk ? `Registrar en ${bulkCount} contactos`
                 : 'Guardar Gestión'}
             </button>
           </div>
@@ -425,13 +438,7 @@ function EditarGestionModal({ gestion, contacto, onClose, onSave }) {
     }
     setSaving(true);
     try {
-      const result = await onSave({
-        gestionId:    gestion.id,
-        estado:       estados.join(', '),
-        comentarios,
-        tiempoLlamada,
-        capturaFile,
-      });
+      const result = await onSave({ gestionId: gestion.id, estado: estados.join(', '), comentarios, tiempoLlamada, capturaFile });
       if (result?.error) { setSaving(false); setErrors(e => ({ ...e, submit: result.error })); return; }
       setSaved(true);
       setTimeout(() => onClose(), 700);
@@ -550,16 +557,16 @@ function EditarGestionModal({ gestion, contacto, onClose, onSave }) {
   );
 }
 
-// ─── Fila de contacto (con accordion de historial) ────────────────────────────
+// ─── Fila de contacto (con checkbox, accordion de historial) ──────────────────
 
-function ContactoRow({ contacto, gestiones, onGestion, onEditar, showCalle = false }) {
+function ContactoRow({ contacto, gestiones, onGestion, onEditar, showCalle, selected, onToggleSelect }) {
   const [loadingCaptura, setLoadingCaptura] = useState(false);
   const [expanded,       setExpanded]       = useState(false);
 
-  const ultimaGestion    = gestiones?.[0] ?? null;
+  const ultimaGestion      = gestiones?.[0] ?? null;
   const historicoGestiones = gestiones?.slice(1) ?? [];
-  // Columnas totales: 11 base + 1 si showCalle
-  const totalCols = showCalle ? 12 : 11;
+  // Columnas: 1 (checkbox) + 11 base + 1 si showCalle = 12 ó 13
+  const totalCols = showCalle ? 13 : 12;
 
   const handleVerComprobante = async () => {
     if (!ultimaGestion) return;
@@ -589,7 +596,17 @@ function ContactoRow({ contacto, gestiones, onGestion, onEditar, showCalle = fal
 
   return (
     <>
-      <tr className="hover:bg-google-bg/40 transition-colors">
+      <tr className={`hover:bg-google-bg/40 transition-colors ${selected ? 'bg-violet-50/60' : ''}`}>
+
+        {/* CHECKBOX */}
+        <td className="pl-3 pr-1 py-3 w-8">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggleSelect}
+            className="w-3.5 h-3.5 rounded accent-violet-600 cursor-pointer"
+          />
+        </td>
 
         {/* FECHA / HORA */}
         <td className="px-3 py-3 whitespace-nowrap">
@@ -615,7 +632,7 @@ function ContactoRow({ contacto, gestiones, onGestion, onEditar, showCalle = fal
           <p className="text-sm text-google-dark">{contacto.direccion || '—'}</p>
         </td>
 
-        {/* CALLE — solo cuando no estamos en modo calle única */}
+        {/* CALLE — solo en modo multi-calle */}
         {showCalle && (
           <td className="px-3 py-3 whitespace-nowrap">
             <span className="text-xs text-google-gray">{contacto.calle || '—'}</span>
@@ -653,7 +670,7 @@ function ContactoRow({ contacto, gestiones, onGestion, onEditar, showCalle = fal
           <span className="text-xs text-google-gray font-mono">{ultimaGestion?.tiempo_llamada || '—'}</span>
         </td>
 
-        {/* COMPROBANTE — lazy load */}
+        {/* COMPROBANTE */}
         <td className="px-3 py-3 text-center">
           {ultimaGestion ? (
             <button
@@ -681,7 +698,6 @@ function ContactoRow({ contacto, gestiones, onGestion, onEditar, showCalle = fal
         {/* ACCIÓN */}
         <td className="px-3 py-3 whitespace-nowrap">
           <div className="flex flex-col items-start gap-1.5">
-            {/* Fila de botones */}
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => onGestion(contacto)}
@@ -700,7 +716,6 @@ function ContactoRow({ contacto, gestiones, onGestion, onEditar, showCalle = fal
                 </button>
               )}
             </div>
-            {/* Accordion trigger */}
             {historicoGestiones.length > 0 && (
               <button
                 onClick={() => setExpanded(v => !v)}
@@ -716,11 +731,11 @@ function ContactoRow({ contacto, gestiones, onGestion, onEditar, showCalle = fal
         </td>
       </tr>
 
-      {/* Accordion: historial de gestiones anteriores */}
+      {/* Accordion: historial */}
       {expanded && historicoGestiones.length > 0 && (
         <tr className="bg-gray-50 border-b border-gray-100">
           <td colSpan={totalCols} className="px-6 py-0">
-            <div className="py-2 border-l-2 border-gray-200 pl-4 ml-1 space-y-0">
+            <div className="py-2 border-l-2 border-gray-200 pl-4 ml-1">
               <div className="flex items-center gap-1.5 mb-2">
                 <History size={11} className="text-gray-400" />
                 <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Historial de gestiones anteriores</span>
@@ -730,12 +745,8 @@ function ContactoRow({ contacto, gestiones, onGestion, onEditar, showCalle = fal
                   <span className="text-[11px] text-gray-400 whitespace-nowrap font-mono">{fmtFechaHora(g.fecha_hora)}</span>
                   <EstadoBadge estado={g.estado} size="sm" />
                   <span className="text-[11px] text-gray-400">por <span className="font-medium">{g.registrado_por || '—'}</span></span>
-                  {g.tiempo_llamada && (
-                    <span className="text-[11px] text-gray-400 font-mono">{g.tiempo_llamada}</span>
-                  )}
-                  {g.comentarios && (
-                    <span className="text-[11px] text-gray-500 flex-1 italic">"{g.comentarios}"</span>
-                  )}
+                  {g.tiempo_llamada && <span className="text-[11px] text-gray-400 font-mono">{g.tiempo_llamada}</span>}
+                  {g.comentarios && <span className="text-[11px] text-gray-500 flex-1 italic">"{g.comentarios}"</span>}
                 </div>
               ))}
             </div>
@@ -758,8 +769,11 @@ export default function RegistroLlamadas() {
   const [compartirProv,  setCompartirProv]  = useState(null);
   const [showModal,      setShowModal]      = useState(false);
   const [contactoActivo, setContactoActivo] = useState(null);
-  const [editModal,      setEditModal]      = useState(null); // { gestion, contacto }
+  const [editModal,      setEditModal]      = useState(null);
   const [currentPage,    setCurrentPage]    = useState(1);
+
+  // ── Multi-selección ──────────────────────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState(new Set());
 
   // ── Datos por calle ──────────────────────────────────────────────────────────
   const [contactos,    setContactos]    = useState([]);
@@ -786,7 +800,9 @@ export default function RegistroLlamadas() {
   const [filterHasta,    setFilterHasta]    = useState('');
 
   // ── Estadísticas globales ────────────────────────────────────────────────────
-  const [globalStats, setGlobalStats] = useState({ hoy: 0, mes: 0 });
+  const [globalStats, setGlobalStats] = useState({
+    hoy: 0, mes: 0, llamadasHoy: 0, llamadasMes: 0,
+  });
 
   const now         = new Date();
   const todayStr    = now.toISOString().split('T')[0];
@@ -809,17 +825,32 @@ export default function RegistroLlamadas() {
   const showTable    = isCalleMode || isGlobalMode || isCityMode;
   const showCalleCol = !isCalleMode;
 
-  // ── Stats ────────────────────────────────────────────────────────────────────
+  // ── Stats ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!currentUser) return;
     async function loadStats() {
-      let q = supabase.from('telemarketing_gestiones').select('fecha_hora').is('deleted_at', null);
+      let q = supabase
+        .from('telemarketing_gestiones')
+        .select('fecha_hora, llamada_unica')
+        .is('deleted_at', null);
       if (!isAdmin) q = q.eq('registrado_por', currentUser.username);
-      const { data } = await q;
-      if (!data) return;
+      let { data } = await q;
+
+      // Fallback: si la columna llamada_unica aún no existe en BD (migración pendiente)
+      // reintentamos sin ella y tratamos cada registro como llamada única
+      if (!data) {
+        let q2 = supabase.from('telemarketing_gestiones').select('fecha_hora').is('deleted_at', null);
+        if (!isAdmin) q2 = q2.eq('registrado_por', currentUser.username);
+        const { data: d2 } = await q2;
+        if (!d2) return;
+        data = d2.map(g => ({ ...g, llamada_unica: true }));
+      }
+
       setGlobalStats({
-        hoy: data.filter(g => g.fecha_hora?.startsWith(todayStr)).length,
-        mes: data.filter(g => g.fecha_hora?.startsWith(monthPrefix)).length,
+        hoy:         data.filter(g => g.fecha_hora?.startsWith(todayStr)).length,
+        mes:         data.filter(g => g.fecha_hora?.startsWith(monthPrefix)).length,
+        llamadasHoy: data.filter(g => g.fecha_hora?.startsWith(todayStr) && g.llamada_unica !== false).length,
+        llamadasMes: data.filter(g => g.fecha_hora?.startsWith(monthPrefix) && g.llamada_unica !== false).length,
       });
     }
     loadStats();
@@ -849,6 +880,7 @@ export default function RegistroLlamadas() {
     setFilterEstado('');
     setFilterDesde('');
     setFilterHasta('');
+    setSelectedIds(new Set());
   }, [provincia]);
 
   // ── Carga al seleccionar calle ───────────────────────────────────────────────
@@ -859,6 +891,7 @@ export default function RegistroLlamadas() {
     setGestionesMap({});
     setLocalSearch('');
     setCurrentPage(1);
+    setSelectedIds(new Set());
 
     async function loadData() {
       const { data: ctData, error: ctErr } = await supabase
@@ -979,38 +1012,66 @@ export default function RegistroLlamadas() {
       reader.readAsDataURL(file);
     });
 
-  // ── Guardar nueva gestión ────────────────────────────────────────────────────
+  // ── Guardar gestión (simple o múltiple) ──────────────────────────────────────
   const handleSave = async ({ estado, comentarios, tiempoLlamada, capturaFile }) => {
-    const captura_url = await uploadCaptura(capturaFile);
+    const isBulk  = selectedIds.size > 0;
+    const captura_url = capturaFile ? await uploadCaptura(capturaFile) : null;
     if (!captura_url) return { error: 'No se pudo subir la captura' };
 
-    const newGestion = {
-      id:             Date.now(),
-      contacto_id:    contactoActivo.id,
-      calle:          calleActual || contactoActivo.calle,
+    // Targets: si hay selección → todos los seleccionados; si no → solo contactoActivo
+    const targets = isBulk
+      ? activeContactos.filter(c => selectedIds.has(c.id))
+      : contactoActivo ? [contactoActivo] : [];
+
+    if (targets.length === 0) return { error: 'No hay contactos para registrar' };
+
+    const ahora = new Date().toISOString();
+    // llamada_unica = true solo en el primer registro del lote (= 1 llamada física)
+    const registros = targets.map((c, idx) => ({
+      id:             Date.now() + idx,
+      contacto_id:    c.id,
+      calle:          calleActual || c.calle,
       provincia,
       estado,
       comentarios:    comentarios.trim(),
       tiempo_llamada: tiempoLlamada.trim(),
-      captura_url,
-      fecha_hora:     new Date().toISOString(),
+      captura_url:    captura_url || null,
+      fecha_hora:     ahora,
       registrado_por: currentUser?.username || 'Sistema',
-    };
+      llamada_unica:  idx === 0,
+    }));
 
-    const { error } = await supabase.from('telemarketing_gestiones').insert([newGestion]);
+    let { error } = await supabase.from('telemarketing_gestiones').insert(registros);
+    // Si la columna llamada_unica no existe aún (migración pendiente), reintentar sin ella
+    if (error && (error.code === '42703' || error.message?.includes('llamada_unica'))) {
+      const registrosSinFlag = registros.map(({ llamada_unica: _, ...r }) => r);
+      const { error: e2 } = await supabase.from('telemarketing_gestiones').insert(registrosSinFlag);
+      error = e2 ?? null;
+    }
     if (error) { console.error('addGestion:', error); return { error }; }
 
-    const { captura_url: _url, ...gestionForState } = newGestion;
-    const prepender = (prev) => ({
-      ...prev,
-      [contactoActivo.id]: [gestionForState, ...(prev[contactoActivo.id] || [])],
-    });
-
+    // Actualizar los tres mapas en estado local
+    const prepender = (prev) => {
+      const next = { ...prev };
+      registros.forEach(reg => {
+        const { captura_url: _url, ...forState } = reg;
+        next[reg.contacto_id] = [forState, ...(prev[reg.contacto_id] || [])];
+      });
+      return next;
+    };
     if (globalSearch.trim()) setGlobalGestionesMap(prepender);
     else if (!calleActual && isCityFilterActive) setCityGMap(prepender);
     else setGestionesMap(prepender);
 
-    setGlobalStats(prev => ({ hoy: prev.hoy + 1, mes: prev.mes + 1 }));
+    // +N gestiones, +1 llamada física
+    setGlobalStats(prev => ({
+      hoy:         prev.hoy + registros.length,
+      mes:         prev.mes + registros.length,
+      llamadasHoy: prev.llamadasHoy + 1,
+      llamadasMes: prev.llamadasMes + 1,
+    }));
+
+    setSelectedIds(new Set());
     setShowModal(false);
     setContactoActivo(null);
     return { error: null };
@@ -1018,24 +1079,14 @@ export default function RegistroLlamadas() {
 
   // ── Editar gestión existente ─────────────────────────────────────────────────
   const handleEditSave = async ({ gestionId, estado, comentarios, tiempoLlamada, capturaFile }) => {
-    const updates = {
-      estado,
-      comentarios:    comentarios.trim(),
-      tiempo_llamada: tiempoLlamada.trim(),
-    };
+    const updates = { estado, comentarios: comentarios.trim(), tiempo_llamada: tiempoLlamada.trim() };
     if (capturaFile) {
       const captura_url = await uploadCaptura(capturaFile);
       if (captura_url) updates.captura_url = captura_url;
     }
-
-    const { error } = await supabase
-      .from('telemarketing_gestiones')
-      .update(updates)
-      .eq('id', gestionId);
-
+    const { error } = await supabase.from('telemarketing_gestiones').update(updates).eq('id', gestionId);
     if (error) { console.error('editGestion:', error); return { error }; }
 
-    // Aplica el update a los tres mapas (solo el que tiene el id lo modificará)
     const applyEdit = (map) => {
       const next = { ...map };
       for (const cid of Object.keys(next)) {
@@ -1050,33 +1101,35 @@ export default function RegistroLlamadas() {
     setGestionesMap(applyEdit);
     setGlobalGestionesMap(applyEdit);
     setCityGMap(applyEdit);
-
     setEditModal(null);
     return { error: null };
   };
 
+  // ── Helpers de selección ─────────────────────────────────────────────────────
+  const toggleSelect = (id) =>
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
   // ── Operadores únicos ────────────────────────────────────────────────────────
   const operadoresUnicos = useMemo(() =>
-    [...new Set(
-      Object.values(activeGMap).map(g => g[0]?.registrado_por).filter(Boolean)
-    )].sort(),
+    [...new Set(Object.values(activeGMap).map(g => g[0]?.registrado_por).filter(Boolean))].sort(),
   [activeGMap]);
 
   // ── Contactos filtrados ──────────────────────────────────────────────────────
   const contactosFiltrados = useMemo(() => {
     let list = activeContactos;
-
     if (isCalleMode && localSearch) {
       const q = localSearch.toLowerCase();
       list = list.filter(c =>
-        (c.nombre    || '').toLowerCase().includes(q) ||
+        (c.nombre || '').toLowerCase().includes(q) ||
         (c.direccion || '').toLowerCase().includes(q) ||
-        (c.movil     || '').toLowerCase().includes(q)
+        (c.movil || '').toLowerCase().includes(q)
       );
     }
-    if (filterOperador) {
-      list = list.filter(c => activeGMap[c.id]?.[0]?.registrado_por === filterOperador);
-    }
+    if (filterOperador) list = list.filter(c => activeGMap[c.id]?.[0]?.registrado_por === filterOperador);
     if (filterEstado === '__sin_gestion__') {
       list = list.filter(c => !activeGMap[c.id]?.length);
     } else if (filterEstado) {
@@ -1086,28 +1139,27 @@ export default function RegistroLlamadas() {
         return (ug.estado || '').split(', ').map(s => s.trim()).includes(filterEstado);
       });
     }
-    if (filterDesde) {
-      list = list.filter(c => {
-        const ug = activeGMap[c.id]?.[0];
-        return ug && ug.fecha_hora >= filterDesde;
-      });
-    }
-    if (filterHasta) {
-      list = list.filter(c => {
-        const ug = activeGMap[c.id]?.[0];
-        return ug && ug.fecha_hora <= filterHasta + 'T23:59:59';
-      });
-    }
+    if (filterDesde) list = list.filter(c => { const ug = activeGMap[c.id]?.[0]; return ug && ug.fecha_hora >= filterDesde; });
+    if (filterHasta) list = list.filter(c => { const ug = activeGMap[c.id]?.[0]; return ug && ug.fecha_hora <= filterHasta + 'T23:59:59'; });
     return list;
   }, [activeContactos, activeGMap, localSearch, isCalleMode, filterOperador, filterEstado, filterDesde, filterHasta]);
 
   const totalPages = Math.ceil(contactosFiltrados.length / ITEMS_PER_PAGE);
-  const paginated  = contactosFiltrados.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE
-  );
+  const paginated  = contactosFiltrados.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   useEffect(() => { setCurrentPage(1); }, [localSearch, filterOperador, filterEstado, filterDesde, filterHasta, isGlobalMode, isCityMode]);
+
+  // Checkbox "seleccionar toda la página"
+  const allPageSelected  = paginated.length > 0 && paginated.every(c => selectedIds.has(c.id));
+  const somePageSelected = paginated.some(c => selectedIds.has(c.id));
+
+  const togglePageAll = () => {
+    if (allPageSelected) {
+      setSelectedIds(prev => { const n = new Set(prev); paginated.forEach(c => n.delete(c.id)); return n; });
+    } else {
+      setSelectedIds(prev => { const n = new Set(prev); paginated.forEach(c => n.add(c.id)); return n; });
+    }
+  };
 
   // ── Exportar Excel ───────────────────────────────────────────────────────────
   const exportarExcel = () => {
@@ -1115,18 +1167,11 @@ export default function RegistroLlamadas() {
       const ug = activeGMap[c.id]?.[0];
       const histCount = (activeGMap[c.id]?.length ?? 1) - 1;
       return {
-        'Ciudad':            provincia,
-        'Calle':             c.calle || '—',
-        'Nombre':            c.nombre || '—',
-        'Dirección':         c.direccion || '—',
-        'Móvil':             c.movil || '—',
-        'CUPS':              c.cups || '—',
-        'Precio Actual':     c.precio_actual || '—',
-        'Última Gestión':    ug?.estado || 'Sin gestión',
-        'Registrado Por':    ug?.registrado_por || '—',
-        'Fecha Gestión':     ug ? fmtFechaHora(ug.fecha_hora) : '—',
-        'Tiempo Llamada':    ug?.tiempo_llamada || '—',
-        'Comentarios':       ug?.comentarios || '—',
+        'Ciudad': provincia, 'Calle': c.calle || '—', 'Nombre': c.nombre || '—',
+        'Dirección': c.direccion || '—', 'Móvil': c.movil || '—', 'CUPS': c.cups || '—',
+        'Precio Actual': c.precio_actual || '—', 'Última Gestión': ug?.estado || 'Sin gestión',
+        'Registrado Por': ug?.registrado_por || '—', 'Fecha Gestión': ug ? fmtFechaHora(ug.fecha_hora) : '—',
+        'Tiempo Llamada': ug?.tiempo_llamada || '—', 'Comentarios': ug?.comentarios || '—',
         'Registros Histórico': histCount > 0 ? histCount : '—',
       };
     });
@@ -1137,13 +1182,11 @@ export default function RegistroLlamadas() {
     XLSX.writeFile(wb, `registro_llamadas_${provincia}_${todayStr}.xlsx`);
   };
 
-  // ─────────────────────────────────────────────────────────────────────────────
   const tableTitulo = isGlobalMode
     ? `Búsqueda: "${globalSearch}"`
-    : isCityMode
-      ? `Todos los contactos de ${provincia}`
-      : calleActual;
+    : isCityMode ? `Todos los contactos de ${provincia}` : calleActual;
 
+  // ─────────────────────────────────────────────────────────────────────────────
   return (
     <div className="p-3 md:p-6 space-y-4 md:space-y-5 max-w-7xl">
 
@@ -1156,8 +1199,10 @@ export default function RegistroLlamadas() {
         <p className="text-sm text-google-gray mt-1">Gestión de llamadas</p>
       </div>
 
-      {/* ── Estadísticas globales ────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-4">
+      {/* ── Estadísticas — 2 cards (comercial) o 4 cards (admin) ─────────────── */}
+      <div className={`grid gap-4 ${isAdmin ? 'grid-cols-2 md:grid-cols-4' : 'grid-cols-2'}`}>
+
+        {/* Gestiones hoy */}
         <div className="card p-5 flex items-start gap-4">
           <div className="w-10 h-10 rounded-xl bg-violet-600 flex items-center justify-center flex-shrink-0">
             <Phone size={18} className="text-white" />
@@ -1168,6 +1213,8 @@ export default function RegistroLlamadas() {
             {isAdmin && <p className="text-[11px] text-violet-500 mt-0.5">Todo el equipo</p>}
           </div>
         </div>
+
+        {/* Gestiones mes */}
         <div className="card p-5 flex items-start gap-4">
           <div className="w-10 h-10 rounded-xl bg-blue-500 flex items-center justify-center flex-shrink-0">
             <Clock size={18} className="text-white" />
@@ -1178,6 +1225,34 @@ export default function RegistroLlamadas() {
             {isAdmin && <p className="text-[11px] text-violet-500 mt-0.5">Todo el equipo</p>}
           </div>
         </div>
+
+        {/* Llamadas hoy — solo admin */}
+        {isAdmin && (
+          <div className="card p-5 flex items-start gap-4">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center flex-shrink-0">
+              <PhoneCall size={18} className="text-white" />
+            </div>
+            <div>
+              <p className="text-xl font-bold text-google-dark leading-none">{globalStats.llamadasHoy}</p>
+              <p className="text-sm text-google-gray mt-1">Llamadas hoy</p>
+              <p className="text-[11px] text-emerald-500 mt-0.5">Llamadas únicas</p>
+            </div>
+          </div>
+        )}
+
+        {/* Llamadas mes — solo admin */}
+        {isAdmin && (
+          <div className="card p-5 flex items-start gap-4">
+            <div className="w-10 h-10 rounded-xl bg-teal-500 flex items-center justify-center flex-shrink-0">
+              <PhoneCall size={18} className="text-white" />
+            </div>
+            <div>
+              <p className="text-xl font-bold text-google-dark leading-none">{globalStats.llamadasMes}</p>
+              <p className="text-sm text-google-gray mt-1">Llamadas en {subtitleMes}</p>
+              <p className="text-[11px] text-teal-500 mt-0.5">Llamadas únicas</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Tabs de provincia + botón Compartir ─────────────────────────────── */}
@@ -1204,7 +1279,6 @@ export default function RegistroLlamadas() {
               <button
                 onClick={() => setCompartirProv(prov.id)}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border border-google-border text-google-gray hover:border-violet-300 hover:text-violet-600 hover:bg-violet-50 transition-all bg-white"
-                title={`Gestionar acceso a ${prov.id}`}
               >
                 <Users size={12} />
                 Compartir
@@ -1216,7 +1290,6 @@ export default function RegistroLlamadas() {
 
       {/* ══ ZONA CIUDAD ══════════════════════════════════════════════════════════ */}
       <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 space-y-3">
-        {/* Buscador global */}
         <div className="relative">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-400 pointer-events-none" />
           <input
@@ -1236,28 +1309,18 @@ export default function RegistroLlamadas() {
             </button>
           )}
         </div>
-
-        {/* Fila de filtros */}
         <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={filterOperador}
-            onChange={e => setFilterOperador(e.target.value)}
-            className="text-xs border border-blue-200 rounded-lg px-2.5 py-1.5 text-google-dark bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
-          >
+          <select value={filterOperador} onChange={e => setFilterOperador(e.target.value)}
+            className="text-xs border border-blue-200 rounded-lg px-2.5 py-1.5 text-google-dark bg-white focus:outline-none focus:ring-2 focus:ring-blue-300">
             <option value="">Todos los operadores</option>
             {operadoresUnicos.map(op => <option key={op} value={op}>{op}</option>)}
           </select>
-
-          <select
-            value={filterEstado}
-            onChange={e => setFilterEstado(e.target.value)}
-            className="text-xs border border-blue-200 rounded-lg px-2.5 py-1.5 text-google-dark bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
-          >
+          <select value={filterEstado} onChange={e => setFilterEstado(e.target.value)}
+            className="text-xs border border-blue-200 rounded-lg px-2.5 py-1.5 text-google-dark bg-white focus:outline-none focus:ring-2 focus:ring-blue-300">
             <option value="">Todas las gestiones</option>
             <option value="__sin_gestion__">Sin gestión</option>
             {ESTADOS_GESTION.map(eg => <option key={eg.id} value={eg.id}>{eg.id}</option>)}
           </select>
-
           <div className="flex items-center gap-1.5">
             <label className="text-[11px] text-blue-500 font-medium whitespace-nowrap">Desde</label>
             <input type="date" value={filterDesde} onChange={e => setFilterDesde(e.target.value)}
@@ -1268,39 +1331,28 @@ export default function RegistroLlamadas() {
             <input type="date" value={filterHasta} min={filterDesde || undefined} onChange={e => setFilterHasta(e.target.value)}
               className="text-xs border border-blue-200 rounded-lg px-2 py-1.5 text-google-dark bg-white focus:outline-none focus:ring-2 focus:ring-blue-300" />
           </div>
-
           {isCityFilterActive && (
-            <button
-              onClick={() => { setFilterOperador(''); setFilterEstado(''); setFilterDesde(''); setFilterHasta(''); }}
-              className="text-[11px] text-blue-500 hover:text-blue-700 underline underline-offset-2"
-            >
+            <button onClick={() => { setFilterOperador(''); setFilterEstado(''); setFilterDesde(''); setFilterHasta(''); }}
+              className="text-[11px] text-blue-500 hover:text-blue-700 underline underline-offset-2">
               Limpiar filtros
             </button>
           )}
-
           {isAdmin && (
-            <button
-              onClick={exportarExcel}
-              disabled={contactosFiltrados.length === 0}
-              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors"
-              title={`Exportar ${contactosFiltrados.length} registros a Excel`}
-            >
+            <button onClick={exportarExcel} disabled={contactosFiltrados.length === 0}
+              className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-medium transition-colors">
               <Download size={13} />
               Exportar Excel
             </button>
           )}
         </div>
-
         {(isGlobalMode || isCityMode) && (
           <p className="text-xs text-blue-500">
             {isGlobalMode
               ? `Búsqueda en toda ${provincia} — independiente de la calle seleccionada`
-              : `Mostrando ${contactosFiltrados.length} de ${activeContactos.length} contactos en toda ${provincia}`
-            }
+              : `Mostrando ${contactosFiltrados.length} de ${activeContactos.length} contactos en toda ${provincia}`}
           </p>
         )}
       </div>
-      {/* ════════════════════════════════════════════════════════════════════════ */}
 
       {/* ── Tabs de calle ────────────────────────────────────────────────────── */}
       {callesVisibles.length === 0 ? (
@@ -1335,7 +1387,7 @@ export default function RegistroLlamadas() {
         </div>
       )}
 
-      {/* ── Placeholder cuando no hay modo activo ───────────────────────────── */}
+      {/* ── Placeholder ─────────────────────────────────────────────────────── */}
       {!showTable && callesVisibles.length > 0 && (
         <div className="card p-10 flex flex-col items-center gap-3 text-center">
           <div className="w-14 h-14 bg-violet-100 rounded-full flex items-center justify-center">
@@ -1351,6 +1403,8 @@ export default function RegistroLlamadas() {
       {/* ── Tabla de contactos ───────────────────────────────────────────────── */}
       {showTable && (
         <div className="card overflow-hidden">
+
+          {/* Cabecera tabla */}
           <div className="px-5 py-3.5 border-b border-google-border flex flex-col sm:flex-row items-start sm:items-center gap-3">
             <div className="flex items-center gap-2 flex-1 min-w-0">
               <MapPin size={15} className="text-violet-600 flex-shrink-0" />
@@ -1360,13 +1414,9 @@ export default function RegistroLlamadas() {
               {isCalleMode && (
                 <div className="relative w-full sm:w-56">
                   <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray pointer-events-none" />
-                  <input
-                    type="text"
-                    placeholder="Buscar en esta calle…"
-                    value={localSearch}
+                  <input type="text" placeholder="Buscar en esta calle…" value={localSearch}
                     onChange={e => setLocalSearch(e.target.value)}
-                    className="input-field pl-8 text-sm w-full py-1.5"
-                  />
+                    className="input-field pl-8 text-sm w-full py-1.5" />
                   {localSearch && (
                     <button onClick={() => setLocalSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-google-gray hover:text-google-dark">
                       <X size={12} />
@@ -1379,6 +1429,33 @@ export default function RegistroLlamadas() {
               </span>
             </div>
           </div>
+
+          {/* ── Barra de acción múltiple (visible cuando hay selección) ─────── */}
+          {selectedIds.size > 0 && (
+            <div className="bg-violet-50 border-b border-violet-200 px-5 py-2.5 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <PhoneCall size={14} className="text-violet-600 flex-shrink-0" />
+                <span className="text-xs font-semibold text-violet-700">
+                  {selectedIds.size} contacto{selectedIds.size !== 1 ? 's' : ''} seleccionado{selectedIds.size !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => { setContactoActivo(null); setShowModal(true); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold transition-colors"
+                >
+                  <Plus size={12} />
+                  Registrar en {selectedIds.size}
+                </button>
+                <button
+                  onClick={() => setSelectedIds(new Set())}
+                  className="text-xs text-violet-500 hover:text-violet-700 underline underline-offset-2"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
 
           {activeLoading ? (
             <div className="py-16 text-center">
@@ -1399,6 +1476,17 @@ export default function RegistroLlamadas() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-google-bg border-b border-google-border text-xs font-semibold text-google-gray uppercase tracking-wide">
+                      {/* Checkbox "seleccionar página" */}
+                      <th className="pl-3 pr-1 py-3 w-8">
+                        <input
+                          type="checkbox"
+                          checked={allPageSelected}
+                          ref={el => { if (el) el.indeterminate = somePageSelected && !allPageSelected; }}
+                          onChange={togglePageAll}
+                          className="w-3.5 h-3.5 rounded accent-violet-600 cursor-pointer"
+                          title="Seleccionar / deseleccionar página"
+                        />
+                      </th>
                       <th className="px-3 py-3 text-left whitespace-nowrap">Fecha / Hora</th>
                       <th className="px-3 py-3 text-left">Nombre / CUPS</th>
                       <th className="px-3 py-3 text-left">Dirección</th>
@@ -1419,9 +1507,20 @@ export default function RegistroLlamadas() {
                         key={contacto.id}
                         contacto={contacto}
                         gestiones={activeGMap[contacto.id] || []}
-                        onGestion={(c) => { setContactoActivo(c); setShowModal(true); }}
+                        onGestion={(c) => {
+                          // Si hay selección activa: el click en "Registrar" abre bulk modal
+                          if (selectedIds.size > 0) {
+                            setContactoActivo(c);
+                            setShowModal(true);
+                          } else {
+                            setContactoActivo(c);
+                            setShowModal(true);
+                          }
+                        }}
                         onEditar={(c, g) => setEditModal({ gestion: g, contacto: c })}
                         showCalle={showCalleCol}
+                        selected={selectedIds.has(contacto.id)}
+                        onToggleSelect={() => toggleSelect(contacto.id)}
                       />
                     ))}
                   </tbody>
@@ -1444,9 +1543,10 @@ export default function RegistroLlamadas() {
         />
       )}
 
-      {showModal && contactoActivo && (
+      {showModal && (
         <GestionModal
           contacto={contactoActivo}
+          bulkCount={selectedIds.size > 0 ? selectedIds.size : 1}
           onClose={() => { setShowModal(false); setContactoActivo(null); }}
           onSave={handleSave}
         />
