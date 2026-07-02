@@ -58,6 +58,11 @@ export const CALLES_PALENCIA = [
   'AV VALLADOLID VENTA DE BAÑOS',
   'PRIMERO DE JUNIO',
   'ALFONSO VII VENTA DE BAÑOS',
+  // ── Calles nuevas (Excel "direcciones adicionales PALENCIA", orden de hojas) ──
+  'MIGUEL UNAMUNO',
+  'ERAS DEL BOSQUE',
+  'CLARA CAMPOAMOR',
+  'VIRGEN DEL BREZO',
   'COMUNIDADES PROPIETARIOS',
 ];
 
