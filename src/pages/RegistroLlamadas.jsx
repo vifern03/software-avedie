@@ -62,11 +62,32 @@ export const CALLES_PALENCIA = [
 ];
 
 export const CALLES_VALLADOLID = [
-  'DON SANCHO', 'PORTILLO DE BALBOA', 'TIRSO DE MOLINA', 'LOPE DE RUEDA',
-  'MORADAS', 'LEON', 'SAN QUIRCE', 'ALBERTO FERNANDEZ',
-  'MIRABEL', 'TORRECILLA', 'CARDENAL TORQUEMADA', 'CARDENAL CISNEROS',
-  'CALLE CERRADA', 'AVENIDA PALENCIA', 'CALLE LINARES', 'CALLE GONZALEZ DUEÑAS',
+  // Orden exacto de pestañas del Excel BASE DATOS RONDILLA
+  'SANTA TERESA',          // nueva
+  'DON SANCHO',
+  'PORTILLO DE BALBOA',
+  'TIRSO DE MOLINA',
+  'LOPE DE RUEDA',
+  'MORADAS',
+  'LEON',
+  'SAN QUIRCE',
+  'ALBERTO FERNANDEZ',
+  'MIRABEL',
+  'TORRECILLA',
+  'CARDENAL TORQUEMADA',
+  'CARDENAL CISNEROS',
+  'CALLE CERRADA',
+  'AVENIDA PALENCIA',
+  'CALLE LINARES',
+  'CALLE GONZALEZ DUEÑAS',
   'CALLE REAL DE BURGOS',
+  'SANTA CLARA',           // nueva
+  'QUEBRADA',              // nueva
+  'DOCTOR ESQUERDO',       // nueva
+  'GONDOMAR',              // nueva
+  'NEBRIJA',               // nueva
+  'DEMOCRACIA',            // nueva
+  'CALDERON DE LA BARCA',  // nueva
 ];
 
 export const PROVINCIAS_CONFIG = [
