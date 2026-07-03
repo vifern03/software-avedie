@@ -62,6 +62,46 @@ const LUZ = [
 ];
 
 
+/* ── Datos Gas Empresa (RL.4 – RL.6) extraídos de PDF Endesa Gas Estable ─────── */
+/* Solo se muestran como tarjetas informativas en Consulta de Tarifas.          */
+/* NO se incluyen en el Estudio Comparativo de Gas (sigue siendo solo RL.1-3).  */
+
+const GAS_EMPRESA = [
+  {
+    id: 'rl4',
+    title: 'Gas RL.4',
+    consumo: '50.000 – 300.000 kWh/año',
+    terFijo: 41.630000,
+    promo: 0.067415,
+    base: 0.091102,
+    descuentos: ['26% — 1 año sobre término variable'],
+    penalizacion: '20% del término de energía × días restantes hasta fin de contrato (5% si el suministro tiene derecho a tarifa de último recurso)',
+    validez: '09/06/2026 – 14/07/2026',
+  },
+  {
+    id: 'rl5',
+    title: 'Gas RL.5',
+    consumo: '300.000 – 1.500.000 kWh/año',
+    terFijo: 232.340000,
+    promo: 0.067359,
+    base: 0.091026,
+    descuentos: ['26% — 1 año sobre término variable'],
+    penalizacion: '20% del término de energía × días restantes hasta fin de contrato (5% si el suministro tiene derecho a tarifa de último recurso)',
+    validez: '09/06/2026 – 14/07/2026',
+  },
+  {
+    id: 'rl6',
+    title: 'Gas RL.6',
+    consumo: '1.500.000 – 8.000.000 kWh/año',
+    terFijo: 1117.700000,
+    promo: 0.059897,
+    base: 0.080942,
+    descuentos: ['26% — 1 año sobre término variable'],
+    penalizacion: '20% del término de energía × días restantes hasta fin de contrato (5% si el suministro tiene derecho a tarifa de último recurso)',
+    validez: '09/06/2026 – 14/07/2026',
+  },
+];
+
 /* ── Datos B2B extraídos de PDFs Endesa (09/06/2026 – 23/06/2026) ───────────── */
 
 const TEMPO = {
@@ -145,7 +185,7 @@ const B2B_SUBTABS = [
 
 const TABS = [
   { id: 'luz',          label: 'Luz Residencial (2.0TD)',  icon: Zap,        activeText: 'text-google-blue',  activeBorder: 'border-google-blue'  },
-  { id: 'gas',          label: 'Gas (RL.1 – RL.3)',        icon: Flame,      activeText: 'text-orange-500',   activeBorder: 'border-orange-500'   },
+  { id: 'gas',          label: 'Gas (RL.1 – RL.6)',        icon: Flame,      activeText: 'text-orange-500',   activeBorder: 'border-orange-500'   },
   { id: 'industrial',   label: 'Luz 3.0 y 6.1 (B2B)',     icon: Factory,    activeText: 'text-gray-700',     activeBorder: 'border-gray-600'     },
   { id: 'estudio',      label: 'Comparativas 2.0',         icon: Calculator, activeText: 'text-green-600',    activeBorder: 'border-green-600'    },
   { id: 'estudio-gas',  label: 'Comparativas Gas',         icon: Calculator, activeText: 'text-orange-500',   activeBorder: 'border-orange-500'   },
@@ -182,12 +222,12 @@ function DiscountBadge({ label }) {
   );
 }
 
-function PermanenciaBadge({ penalizacion }) {
+function PermanenciaBadge({ penalizacion, label = 'Con Permanencia de 1 Año' }) {
   return (
     <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 mb-5">
       <AlertTriangle size={14} className="text-red-500 mt-0.5 flex-shrink-0" />
       <div>
-        <span className="text-xs font-bold text-red-600">Con Permanencia de 1 Año</span>
+        <span className="text-xs font-bold text-red-600">{label}</span>
         <span className="text-xs text-red-500 ml-2">·</span>
         <span className="text-xs text-red-500 ml-2">Penalización por rescisión anticipada: {penalizacion}</span>
       </div>
@@ -392,6 +432,59 @@ function GasCard({ tarifa }) {
         ) : (
           <span className="text-xs text-gray-400">Sin Dto. por Mantenimiento en RL.3</span>
         )}
+      </div>
+
+      <div className="px-5 pb-3">
+        <p className="text-[10px] text-gray-400 text-right">Válida: {tarifa.validez}</p>
+      </div>
+    </div>
+  );
+}
+
+/* ── Tarjetas Gas Empresa (RL.4 – RL.6, sin mantenimiento) ──────────────────── */
+
+function GasEmpresaCard({ tarifa }) {
+  return (
+    <div className="bg-white border border-google-border rounded-xl shadow-sm flex flex-col">
+      <div className="px-5 pt-5 pb-4 border-b border-gray-100">
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <h3 className="text-base font-semibold text-google-dark leading-tight">{tarifa.title}</h3>
+          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 whitespace-nowrap">
+            {tarifa.consumo}
+          </span>
+        </div>
+        <p className="text-xs text-google-gray">Precio fijo sin permanencia. Sin fluctuaciones del mercado.</p>
+      </div>
+
+      <div className="px-5 py-4 space-y-4 flex-1">
+        <div>
+          <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-2">Término variable (€/kWh)</p>
+          <div className="bg-orange-50 rounded-lg p-3 text-center">
+            <p className="text-2xl font-bold text-orange-600 leading-tight">{fmt(tarifa.promo)}</p>
+            <p className="text-xs text-orange-500 mt-0.5">precio promocionado</p>
+          </div>
+          <p className="text-xs text-google-gray mt-1.5 text-center">
+            No promocionado: <span className="line-through">{fmt(tarifa.base)}</span>
+          </p>
+        </div>
+
+        <div>
+          <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-1.5">Término fijo (€/mes)</p>
+          <div className="bg-gray-50 rounded-lg px-4 py-2.5 text-center">
+            <span className="text-lg font-bold text-google-dark">{fmt(tarifa.terFijo)}</span>
+          </div>
+        </div>
+
+        <div>
+          <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-1.5">Descuentos incluidos</p>
+          <div className="flex flex-wrap gap-1.5">
+            {tarifa.descuentos.map((d, i) => <DiscountBadge key={i} label={d} />)}
+          </div>
+        </div>
+      </div>
+
+      <div className="px-5 pt-3 pb-4 border-t border-gray-100">
+        <span className="text-xs text-gray-400">Sin Dto. por Mantenimiento</span>
       </div>
 
       <div className="px-5 pb-3">
@@ -754,6 +847,20 @@ export default function Tarifas() {
               <Calculator size={17} />
               Realizar Comparativa Gas
             </button>
+          </div>
+
+          {/* Precios Gas Empresa (RL.4 – RL.6) — informativo, fuera del comparador */}
+          <div className="order-3 pt-4 mt-2 border-t border-google-border">
+            <div className="flex items-center gap-2 mb-1">
+              <Factory size={16} className="text-orange-500" />
+              <h2 className="text-sm font-semibold text-google-dark">Precios Gas Empresa</h2>
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 whitespace-nowrap">RL.4 – RL.6</span>
+            </div>
+            <p className="text-xs text-google-gray mb-4">Tarifa Gas Estable Endesa para grandes consumos (baja presión). No incluida en la Comparativa de Gas.</p>
+            <PermanenciaBadge penalizacion={GAS_EMPRESA[0].penalizacion} />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {GAS_EMPRESA.map(t => <GasEmpresaCard key={t.id} tarifa={t} />)}
+            </div>
           </div>
         </div>
       )}
