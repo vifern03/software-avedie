@@ -8,7 +8,6 @@ import * as XLSX from 'xlsx';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
-import { openPendingTab, navigateTab, openBase64InTab } from '../lib/attachmentTab';
 
 // ─── Constantes ────────────────────────────────────────────────────────────────
 
@@ -641,9 +640,6 @@ function ContactoRow({ contacto, gestiones, onGestion, onEditar, showCalle, sele
   const handleVerComprobante = async () => {
     if (!ultimaGestion) return;
     setLoadingCaptura(true);
-    // Abrir la pestaña YA, de forma síncrona, antes del await — en móvil el
-    // navegador solo permite window.open como respuesta directa al toque.
-    const tab = openPendingTab();
     const { data } = await supabase
       .from('telemarketing_gestiones')
       .select('captura_url')
@@ -651,11 +647,19 @@ function ContactoRow({ contacto, gestiones, onGestion, onEditar, showCalle, sele
       .single();
     setLoadingCaptura(false);
     const url = data?.captura_url;
+    if (!url) return;
 
-    if (url && url.startsWith('data:')) {
-      openBase64InTab(tab, url);
+    if (url.startsWith('data:')) {
+      const [header, b64] = url.split(',');
+      const mime = header.match(/data:(.*);base64/)?.[1] || 'image/jpeg';
+      const bytes = atob(b64);
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      const objUrl = URL.createObjectURL(new Blob([arr], { type: mime }));
+      const win = window.open(objUrl, '_blank', 'noopener,noreferrer');
+      if (win) setTimeout(() => URL.revokeObjectURL(objUrl), 30000);
     } else {
-      navigateTab(tab, url);
+      window.open(url, '_blank', 'noopener,noreferrer');
     }
   };
 
