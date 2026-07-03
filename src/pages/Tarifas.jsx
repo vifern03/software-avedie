@@ -103,7 +103,7 @@ const OPEN_30TD = {
     { p: 'P6', anyo:  2.942287, mes: 0.245191, dia: 0.008061 },
   ],
   penalizacion: '5% de la energía pendiente facturada al precio sin descuentos',
-  validez: '09/06/2026 – 23/06/2026',
+  validez: '24/06/2026 – 14/07/2026',
 };
 
 const OPEN_61TD = {
@@ -134,7 +134,7 @@ const OPEN_61TD = {
     { p: 'P6', anyo:  2.504181, mes: 0.208682, dia: 0.006861 },
   ],
   penalizacion: '10% del precio del Término de Energía × energía pendiente de suministro',
-  validez: '09/06/2026 – 23/06/2026',
+  validez: '24/06/2026 – 14/07/2026',
 };
 
 const B2B_SUBTABS = [
