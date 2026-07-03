@@ -3,6 +3,7 @@ import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { Store, Plus, CalendarDays, Users, Briefcase, Search, Trash2, Pencil, CheckCircle, X, FileSpreadsheet, Camera, Loader2, Eye } from 'lucide-react';
 import { useData, fetchVisitaDoc } from '../context/DataContext';
+import { openPendingTab, navigateTab } from '../lib/attachmentTab';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
 import DeleteConfirmModal from '../components/DeleteConfirmModal';
@@ -348,9 +349,12 @@ function VisitaDocButton({ visitaId, campo, label }) {
   const handleClick = async () => {
     if (loading) return;
     setLoading(true);
+    // Abrir la pestaña YA, de forma síncrona, antes del await — en móvil el
+    // navegador solo permite window.open como respuesta directa al toque.
+    const tab = openPendingTab();
     try {
       const url = await fetchVisitaDoc(visitaId, campo);
-      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      navigateTab(tab, url);
     } finally {
       setLoading(false);
     }

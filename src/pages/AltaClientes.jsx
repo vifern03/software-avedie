@@ -8,6 +8,7 @@ import ShareButton from '../components/ShareButton';
 import PrescriptoresModal from '../components/PrescriptoresModal';
 import { useData, fetchSingleDoc } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
+import { openPendingTab, openBase64InTab } from '../lib/attachmentTab';
 import DateInput from '../components/DateInput';
 
 const MEDAL_COLORS = ['bg-yellow-400', 'bg-gray-300', 'bg-amber-600'];
@@ -66,17 +67,6 @@ function StatusBadge({ estado }) {
   );
 }
 
-function openBase64(base64) {
-  const mime = base64.split(';')[0].replace('data:', '');
-  const bytes = atob(base64.split(',')[1]);
-  const ab = new ArrayBuffer(bytes.length);
-  const ia = new Uint8Array(ab);
-  for (let i = 0; i < bytes.length; i++) ia[i] = bytes.charCodeAt(i);
-  const url = URL.createObjectURL(new Blob([ab], { type: mime }));
-  window.open(url, '_blank', 'noopener,noreferrer');
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
-}
-
 // Celda lazy: muestra el ojo si el flag indica que hay doc; descarga Base64 al hacer clic
 function FileCell({ hasDoc, clientId, campo }) {
   const [loading, setLoading] = useState(false);
@@ -84,9 +74,12 @@ function FileCell({ hasDoc, clientId, campo }) {
   const handleClick = async () => {
     if (loading) return;
     setLoading(true);
+    // Abrir la pestaña YA, de forma síncrona, antes del await — en móvil el
+    // navegador solo permite window.open como respuesta directa al toque.
+    const tab = openPendingTab();
     try {
       const data = await fetchSingleDoc(clientId, campo);
-      if (data) openBase64(data);
+      openBase64InTab(tab, data);
     } finally {
       setLoading(false);
     }
@@ -108,9 +101,10 @@ function DocIcon({ hasDoc, clientId, campo, label }) {
   const handleClick = async () => {
     if (loading) return;
     setLoading(true);
+    const tab = openPendingTab();
     try {
       const data = await fetchSingleDoc(clientId, campo);
-      if (data) openBase64(data);
+      openBase64InTab(tab, data);
     } finally {
       setLoading(false);
     }

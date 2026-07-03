@@ -7,6 +7,7 @@ import {
   Clock, TrendingUp, FileText, MapPin,
 } from 'lucide-react';
 import { useData, fetchVisitaPymeDoc } from '../context/DataContext';
+import { openPendingTab, navigateTab } from '../lib/attachmentTab';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
 import DeleteConfirmModal from '../components/DeleteConfirmModal';
@@ -70,9 +71,12 @@ function FotoNegocioButton({ visitaId }) {
   const handleClick = async () => {
     if (loading) return;
     setLoading(true);
+    // Abrir la pestaña YA, de forma síncrona, antes del await — en móvil el
+    // navegador solo permite window.open como respuesta directa al toque.
+    const tab = openPendingTab();
     try {
       const url = await fetchVisitaPymeDoc(visitaId, 'foto_negocio_url');
-      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      navigateTab(tab, url);
     } finally {
       setLoading(false);
     }
@@ -92,9 +96,10 @@ function PymeEyeButton({ visitaId, campo, title }) {
   const handleClick = async () => {
     if (loading) return;
     setLoading(true);
+    const tab = openPendingTab();
     try {
       const url = await fetchVisitaPymeDoc(visitaId, campo);
-      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      navigateTab(tab, url);
     } finally {
       setLoading(false);
     }
@@ -115,9 +120,10 @@ function ModalDocLink({ visitaId, campo, label }) {
     e.preventDefault();
     if (loading) return;
     setLoading(true);
+    const tab = openPendingTab();
     try {
       const url = await fetchVisitaPymeDoc(visitaId, campo);
-      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      navigateTab(tab, url);
     } finally {
       setLoading(false);
     }

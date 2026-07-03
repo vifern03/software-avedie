@@ -9,17 +9,7 @@ import Pagination from '../components/Pagination';
 import ShareButton from '../components/ShareButton';
 import { useData, fetchSingleDoc } from '../context/DataContext';
 import DateInput from '../components/DateInput';
-
-function openBase64(base64) {
-  const mime = base64.split(';')[0].replace('data:', '');
-  const bytes = atob(base64.split(',')[1]);
-  const ab = new ArrayBuffer(bytes.length);
-  const ia = new Uint8Array(ab);
-  for (let i = 0; i < bytes.length; i++) ia[i] = bytes.charCodeAt(i);
-  const url = URL.createObjectURL(new Blob([ab], { type: mime }));
-  window.open(url, '_blank', 'noopener,noreferrer');
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
-}
+import { openPendingTab, openBase64InTab } from '../lib/attachmentTab';
 
 // Celda lazy — muestra ojo si el flag indica que hay doc; abre en nueva pestaña al hacer clic
 function FileCell({ hasDoc, clientId, campo }) {
@@ -28,9 +18,12 @@ function FileCell({ hasDoc, clientId, campo }) {
   const handleClick = async () => {
     if (loading) return;
     setLoading(true);
+    // Abrir la pestaña YA, de forma síncrona, antes del await — en móvil el
+    // navegador solo permite window.open como respuesta directa al toque.
+    const tab = openPendingTab();
     try {
       const data = await fetchSingleDoc(clientId, campo);
-      if (data) openBase64(data);
+      openBase64InTab(tab, data);
     } finally {
       setLoading(false);
     }
