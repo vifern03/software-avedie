@@ -72,7 +72,7 @@ const TEMPO = {
     { p: 'P2', anyo: 17.725428, mes: 1.477119, desc: 'Laborables 0h–8h y fines de semana/festivos' },
   ],
   penalizacion: '5% del precio del contrato',
-  validez: '09/06/2026 – 23/06/2026',
+  validez: '24/06/2026 – 14/07/2026',
 };
 
 const OPEN_30TD = {
@@ -694,7 +694,7 @@ export default function Tarifas() {
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-google-dark">Consulta de Tarifas</h1>
         <p className="text-sm text-google-gray mt-1">Precios vigentes Endesa · Sin impuestos</p>
-        <p className="text-sm text-gray-400 mt-0.5">Documento editado el 09/06/2026</p>
+        <p className="text-sm text-gray-400 mt-0.5">Documento editado el 03/07/2026</p>
       </div>
 
       {/* Tabs principales */}

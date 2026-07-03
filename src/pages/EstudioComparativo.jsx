@@ -41,6 +41,18 @@ const TARIFAS = [
     potValle: 5.904,
     validez: '01/06/2026 – 14/07/2026',
   },
+  {
+    id: 'tempo',
+    label: 'Tempo 2.0TD — Precio Único 24H',
+    shortLabel: 'Tempo 2.0TD',
+    tag: 'Tempo',
+    tagClass: 'bg-amber-100 text-amber-700',
+    sinMant: 0.124777,
+    conMant: 0.124777,
+    potPunta: 44.704416,
+    potValle: 17.725428,
+    validez: '24/06/2026 – 14/07/2026',
+  },
 ];
 
 /* Impuesto Especial sobre la Electricidad — tipo vigente 5,113% */
