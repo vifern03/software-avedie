@@ -6,7 +6,8 @@ import {
   X, FileSpreadsheet, Camera, ExternalLink, Loader2, ArrowRight, Check, Minus, Eye,
   Clock, TrendingUp, FileText, MapPin,
 } from 'lucide-react';
-import { useData } from '../context/DataContext';
+import { useData, fetchVisitaPymeDoc } from '../context/DataContext';
+import { openPendingTab, navigateTab } from '../lib/attachmentTab';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
 import DeleteConfirmModal from '../components/DeleteConfirmModal';
@@ -59,6 +60,80 @@ function EstadoBadge({ estado }) {
     <span className={`inline-block px-2 py-0.5 rounded border text-xs font-medium whitespace-nowrap ${s.bg} ${s.border} ${s.text}`}>
       {estado || '—'}
     </span>
+  );
+}
+
+// ── Botones lazy de adjuntos (fetch-on-click, sin carga anticipada) ──────────
+
+// Mismo icono/estilo que ya usaba la columna "Foto" (ExternalLink + texto "Ver")
+function FotoNegocioButton({ visitaId }) {
+  const [loading, setLoading] = useState(false);
+  const handleClick = async () => {
+    if (loading) return;
+    setLoading(true);
+    // Abrir la pestaña YA, de forma síncrona, antes del await — en móvil el
+    // navegador solo permite window.open como respuesta directa al toque.
+    const tab = openPendingTab();
+    try {
+      const url = await fetchVisitaPymeDoc(visitaId, 'foto_negocio_url');
+      navigateTab(tab, url);
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <button type="button" onClick={handleClick} disabled={loading}
+      className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 font-medium disabled:opacity-60">
+      {loading ? <Loader2 size={13} className="animate-spin" /> : <ExternalLink size={13} />}
+      <span>{loading ? 'Cargando...' : 'Ver'}</span>
+    </button>
+  );
+}
+
+// Mismo icono que el resto del CRM (Eye) para Factura / Comparativa PYME
+function PymeEyeButton({ visitaId, campo, title }) {
+  const [loading, setLoading] = useState(false);
+  const handleClick = async () => {
+    if (loading) return;
+    setLoading(true);
+    const tab = openPendingTab();
+    try {
+      const url = await fetchVisitaPymeDoc(visitaId, campo);
+      navigateTab(tab, url);
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <button type="button" onClick={handleClick} disabled={loading}
+      title={loading ? 'Cargando...' : title}
+      className="text-indigo-500 hover:text-indigo-800 transition-colors disabled:opacity-60">
+      {loading ? <Loader2 size={15} className="animate-spin" /> : <Eye size={15} />}
+    </button>
+  );
+}
+
+// Enlace lazy "ver documento actual" usado dentro de los modales de edición/transición
+function ModalDocLink({ visitaId, campo, label }) {
+  const [loading, setLoading] = useState(false);
+  const handleClick = async (e) => {
+    e.preventDefault();
+    if (loading) return;
+    setLoading(true);
+    const tab = openPendingTab();
+    try {
+      const url = await fetchVisitaPymeDoc(visitaId, campo);
+      navigateTab(tab, url);
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <button type="button" onClick={handleClick} disabled={loading}
+      className="text-xs text-emerald-600 hover:text-emerald-800 hover:underline inline-flex items-center gap-1 disabled:opacity-60">
+      {loading ? <Loader2 size={11} className="animate-spin" /> : <ExternalLink size={11} />}
+      <span>{loading ? 'Cargando...' : label}</span>
+    </button>
   );
 }
 
@@ -250,7 +325,7 @@ function AccionRapidaModal({ visita, targetEstado, onClose, onConfirmar }) {
 
 // ── TransicionEstadoModal ─────────────────────────────────────────────────────
 
-function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar }) {
+function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar, docsFlags }) {
   const isMobile = isMobileDevice() || window.innerWidth < 768;
 
   // Qué campos necesita cada transición
@@ -258,9 +333,9 @@ function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar }) {
                                (targetEstado === 'Valorando' && !visita.fecha_enviada_comparativa);
   const needsFechaResolucion = targetEstado === 'Aceptado' || targetEstado === 'Rechazado';
   const needsComentarios     = targetEstado === 'Rechazado' || targetEstado === 'Aceptado';
-  // Docs: obligatorios si no existen aún
-  const needsFactura         = !visita.factura_url;
-  const needsComparativa     = !visita.comparativa_url;
+  // Docs: obligatorios si no existen aún (según flags — la URL ya no viaja en el estado local)
+  const needsFactura         = !docsFlags?.tiene_factura;
+  const needsComparativa     = !docsFlags?.tiene_comparativa;
 
   const [form, setForm] = useState({
     fecha_enviada_comparativa: toDatetimeLocal(visita.fecha_enviada_comparativa) || '',
@@ -411,7 +486,7 @@ function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar }) {
           )}
 
           {/* ── Documentación ── */}
-          {(needsFactura || needsComparativa || visita.factura_url || visita.comparativa_url) && (
+          {(needsFactura || needsComparativa || docsFlags?.tiene_factura || docsFlags?.tiene_comparativa) && (
             <div className="space-y-3">
               <p className="text-xs font-semibold text-indigo-700">Documentación obligatoria</p>
 
@@ -423,11 +498,10 @@ function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar }) {
                 <label className={`block text-xs font-medium mb-1.5 ${errors.factura ? 'text-red-500' : 'text-google-gray'}`}>
                   Adjuntar Factura {needsFactura ? '*' : ''}
                 </label>
-                {visita.factura_url && !facturaFile && (
-                  <a href={visita.factura_url} target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 hover:underline mb-1.5">
-                    <Eye size={12} /> Ver factura actual{visita.factura_url.toLowerCase().endsWith('.zip') ? ' (ZIP)' : ''}
-                  </a>
+                {docsFlags?.tiene_factura && !facturaFile && (
+                  <div className="mb-1.5">
+                    <ModalDocLink visitaId={visita.id} campo="factura_url" label="Ver factura actual" />
+                  </div>
                 )}
                 <input
                   ref={facturaInputRefModal}
@@ -454,11 +528,10 @@ function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar }) {
                 <label className={`block text-xs font-medium mb-1.5 ${errors.comparativa ? 'text-red-500' : 'text-google-gray'}`}>
                   Adjuntar Comparativa {needsComparativa ? '*' : ''}
                 </label>
-                {visita.comparativa_url && !comparativaFile && (
-                  <a href={visita.comparativa_url} target="_blank" rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 hover:underline mb-1.5">
-                    <Eye size={12} /> Ver comparativa actual{visita.comparativa_url.toLowerCase().endsWith('.zip') ? ' (ZIP)' : ''}
-                  </a>
+                {docsFlags?.tiene_comparativa && !comparativaFile && (
+                  <div className="mb-1.5">
+                    <ModalDocLink visitaId={visita.id} campo="comparativa_url" label="Ver comparativa actual" />
+                  </div>
                 )}
                 <input
                   ref={comparativaInputRefModal}
@@ -538,7 +611,7 @@ function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar }) {
 
 // ── VisitaPymeModal (formulario completo de alta/edición) ─────────────────────
 
-function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPrivileged }) {
+function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPrivileged, docsFlags }) {
   const isEdit        = !!initialData;
   const isMobile      = isMobileDevice();
   const canUseDesktop = isPrivileged;
@@ -556,14 +629,13 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
     estado:                    initialData?.estado                     || 'Solicitado Factura',
     fecha_enviada_comparativa: toDatetimeLocal(initialData?.fecha_enviada_comparativa),
     fecha_resolucion:          toDatetimeLocal(initialData?.fecha_resolucion),
-    factura_url:               initialData?.factura_url               || '',
-    comparativa_url:           initialData?.comparativa_url           || '',
     latitud:                   initialData?.latitud                   ?? null,
     longitud:                  initialData?.longitud                  ?? null,
   });
 
   const [fotoFile,        setFotoFile]        = useState(null);
-  const [fotoPreview,     setFotoPreview]     = useState(initialData?.foto_negocio_url || '');
+  const [fotoPreview,     setFotoPreview]     = useState('');
+  const [fotoExists,      setFotoExists]      = useState(!!docsFlags?.tiene_foto);
   const [facturaFile,     setFacturaFile]     = useState(null);
   const [comparativaFile, setComparativaFile] = useState(null);
   const [clearFactura,     setClearFactura]     = useState(false);
@@ -574,6 +646,17 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
   const fileInputRef         = useRef(null);
   const facturaInputRef      = useRef(null);
   const comparativaInputRef  = useRef(null);
+
+  // Carga bajo demanda de la foto existente SOLO al abrir la edición de esta visita
+  // (no se precarga para todas las filas de la tabla — fetch-on-open, no fetch-on-render)
+  useEffect(() => {
+    if (!isEdit || !docsFlags?.tiene_foto) return;
+    let cancelled = false;
+    fetchVisitaPymeDoc(initialData.id, 'foto_negocio_url').then(url => {
+      if (!cancelled && url) setFotoPreview(url);
+    });
+    return () => { cancelled = true; };
+  }, [isEdit, initialData?.id, docsFlags?.tiene_foto]);
 
   const set = (field, value) => {
     setForm(f => ({ ...f, [field]: value }));
@@ -616,10 +699,10 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
     if (!form.hora.trim())               e.hora               = true;
     if (!form.nombre_empresa.trim())     e.nombre_empresa     = true;
     if (!form.persona_autorizada.trim()) e.persona_autorizada = true;
-    if (!fotoFile && !fotoPreview)       e.foto               = true;
+    if (!fotoFile && !fotoExists)         e.foto               = true;
     if (showDocsSection) {
-      if (!clearFactura    && !facturaFile    && !form.factura_url)    e.factura     = true;
-      if (!clearComparativa && !comparativaFile && !form.comparativa_url) e.comparativa = true;
+      if (!clearFactura    && !facturaFile    && !docsFlags?.tiene_factura)     e.factura     = true;
+      if (!clearComparativa && !comparativaFile && !docsFlags?.tiene_comparativa) e.comparativa = true;
     }
     if (showFechaEnviada    && !form.fecha_enviada_comparativa)  e.fecha_enviada_comparativa = true;
     if (showFechaResolucion && !form.fecha_resolucion)           e.fecha_resolucion          = true;
@@ -646,10 +729,8 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
       comentarios,
       fecha_enviada_comparativa: needsFechaEnviada ? toISO(form.fecha_enviada_comparativa) : null,
       fecha_resolucion:          needsResolucion   ? toISO(form.fecha_resolucion)          : null,
-      factura_url:    clearFactura    && !facturaFile    ? null : form.factura_url,
-      comparativa_url: clearComparativa && !comparativaFile ? null : form.comparativa_url,
     };
-    const result = await onSave(formToSave, fotoFile, initialData?.foto_negocio_url || '', facturaFile, comparativaFile);
+    const result = await onSave(formToSave, fotoFile, facturaFile, comparativaFile, clearFactura, clearComparativa);
     if (result?.error) { setSaving(false); return; }
     setSaved(true);
     setTimeout(() => onClose(), 800);
@@ -738,21 +819,24 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
                 className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border-2 border-dashed transition-colors text-sm ${
                   !canSubmit ? 'border-amber-300 bg-amber-50 text-amber-600 cursor-not-allowed opacity-70'
                   : errors.foto ? 'border-red-400 bg-red-50 text-red-600'
-                  : fotoPreview ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
+                  : (fotoPreview || fotoExists) ? 'border-emerald-400 bg-emerald-50 text-emerald-700'
                   : 'border-google-border text-google-gray hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700'
                 }`}>
                 <Camera size={18} />
-                <span>{!canSubmit ? 'Solo disponible desde el móvil' : fotoFile ? fotoFile.name : fotoPreview && isEdit ? 'Cambiar foto del negocio' : 'Hacer Foto al Negocio (Obligatorio)'}</span>
+                <span>{!canSubmit ? 'Solo disponible desde el móvil' : fotoFile ? fotoFile.name : fotoExists ? 'Cambiar foto del negocio' : 'Hacer Foto al Negocio (Obligatorio)'}</span>
               </button>
-              {(fotoFile || fotoPreview) && (
+              {(fotoFile || fotoExists) && (
                 <button type="button" title="Eliminar foto"
-                  onClick={() => { setFotoFile(null); setFotoPreview(''); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                  onClick={() => { setFotoFile(null); setFotoPreview(''); setFotoExists(false); if (fileInputRef.current) fileInputRef.current.value = ''; }}
                   className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
                   <X size={13} />
                 </button>
               )}
             </div>
-            {errors.foto && !fotoPreview && <p className="text-red-500 text-xs mt-1">Debes hacer una foto del negocio</p>}
+            {errors.foto && !fotoExists && <p className="text-red-500 text-xs mt-1">Debes hacer una foto del negocio</p>}
+            {fotoExists && !fotoPreview && !fotoFile && (
+              <p className="text-xs text-google-gray italic mt-1">Cargando vista previa...</p>
+            )}
             {fotoPreview && (
               <div className="mt-2 rounded-lg overflow-hidden border border-emerald-200">
                 <img src={fotoPreview} alt="Foto del negocio" className="w-full h-36 object-cover" />
@@ -819,12 +903,9 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
                     <input ref={facturaInputRef} type="file" accept=".pdf,image/*"
                       onChange={e => { setFacturaFile(e.target.files?.[0] || null); setClearFactura(false); setErrors(er => ({ ...er, factura: false })); }}
                       className={`input-field text-xs py-1.5 cursor-pointer ${errors.factura ? '!border-red-400' : ''}`} />
-                    {form.factura_url && !facturaFile && !clearFactura && (
+                    {docsFlags?.tiene_factura && !facturaFile && !clearFactura && (
                       <div className="flex items-center gap-2 mt-1.5">
-                        <a href={form.factura_url} target="_blank" rel="noopener noreferrer"
-                          className="text-xs text-emerald-600 hover:underline inline-flex items-center gap-1">
-                          <ExternalLink size={11} /> Ver factura adjunta actual
-                        </a>
+                        <ModalDocLink visitaId={initialData.id} campo="factura_url" label="Ver factura adjunta actual" />
                         <button type="button" onClick={() => setClearFactura(true)}
                           className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-2 py-0.5 rounded-md border border-red-200 transition-colors">
                           <Trash2 size={10} /> Eliminar
@@ -857,12 +938,9 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
                     <input ref={comparativaInputRef} type="file" accept=".pdf,image/*"
                       onChange={e => { setComparativaFile(e.target.files?.[0] || null); setClearComparativa(false); setErrors(er => ({ ...er, comparativa: false })); }}
                       className={`input-field text-xs py-1.5 cursor-pointer ${errors.comparativa ? '!border-red-400' : ''}`} />
-                    {form.comparativa_url && !comparativaFile && !clearComparativa && (
+                    {docsFlags?.tiene_comparativa && !comparativaFile && !clearComparativa && (
                       <div className="flex items-center gap-2 mt-1.5">
-                        <a href={form.comparativa_url} target="_blank" rel="noopener noreferrer"
-                          className="text-xs text-emerald-600 hover:underline inline-flex items-center gap-1">
-                          <ExternalLink size={11} /> Ver comparativa adjunta actual
-                        </a>
+                        <ModalDocLink visitaId={initialData.id} campo="comparativa_url" label="Ver comparativa adjunta actual" />
                         <button type="button" onClick={() => setClearComparativa(true)}
                           className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-2 py-0.5 rounded-md border border-red-200 transition-colors">
                           <Trash2 size={10} /> Eliminar
@@ -936,7 +1014,7 @@ const FilterPill = ({ label, active, onClick }) => (
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function RegistroVisitasPymes() {
-  const { visitasPymes, addVisitaPyme, updateVisitaPyme, transicionEstadoPyme, deleteVisitaPyme } = useData();
+  const { visitasPymes, visitasPymesDocsFlags, addVisitaPyme, updateVisitaPyme, transicionEstadoPyme, deleteVisitaPyme } = useData();
   const { currentUser } = useAuth();
 
   const isAdmin      = currentUser?.role?.toLowerCase() === 'admin';
@@ -1015,8 +1093,8 @@ export default function RegistroVisitasPymes() {
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const handleSave = async (data, fotoFile, existingFotoUrl, facturaFile, comparativaFile) => {
-    if (editVisita) return await updateVisitaPyme(editVisita.id, data, fotoFile, existingFotoUrl, facturaFile, comparativaFile);
+  const handleSave = async (data, fotoFile, facturaFile, comparativaFile, clearFactura, clearComparativa) => {
+    if (editVisita) return await updateVisitaPyme(editVisita.id, data, fotoFile, facturaFile, comparativaFile, clearFactura, clearComparativa);
     return await addVisitaPyme(data, fotoFile, facturaFile, comparativaFile);
   };
 
@@ -1291,11 +1369,8 @@ export default function RegistroVisitasPymes() {
                     <td className="table-cell text-google-gray">{v.telefono_contacto_cliente || '—'}</td>
                     <td className="table-cell text-google-gray text-xs">{v.correo_electronico_cliente || '—'}</td>
                     <td className="table-cell text-center">
-                      {v.foto_negocio_url
-                        ? <a href={v.foto_negocio_url} target="_blank" rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-800 font-medium">
-                            <ExternalLink size={13} />Ver
-                          </a>
+                      {visitasPymesDocsFlags[v.id]?.tiene_foto
+                        ? <FotoNegocioButton visitaId={v.id} />
                         : <span className="text-google-gray">—</span>}
                     </td>
                     {isPrivileged && (
@@ -1324,29 +1399,15 @@ export default function RegistroVisitasPymes() {
                     </td>
                     <td className="table-cell text-center">
                       <div className="flex items-center justify-center gap-2">
-                        {v.factura_url
-                          ? <a
-                              href={v.factura_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title={v.factura_url.toLowerCase().endsWith('.zip') ? 'Descargar Factura PYME (ZIP)' : 'Ver Factura PYME'}
-                              className="text-indigo-500 hover:text-indigo-800 transition-colors"
-                            >
-                              <Eye size={15} />
-                            </a>
-                          : null}
-                        {v.comparativa_url
-                          ? <a
-                              href={v.comparativa_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              title={v.comparativa_url.toLowerCase().endsWith('.zip') ? 'Descargar Comparativa PYME (ZIP)' : 'Ver Comparativa PYME'}
-                              className="text-indigo-500 hover:text-indigo-800 transition-colors"
-                            >
-                              <Eye size={15} />
-                            </a>
-                          : null}
-                        {!v.factura_url && !v.comparativa_url && <span className="text-google-gray">—</span>}
+                        {visitasPymesDocsFlags[v.id]?.tiene_factura && (
+                          <PymeEyeButton visitaId={v.id} campo="factura_url" title="Ver Factura PYME" />
+                        )}
+                        {visitasPymesDocsFlags[v.id]?.tiene_comparativa && (
+                          <PymeEyeButton visitaId={v.id} campo="comparativa_url" title="Ver Comparativa PYME" />
+                        )}
+                        {!visitasPymesDocsFlags[v.id]?.tiene_factura && !visitasPymesDocsFlags[v.id]?.tiene_comparativa && (
+                          <span className="text-google-gray">—</span>
+                        )}
                       </div>
                     </td>
                     <td className="table-cell text-google-gray text-xs max-w-[200px]">
@@ -1401,6 +1462,7 @@ export default function RegistroVisitasPymes() {
           targetEstado={transicion.targetEstado}
           onClose={() => setTransicion(null)}
           onConfirmar={transicionEstadoPyme}
+          docsFlags={visitasPymesDocsFlags[transicion.visita.id]}
         />
       )}
 
@@ -1422,6 +1484,7 @@ export default function RegistroVisitasPymes() {
           initialData={editVisita || null}
           currentUsername={currentUser?.username || ''}
           isPrivileged={isPrivileged}
+          docsFlags={editVisita ? visitasPymesDocsFlags[editVisita.id] : null}
         />
       )}
 

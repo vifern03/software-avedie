@@ -44,6 +44,41 @@ export const fetchSingleDoc = async (clientId, campo) => {
   return data[campo] || null;
 };
 
+// Campos de archivo (URLs de Supabase Storage) excluidos del SELECT principal de
+// visitas / visitas_pymes — se piden SOLO al hacer clic (fetch-on-click), igual
+// que fetchSingleDoc para clientes.
+const VISITAS_SELECT = [
+  'id', 'fecha', 'hora', 'dni', 'nombre', 'telefono', 'mail', 'tipo', 'tipo_otro',
+  'punto_venta', 'registrado_por', 'equipo',
+].join(',');
+
+const VISITAS_PYMES_SELECT = [
+  'id', 'fecha', 'hora', 'persona_autorizada', 'correo', 'telefono_contacto_cliente',
+  'correo_electronico_cliente', 'comentarios_visita', 'registrado_por', 'nombre_empresa',
+  'ubicacion', 'estado', 'fecha_enviada_comparativa', 'fecha_resolucion', 'latitud', 'longitud',
+].join(',');
+
+// Descarga ÚNICAMENTE la URL de UN archivo de UNA visita concreta (fetch-on-click)
+export const fetchVisitaDoc = async (visitaId, campo) => {
+  const { data, error } = await supabase
+    .from('visitas')
+    .select(`id,${campo}`)
+    .eq('id', visitaId)
+    .single();
+  if (error || !data) return null;
+  return data[campo] || null;
+};
+
+export const fetchVisitaPymeDoc = async (visitaId, campo) => {
+  const { data, error } = await supabase
+    .from('visitas_pymes')
+    .select(`id,${campo}`)
+    .eq('id', visitaId)
+    .single();
+  if (error || !data) return null;
+  return data[campo] || null;
+};
+
 const cacheKey = (username) => `dashboard_cache_${username}`;
 
 // Para contratos antiguos sin vendido_por, usar creado_por como fallback (excepto Canal Directo)
@@ -85,6 +120,8 @@ export function DataProvider({ children }) {
   const [visitas,       setVisitas]       = useState([]);
   const [visitasPymes,  setVisitasPymes]  = useState([]);
   const [docsFlags,     setDocsFlags]     = useState({});
+  const [visitasDocsFlags,      setVisitasDocsFlags]      = useState({});
+  const [visitasPymesDocsFlags, setVisitasPymesDocsFlags] = useState({});
   const [isLoading,     setIsLoading]     = useState(true);
   const [prescriptores,    setPrescriptores]    = useState([]); // [{id, nombre}]
   const [prescriptorLinks, setPrescriptorLinks] = useState({}); // {nombre_prescriptor: username_crm}
@@ -114,6 +151,8 @@ export function DataProvider({ children }) {
       setActividades([]);
       setVisitas([]);
       setVisitasPymes([]);
+      setVisitasDocsFlags({});
+      setVisitasPymesDocsFlags({});
       setIsLoading(false);
       lastFetchKey.current = null;
       return;
@@ -132,6 +171,8 @@ export function DataProvider({ children }) {
       setVisitas(userCache.visitas         || []);
       setVisitasPymes(userCache.visitasPymes || []);
       setDocsFlags(userCache.docsFlags     || {});
+      setVisitasDocsFlags(userCache.visitasDocsFlags         || {});
+      setVisitasPymesDocsFlags(userCache.visitasPymesDocsFlags || {});
       setIsLoading(false);
     } else {
       setIsLoading(true);
@@ -159,9 +200,11 @@ export function DataProvider({ children }) {
       }
 
       // ── Visitas Tienda ────────────────────────────────────────────────────────
+      // Las URLs de archivo (dni_cif_escaneado_url/reverso) se excluyen del SELECT
+      // principal — se piden bajo demanda con fetchVisitaDoc (ver docsFlags abajo).
       let visitasQuery = supabase
         .from('visitas')
-        .select('*')
+        .select(VISITAS_SELECT)
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
@@ -174,9 +217,11 @@ export function DataProvider({ children }) {
       }
 
       // ── Visitas Pymes ─────────────────────────────────────────────────────────
+      // Igual que arriba: foto_negocio_url/factura_url/comparativa_url se piden
+      // bajo demanda con fetchVisitaPymeDoc (ver docsFlags abajo).
       let visitasPymesQuery = supabase
         .from('visitas_pymes')
-        .select('*')
+        .select(VISITAS_PYMES_SELECT)
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
@@ -241,6 +286,9 @@ export function DataProvider({ children }) {
 
       // Consultas de existencia de documentos — builders independientes
       const mkFlag = (col) => supabase.from('clientes').select('id').is('deleted_at', null).not(col, 'is', null);
+      // visitas/visitas_pymes guardan '' (no NULL) cuando no hay archivo adjunto,
+      // así que hay que excluir ambos casos para no marcar falsos positivos.
+      const mkFlagFor = (table, col) => supabase.from(table).select('id').is('deleted_at', null).not(col, 'is', null).neq(col, '');
 
       const [
         { data: clientesData,     error: clientesErr  },
@@ -255,6 +303,11 @@ export function DataProvider({ children }) {
         { data: cifData    },
         { data: justoData  },
         { data: fb2bData   },
+        { data: anversoData    },
+        { data: reversoData    },
+        { data: fotoNegocioData },
+        { data: facturaPymeData },
+        { data: comparativaPymeData },
       ] = await Promise.all([
         clientesQuery,
         supabase.from('actividades').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
@@ -268,6 +321,11 @@ export function DataProvider({ children }) {
         mkFlag('cif_autonomo_url'),
         mkFlag('justo_titulo_url'),
         mkFlag('factura_b2b_url'),
+        mkFlagFor('visitas',       'dni_cif_escaneado_url'),
+        mkFlagFor('visitas',       'dni_cif_reverso_url'),
+        mkFlagFor('visitas_pymes', 'foto_negocio_url'),
+        mkFlagFor('visitas_pymes', 'factura_url'),
+        mkFlagFor('visitas_pymes', 'comparativa_url'),
       ]);
 
       // ── 3. Evitar race condition: descartar si el usuario cambió ──────────
@@ -324,11 +382,37 @@ export function DataProvider({ children }) {
         };
       });
 
+      // Flags booleanos de archivos de visitas (igual patrón que docsFlags de clientes)
+      const anversoSet     = new Set((anversoData     || []).map(r => r.id));
+      const reversoSet     = new Set((reversoData     || []).map(r => r.id));
+      const fotoNegocioSet = new Set((fotoNegocioData || []).map(r => r.id));
+      const facturaPymeSet = new Set((facturaPymeData || []).map(r => r.id));
+      const compPymeSet    = new Set((comparativaPymeData || []).map(r => r.id));
+
+      const newVisitasDocsFlags = {};
+      newVisitas.forEach(v => {
+        newVisitasDocsFlags[v.id] = {
+          tiene_anverso: anversoSet.has(v.id),
+          tiene_reverso: reversoSet.has(v.id),
+        };
+      });
+
+      const newVisitasPymesDocsFlags = {};
+      newVisitasPymes.forEach(v => {
+        newVisitasPymesDocsFlags[v.id] = {
+          tiene_foto:        fotoNegocioSet.has(v.id),
+          tiene_factura:     facturaPymeSet.has(v.id),
+          tiene_comparativa: compPymeSet.has(v.id),
+        };
+      });
+
       setClientes(newClientes);
       setActividades(newActividades);
       setVisitas(newVisitas);
       setVisitasPymes(newVisitasPymes);
       setDocsFlags(newDocsFlags);
+      setVisitasDocsFlags(newVisitasDocsFlags);
+      setVisitasPymesDocsFlags(newVisitasPymesDocsFlags);
 
       writeCache(currentUser.username, {
         clientes:     newClientes,
@@ -336,6 +420,8 @@ export function DataProvider({ children }) {
         visitas:      newVisitas,
         visitasPymes: newVisitasPymes,
         docsFlags:    newDocsFlags,
+        visitasDocsFlags:      newVisitasDocsFlags,
+        visitasPymesDocsFlags: newVisitasPymesDocsFlags,
       });
 
       setIsLoading(false);
@@ -416,13 +502,16 @@ export function DataProvider({ children }) {
     return { error: null };
   };
 
-  const updateVisita = async (id, data, dniAnverso, dniReverso, existingAnverso, existingReverso) => {
+  const updateVisita = async (id, data, dniAnverso, dniReverso) => {
+    // El anverso/reverso actual ya no viaja en el estado local (fetch-on-click),
+    // así que si no se sube un archivo nuevo se recupera el valor vigente en BD
+    // para no perder la referencia al documento existente.
     const dni_cif_escaneado_url = dniAnverso
-      ? (await _uploadDniFile(dniAnverso)) || existingAnverso || ''
-      : (existingAnverso || '');
+      ? (await _uploadDniFile(dniAnverso)) || (await fetchVisitaDoc(id, 'dni_cif_escaneado_url')) || ''
+      : (await fetchVisitaDoc(id, 'dni_cif_escaneado_url')) || '';
     const dni_cif_reverso_url = dniReverso
-      ? (await _uploadDniFile(dniReverso)) || existingReverso || ''
-      : (existingReverso || '');
+      ? (await _uploadDniFile(dniReverso)) || (await fetchVisitaDoc(id, 'dni_cif_reverso_url')) || ''
+      : (await fetchVisitaDoc(id, 'dni_cif_reverso_url')) || '';
     const updateObj = { ...data, dni_cif_escaneado_url, dni_cif_reverso_url };
     setVisitas(prev => prev.map(v => v.id === id ? { ...v, ...updateObj } : v));
     const { error } = await supabase.from('visitas').update(updateObj).eq('id', id);
@@ -500,8 +589,11 @@ export function DataProvider({ children }) {
     return { error: null };
   };
 
-  const updateVisitaPyme = async (id, data, fotoFile, existingFotoUrl, facturaFile, comparativaFile) => {
-    let foto_url = existingFotoUrl || '';
+  // El foto/factura/comparativa actuales ya no viajan en el estado local
+  // (fetch-on-click), así que si no hay archivo nuevo ni se pide borrar, se
+  // recupera el valor vigente en BD para no perder la referencia existente.
+  const updateVisitaPyme = async (id, data, fotoFile, facturaFile, comparativaFile, clearFactura = false, clearComparativa = false) => {
+    let foto_url;
     if (fotoFile) {
       const ext      = fotoFile.name.split('.').pop() || 'jpg';
       const fileName = `${Date.now()}_${currentUser?.username || 'anon'}.${ext}`;
@@ -513,10 +605,18 @@ export function DataProvider({ children }) {
         foto_url = urlData.publicUrl;
       } else {
         console.error('updateVisitaPyme upload:', upErr);
+        foto_url = (await fetchVisitaPymeDoc(id, 'foto_negocio_url')) || '';
       }
+    } else {
+      foto_url = (await fetchVisitaPymeDoc(id, 'foto_negocio_url')) || '';
     }
-    const factura_url    = facturaFile    ? (await _uploadPymeDoc(facturaFile,    'factura'))    || data.factura_url    || '' : (data.factura_url    === null ? null : (data.factura_url    || ''));
-    const comparativa_url = comparativaFile ? (await _uploadPymeDoc(comparativaFile, 'comparativa')) || data.comparativa_url || '' : (data.comparativa_url === null ? null : (data.comparativa_url || ''));
+
+    const factura_url = facturaFile
+      ? (await _uploadPymeDoc(facturaFile, 'factura')) || (await fetchVisitaPymeDoc(id, 'factura_url')) || ''
+      : (clearFactura ? null : (await fetchVisitaPymeDoc(id, 'factura_url')) || '');
+    const comparativa_url = comparativaFile
+      ? (await _uploadPymeDoc(comparativaFile, 'comparativa')) || (await fetchVisitaPymeDoc(id, 'comparativa_url')) || ''
+      : (clearComparativa ? null : (await fetchVisitaPymeDoc(id, 'comparativa_url')) || '');
 
     const updateObj = {
       fecha:                        data.fecha,
@@ -955,6 +1055,8 @@ export function DataProvider({ children }) {
       visitas,
       visitasPymes,
       docsFlags,
+      visitasDocsFlags,
+      visitasPymesDocsFlags,
       rankingComerciales,
       rankingB2C,
       rankingB2B,

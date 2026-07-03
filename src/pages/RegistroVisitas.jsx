@@ -2,7 +2,8 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import { Store, Plus, CalendarDays, Users, Briefcase, Search, Trash2, Pencil, CheckCircle, X, FileSpreadsheet, Camera, Loader2, Eye } from 'lucide-react';
-import { useData } from '../context/DataContext';
+import { useData, fetchVisitaDoc } from '../context/DataContext';
+import { openPendingTab, navigateTab } from '../lib/attachmentTab';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
 import DeleteConfirmModal from '../components/DeleteConfirmModal';
@@ -33,7 +34,7 @@ const nowTime  = () => {
   return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
 };
 
-function VisitaModal({ onClose, onSave, initialData, userEquipo }) {
+function VisitaModal({ onClose, onSave, initialData, userEquipo, docsFlags }) {
   const isEdit = !!initialData;
   const sedeFija = ['Palencia', 'Valladolid'].includes(userEquipo) ? userEquipo : null;
   const [form, setForm] = useState({
@@ -51,11 +52,32 @@ function VisitaModal({ onClose, onSave, initialData, userEquipo }) {
   const [saved,   setSaved]   = useState(false);
   const [saving,  setSaving]  = useState(false);
   const [dniAnverso,        setDniAnverso]        = useState(null);
-  const [dniAnversoPreview, setDniAnversoPreview] = useState(initialData?.dni_cif_escaneado_url || '');
+  const [dniAnversoPreview, setDniAnversoPreview] = useState('');
+  const [dniAnversoExists,  setDniAnversoExists]  = useState(!!docsFlags?.tiene_anverso);
   const [dniReverso,        setDniReverso]        = useState(null);
-  const [dniReversoPreview, setDniReversoPreview] = useState(initialData?.dni_cif_reverso_url   || '');
+  const [dniReversoPreview, setDniReversoPreview] = useState('');
+  const [dniReversoExists,  setDniReversoExists]  = useState(!!docsFlags?.tiene_reverso);
   const dniAnversoRef = useRef(null);
   const dniReversoRef = useRef(null);
+
+  // Carga bajo demanda de la vista previa del DNI/CIF existente SOLO al abrir la
+  // edición de esta visita concreta (no se precarga para el resto de filas de la tabla).
+  useEffect(() => {
+    if (!isEdit) return;
+    let cancelled = false;
+    const asPreview = (url) => (url && url.toLowerCase().includes('.pdf')) ? '__pdf__' : url;
+    if (docsFlags?.tiene_anverso) {
+      fetchVisitaDoc(initialData.id, 'dni_cif_escaneado_url').then(url => {
+        if (!cancelled && url) setDniAnversoPreview(asPreview(url));
+      });
+    }
+    if (docsFlags?.tiene_reverso) {
+      fetchVisitaDoc(initialData.id, 'dni_cif_reverso_url').then(url => {
+        if (!cancelled && url) setDniReversoPreview(asPreview(url));
+      });
+    }
+    return () => { cancelled = true; };
+  }, [isEdit, initialData?.id, docsFlags?.tiene_anverso, docsFlags?.tiene_reverso]);
 
   const set = (field, value) => {
     setForm(f => ({ ...f, [field]: value }));
@@ -89,11 +111,7 @@ function VisitaModal({ onClose, onSave, initialData, userEquipo }) {
     e.preventDefault();
     if (!validate()) return;
     setSaving(true);
-    const result = await onSave(
-      form, dniAnverso, dniReverso,
-      initialData?.dni_cif_escaneado_url || '',
-      initialData?.dni_cif_reverso_url   || ''
-    );
+    const result = await onSave(form, dniAnverso, dniReverso);
     if (result?.error) { setSaving(false); return; }
     setSaved(true);
     setTimeout(() => onClose(), 800);
@@ -238,18 +256,18 @@ function VisitaModal({ onClose, onSave, initialData, userEquipo }) {
                     className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border-2 border-dashed transition-colors text-xs ${
                       dniAnverso
                         ? 'border-google-blue bg-blue-50 text-google-blue'
-                        : dniAnversoPreview
+                        : dniAnversoExists
                           ? 'border-green-400 bg-green-50 text-green-700'
                           : 'border-google-border text-google-gray hover:border-google-blue hover:bg-blue-50 hover:text-google-blue'
                     }`}>
                     <Camera size={14} />
                     <span className="truncate">
-                      {dniAnverso ? dniAnverso.name : dniAnversoPreview ? 'Cambiar' : 'Adjuntar'}
+                      {dniAnverso ? dniAnverso.name : dniAnversoExists ? 'Cambiar' : 'Adjuntar'}
                     </span>
                   </button>
-                  {(dniAnverso || dniAnversoPreview) && (
+                  {(dniAnverso || dniAnversoExists) && (
                     <button type="button" title="Eliminar archivo"
-                      onClick={() => { setDniAnverso(null); setDniAnversoPreview(''); if (dniAnversoRef.current) dniAnversoRef.current.value = ''; }}
+                      onClick={() => { setDniAnverso(null); setDniAnversoPreview(''); setDniAnversoExists(false); if (dniAnversoRef.current) dniAnversoRef.current.value = ''; }}
                       className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
                       <X size={13} />
                     </button>
@@ -259,6 +277,9 @@ function VisitaModal({ onClose, onSave, initialData, userEquipo }) {
                   <img src={dniAnversoPreview} alt="Anverso" className="w-full h-20 object-cover rounded-lg border border-google-border" />
                 )}
                 {dniAnversoPreview === '__pdf__' && <p className="text-xs text-green-700">PDF adjunto ✓</p>}
+                {dniAnversoExists && !dniAnversoPreview && !dniAnverso && (
+                  <p className="text-xs text-google-gray italic">Cargando vista previa...</p>
+                )}
               </div>
 
               {/* Reverso */}
@@ -271,18 +292,18 @@ function VisitaModal({ onClose, onSave, initialData, userEquipo }) {
                     className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg border-2 border-dashed transition-colors text-xs ${
                       dniReverso
                         ? 'border-google-blue bg-blue-50 text-google-blue'
-                        : dniReversoPreview
+                        : dniReversoExists
                           ? 'border-green-400 bg-green-50 text-green-700'
                           : 'border-google-border text-google-gray hover:border-google-blue hover:bg-blue-50 hover:text-google-blue'
                     }`}>
                     <Camera size={14} />
                     <span className="truncate">
-                      {dniReverso ? dniReverso.name : dniReversoPreview ? 'Cambiar' : 'Adjuntar'}
+                      {dniReverso ? dniReverso.name : dniReversoExists ? 'Cambiar' : 'Adjuntar'}
                     </span>
                   </button>
-                  {(dniReverso || dniReversoPreview) && (
+                  {(dniReverso || dniReversoExists) && (
                     <button type="button" title="Eliminar archivo"
-                      onClick={() => { setDniReverso(null); setDniReversoPreview(''); if (dniReversoRef.current) dniReversoRef.current.value = ''; }}
+                      onClick={() => { setDniReverso(null); setDniReversoPreview(''); setDniReversoExists(false); if (dniReversoRef.current) dniReversoRef.current.value = ''; }}
                       className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
                       <X size={13} />
                     </button>
@@ -292,6 +313,9 @@ function VisitaModal({ onClose, onSave, initialData, userEquipo }) {
                   <img src={dniReversoPreview} alt="Reverso" className="w-full h-20 object-cover rounded-lg border border-google-border" />
                 )}
                 {dniReversoPreview === '__pdf__' && <p className="text-xs text-green-700">PDF adjunto ✓</p>}
+                {dniReversoExists && !dniReversoPreview && !dniReverso && (
+                  <p className="text-xs text-google-gray italic">Cargando vista previa...</p>
+                )}
               </div>
 
             </div>
@@ -318,6 +342,34 @@ function VisitaModal({ onClose, onSave, initialData, userEquipo }) {
   );
 }
 
+// Botón lazy (fetch-on-click) para ver un adjunto de visita — mismo icono Eye
+// + spinner por fila que el resto del CRM (AltaClientes, HistoricaDB, Llamadas).
+function VisitaDocButton({ visitaId, campo, label }) {
+  const [loading, setLoading] = useState(false);
+  const handleClick = async () => {
+    if (loading) return;
+    setLoading(true);
+    // Abrir la pestaña YA, de forma síncrona, antes del await — en móvil el
+    // navegador solo permite window.open como respuesta directa al toque.
+    const tab = openPendingTab();
+    try {
+      const url = await fetchVisitaDoc(visitaId, campo);
+      navigateTab(tab, url);
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <button type="button" onClick={handleClick} disabled={loading}
+      className="p-1 rounded hover:bg-slate-100 transition-colors disabled:opacity-60"
+      title={loading ? 'Cargando...' : label}>
+      {loading
+        ? <Loader2 size={15} className="text-slate-400 animate-spin" />
+        : <Eye size={15} className="text-slate-500 hover:text-google-blue" />}
+    </button>
+  );
+}
+
 const FilterPill = ({ label, active, onClick }) => (
   <button onClick={onClick}
     className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors border whitespace-nowrap ${
@@ -330,7 +382,7 @@ const FilterPill = ({ label, active, onClick }) => (
 );
 
 export default function RegistroVisitas() {
-  const { visitas, addVisita, updateVisita, deleteVisita } = useData();
+  const { visitas, visitasDocsFlags, addVisita, updateVisita, deleteVisita } = useData();
   const { currentUser } = useAuth();
 
   const isAdmin      = currentUser?.role?.toLowerCase() === 'admin';
@@ -408,8 +460,8 @@ export default function RegistroVisitas() {
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const handleSave = async (data, dniAnverso, dniReverso, existingAnverso, existingReverso) => {
-    if (editVisita) return await updateVisita(editVisita.id, data, dniAnverso, dniReverso, existingAnverso, existingReverso);
+  const handleSave = async (data, dniAnverso, dniReverso) => {
+    if (editVisita) return await updateVisita(editVisita.id, data, dniAnverso, dniReverso);
     return await addVisita(data, dniAnverso, dniReverso);
   };
 
@@ -704,18 +756,14 @@ export default function RegistroVisitas() {
                     </td>
                     <td className="table-cell text-google-gray text-xs">{v.registrado_por}</td>
                     <td className="table-cell text-center">
-                      {[v.dni_cif_escaneado_url, v.dni_cif_reverso_url].some(Boolean) ? (
+                      {(visitasDocsFlags[v.id]?.tiene_anverso || visitasDocsFlags[v.id]?.tiene_reverso) ? (
                         <div className="flex items-center justify-center gap-1">
-                          {[
-                            { url: v.dni_cif_escaneado_url, label: 'Ver Anverso' },
-                            { url: v.dni_cif_reverso_url,   label: 'Ver Reverso' },
-                          ].filter(e => e.url).map((e, i) => (
-                            <a key={i} href={e.url} target="_blank" rel="noopener noreferrer"
-                              className="p-1 rounded hover:bg-slate-100 transition-colors"
-                              title={e.label}>
-                              <Eye size={15} className="text-slate-500 hover:text-google-blue" />
-                            </a>
-                          ))}
+                          {visitasDocsFlags[v.id]?.tiene_anverso && (
+                            <VisitaDocButton visitaId={v.id} campo="dni_cif_escaneado_url" label="Ver Anverso" />
+                          )}
+                          {visitasDocsFlags[v.id]?.tiene_reverso && (
+                            <VisitaDocButton visitaId={v.id} campo="dni_cif_reverso_url" label="Ver Reverso" />
+                          )}
                         </div>
                       ) : (
                         <span className="text-google-gray">—</span>
@@ -761,6 +809,7 @@ export default function RegistroVisitas() {
           onSave={handleSave}
           initialData={editVisita || null}
           userEquipo={currentUser?.equipo || 'Ambos'}
+          docsFlags={editVisita ? visitasDocsFlags[editVisita.id] : null}
         />
       )}
 
