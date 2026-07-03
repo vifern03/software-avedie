@@ -97,7 +97,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), geminiDevPlugin(env)],
     server: {
-      port: 5175,
+      port: 5180,
       strictPort: true,
     },
   };

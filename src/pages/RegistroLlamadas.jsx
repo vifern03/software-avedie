@@ -103,7 +103,6 @@ export const PROVINCIAS_CONFIG = [
 export const ESTADOS_GESTION = [
   { id: 'No contesta',               bg: 'bg-gray-100',   text: 'text-gray-600',   dot: 'bg-gray-400',   ring: 'ring-gray-300'   },
   { id: 'Rechaza',                   bg: 'bg-red-100',    text: 'text-red-700',    dot: 'bg-red-500',    ring: 'ring-red-300'    },
-  { id: 'Rechaza (Lista Negra)',      bg: 'bg-red-900',    text: 'text-red-100',    dot: 'bg-red-300',    ring: 'ring-red-700'    },
   { id: 'Se pasa por Tienda',        bg: 'bg-blue-100',   text: 'text-blue-700',   dot: 'bg-blue-500',   ring: 'ring-blue-300'   },
   { id: 'Aceptada - Trámite Online', bg: 'bg-green-100',  text: 'text-green-700',  dot: 'bg-green-500',  ring: 'ring-green-300'  },
   { id: 'Llamar más tarde',          bg: 'bg-yellow-100', text: 'text-yellow-700', dot: 'bg-yellow-500', ring: 'ring-yellow-300' },
@@ -217,7 +216,7 @@ function EstadoBadge({ estado, size = 'sm' }) {
   if (!cfg) return <span className="text-xs text-google-gray">—</span>;
   const px = size === 'sm' ? 'px-2 py-0.5' : 'px-3 py-1';
   return (
-    <span className="inline-flex items-center gap-1">
+    <div className="flex flex-col items-start gap-1">
       <span className={`inline-flex items-center gap-1.5 text-xs font-medium rounded-full whitespace-nowrap ${px} ${cfg.bg} ${cfg.text}`}>
         <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
         {first}
@@ -225,7 +224,7 @@ function EstadoBadge({ estado, size = 'sm' }) {
       {estadosList.length > 1 && (
         <span className="text-[10px] text-google-gray font-medium">+{estadosList.length - 1}</span>
       )}
-    </span>
+    </div>
   );
 }
 
@@ -259,7 +258,7 @@ function EstadosGrid({ estados, onToggle }) {
 function GestionModal({ contacto, bulkCount = 1, onClose, onSave }) {
   const isBulk = bulkCount > 1;
 
-  const [estados,        setEstados]        = useState(['No contesta']);
+  const [estados,        setEstados]        = useState([]);
   const [comentarios,    setComentarios]    = useState('');
   const [tiempoLlamada,  setTiempoLlamada]  = useState('');
   const [capturaFile,    setCapturaFile]    = useState(null);
