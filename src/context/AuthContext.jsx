@@ -1,7 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { initializeDB } from '../lib/initDB';
-import { hashPassword } from '../lib/crypto';
 
 const AuthContext = createContext(null);
 
@@ -16,7 +15,6 @@ const SESSION_KEY = 'crm_avedie_user';
 function dbToUser(row) {
   return {
     username:      row.username,
-    password:      row.password,
     role:          row.role,
     displayName:   row.display_name   || row.username,
     isUndeletable: row.is_undeletable || false,
@@ -54,7 +52,9 @@ export function AuthProvider({ children }) {
       }
 
       const [{ data: usersData, error: uErr }, { data: configData }] = await Promise.all([
-        supabase.from('usuarios').select('*').is('deleted_at', null),
+        supabase.from('usuarios')
+          .select('username, role, display_name, is_undeletable, security_pin, equipo')
+          .is('deleted_at', null),
         supabase.from('configuracion').select('*'),
       ]);
 
@@ -106,35 +106,22 @@ export function AuthProvider({ children }) {
 
   // ── Sesión ──────────────────────────────────────────────────────────────────
 
-  // login es async: hashea la contraseña introducida y la compara con el hash en BD.
-  // Migración silenciosa: si el usuario aún tiene contraseña en plain text,
-  // la actualiza a SHA-256 en Supabase sin interrumpir el flujo.
+  // login es async: la comparación de contraseña (hash SHA-256, con migración
+  // silenciosa desde texto plano) ocurre en el servidor vía RPC verificar_login,
+  // para que el hash de la contraseña nunca tenga que viajar al navegador.
   const login = useCallback(async (username, password) => {
-    const hashedAttempt = await hashPassword(password);
+    const { data, error } = await supabase.rpc('verificar_login', {
+      p_username: username,
+      p_password: password,
+    });
 
-    // 1. Intentar con contraseña ya hasheada (caso normal)
-    let found = users.find(u => u.username === username && u.password === hashedAttempt);
+    if (error || !data || data.length === 0) return false;
 
-    // 2. Migración: intentar con contraseña en plain text (instalaciones previas)
-    if (!found) {
-      const legacy = users.find(u => u.username === username && u.password === password);
-      if (legacy) {
-        // Actualizar a SHA-256 en Supabase y en estado local de forma silenciosa
-        await supabase.from('usuarios').update({ password: hashedAttempt }).eq('username', username);
-        setUsers(prev => prev.map(u =>
-          u.username === username ? { ...u, password: hashedAttempt } : u
-        ));
-        found = { ...legacy, password: hashedAttempt };
-      }
-    }
-
-    if (!found) return false;
-
-    const { password: _pw, ...safeUser } = found;
+    const safeUser = dbToUser(data[0]);
     setCurrentUser(safeUser);
     localStorage.setItem(SESSION_KEY, JSON.stringify(safeUser));
     return true;
-  }, [users]);
+  }, []);
 
   const logout = useCallback(() => {
     setCurrentUser(null);
