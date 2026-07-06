@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { supabase, setAppToken } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { initializeDB } from '../lib/initDB';
 
 const AuthContext = createContext(null);
@@ -84,7 +84,6 @@ export function AuthProvider({ children }) {
           const dbUser = (usersData || []).find(u => u.username === stored.username);
           if (!dbUser || dbUser.role !== stored.role) {
             localStorage.removeItem(SESSION_KEY);
-            setAppToken(null);
             setCurrentUser(null);
           } else {
             // Sincronizar la sesión con los datos frescos de BD para que
@@ -96,7 +95,6 @@ export function AuthProvider({ children }) {
           }
         } catch {
           localStorage.removeItem(SESSION_KEY);
-          setAppToken(null);
           setCurrentUser(null);
         }
       }
@@ -111,8 +109,6 @@ export function AuthProvider({ children }) {
   // login es async: la comparación de contraseña (hash SHA-256, con migración
   // silenciosa desde texto plano) ocurre en el servidor vía RPC verificar_login,
   // para que el hash de la contraseña nunca tenga que viajar al navegador.
-  // Ademas, verificar_login emite un JWT propio (claims app_role/app_sede/
-  // app_username) que las políticas RLS usan para filtrar filas por usuario real.
   const login = useCallback(async (username, password) => {
     const { data, error } = await supabase.rpc('verificar_login', {
       p_username: username,
@@ -121,7 +117,6 @@ export function AuthProvider({ children }) {
 
     if (error || !data || data.length === 0) return false;
 
-    setAppToken(data[0].token);
     const safeUser = dbToUser(data[0]);
     setCurrentUser(safeUser);
     localStorage.setItem(SESSION_KEY, JSON.stringify(safeUser));
@@ -131,7 +126,6 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     setCurrentUser(null);
     localStorage.removeItem(SESSION_KEY);
-    setAppToken(null);
   }, []);
 
   const updateProvinciaAccess = useCallback((username, provincia, enabled) => {
