@@ -1,5 +1,28 @@
 # Snapshot pre-RLS — 2026-07-06
 
+## Estado tras Fase 1 (aplicada el mismo día)
+
+RLS activada en las 10 tablas con política `fase1_permisivo` (ALL, USING true, WITH CHECK true) —
+sin cambio de comportamiento todavía. Además:
+- Función `verificar_login(p_username, p_password)` (SECURITY DEFINER) — login ahora se resuelve
+  en el servidor.
+- `usuarios.password` ya NO es legible por `anon`/`authenticated`. Nota técnica importante:
+  un `REVOKE SELECT (password)` a nivel de columna **no basta** si ya existe un `GRANT SELECT`
+  a nivel de tabla completa (el grant de tabla sigue autorizando todas las columnas). El fix real
+  fue: `REVOKE SELECT ON public.usuarios FROM anon, authenticated;` seguido de
+  `GRANT SELECT (username, role, display_name, is_undeletable, security_pin, created_at, deleted_at, equipo) ON public.usuarios TO anon, authenticated;`
+- `TRUNCATE` revocado de `anon`/`authenticated` en las 10 tablas.
+- Código desplegado en producción (Vercel, `software-avedie.vercel.app`, deploy automático desde `main`).
+- Probado end-to-end: Victor (admin), ELENAFERNANDEZ (comercial/Ninguno), ELISAGARCIA (comercial/Palencia) —
+  mismo login, mismas secciones de menú, mismas filas visibles que en la línea base pre-cambio.
+
+Rollback de esta fase si hiciera falta:
+```sql
+GRANT SELECT ON public.usuarios TO anon, authenticated; -- restaura lectura completa
+```
+(las políticas `fase1_permisivo` son no-op por diseño, no hace falta tocarlas para revertir)
+
+
 Backup lógico de esquema/permisos de las 10 tablas públicas antes de activar RLS.
 Proyecto: ndcslcsuavjdctqhkrfu (Software Avedie).
 
