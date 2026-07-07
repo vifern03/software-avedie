@@ -53,6 +53,56 @@ const TARIFAS = [
     potValle: 17.725428,
     validez: '24/06/2026 – 14/07/2026',
   },
+  {
+    id: 'solar_basic',
+    label: 'Endesa Solar Basic',
+    shortLabel: 'Solar Basic',
+    tag: 'Autoconsumo',
+    tagClass: 'bg-yellow-100 text-yellow-700',
+    // Precio "resto horas" promocionado (0,148707 €/kWh): el 15% exclusivo de horas Basic
+    // (18h-10h) no se modela porque el comparador no desglosa consumo por banda horaria.
+    sinMant: 0.148707,
+    conMant: 0.148707,
+    potPunta: 34.188,
+    potValle: 34.188,
+    isSolar: true,
+    compExcedentes: 0, // Solar Basic no retribuye excedentes vertidos a la red
+    bateriaVirtual: false,
+    cuotaBateriaMes: 0,
+    validez: '01/06/2026 – 14/07/2026',
+  },
+  {
+    id: 'solar_plus',
+    label: 'Endesa Solar Plus',
+    shortLabel: 'Solar Plus',
+    tag: 'Autoconsumo',
+    tagClass: 'bg-orange-100 text-orange-700',
+    sinMant: 0.148707,
+    conMant: 0.148707,
+    potPunta: 34.188,
+    potValle: 34.188,
+    isSolar: true,
+    compExcedentes: 0.06,
+    bateriaVirtual: false,
+    cuotaBateriaMes: 0,
+    validez: '01/06/2026 – 14/07/2026',
+  },
+  {
+    id: 'solar_bateria',
+    label: 'Endesa Solar Plus & Batería Virtual',
+    shortLabel: 'Solar + Batería Virtual',
+    tag: 'Autoconsumo',
+    tagClass: 'bg-purple-100 text-purple-700',
+    sinMant: 0.148707,
+    conMant: 0.148707,
+    potPunta: 34.188,
+    potValle: 34.188,
+    isSolar: true,
+    compExcedentes: 0.06,
+    bateriaVirtual: true,
+    cuotaBateriaMes: 2,
+    validez: '01/06/2026 – 14/07/2026',
+  },
 ];
 
 /* Impuesto Especial sobre la Electricidad — tipo vigente 5,113% */
@@ -102,6 +152,7 @@ El JSON debe tener exactamente estos campos (usa null para strings no encontrado
   "costeAlquilerContador": coste del alquiler del equipo de medida en euros (0 si no aparece),
   "costeBonoSocial": importe del bono social en euros (0 si no aparece),
   "compensacionExcedentes": importe de compensación por excedentes de autoconsumo en euros como número POSITIVO (ej: si la factura muestra "-29,72 €" de compensación de excedentes, devuelve 29.72). Devuelve 0 si no hay compensación de excedentes,
+  "kwhExcedentesVertidos": kWh totales de energía excedentaria vertida/exportada a la red (autoconsumo). Es el kWh que multiplicado por el precio de compensación da el importe de "compensacionExcedentes" (ej: en la línea "Compensación excedente 784,746 kWh x -0,060000 Eur/kWh", devuelve 784.746). También puede aparecer como "Energía vertida a la red" en el resumen de consumo. Devuelve 0 si no hay excedentes,
   "tipoIVA": tipo de IVA en formato decimal. Localiza la línea con formato "IVA X % s/YY,YY €  ZZ,ZZ €": X es el PORCENTAJE, conviértelo a decimal (21→0.21, 10→0.10, 7→0.07). ZZ,ZZ es el importe en euros — NUNCA lo uses como tipo. Ejemplo: "IVA (*) 21 % s/47,62 €  10,00 €" → devuelve 0.21 (NO 0.10). NUNCA extraigas el importe en euros como tipo de IVA.
 }
 
@@ -136,10 +187,11 @@ REGLA 7 — AUTOCONSUMO Y EXCEDENTES:
 7A — COMPENSACIÓN DE EXCEDENTES (línea negativa dentro del desglose de energía, ANTES del IEE e IVA):
 Si la factura incluye una línea "Compensación de excedentes" con importe negativo (ej: "-29,72 €"), esa compensación reduce la base imponible del IEE y del IVA:
 - Extrae ese importe como número POSITIVO en "compensacionExcedentes" (ej: 29.72)
+- Extrae el kWh vertido asociado a esa línea (el multiplicando de esa misma línea, ej. "784,746 kWh x -0,060000 Eur/kWh") como número POSITIVO en "kwhExcedentesVertidos" (ej: 784.746)
 - En "importeTotalFacturaActual" usa el TOTAL FINAL de la factura (con la compensación ya descontada, que es lo que el cliente paga)
 - En "totalKwhFacturados" usa SOLO los kWh consumidos de la red (Punta + Llano + Valle consumidos), NO los kWh de excedentes exportados
 Ejemplo Iberdrola: energía bruta 41,61€ − compensación excedentes 29,72€ → IEE sobre base neta → total final 34,90€
-→ importeTotalFacturaActual = 34.90, compensacionExcedentes = 29.72, totalKwhFacturados = 296.69 (NO 495.38)
+→ importeTotalFacturaActual = 34.90, compensacionExcedentes = 29.72, kwhExcedentesVertidos = 495.38, totalKwhFacturados = 296.69 (NO 495.38)
 
 7B — CRÉDITO POST-IVA / SOLAR WALLET / SALDO ENERGÉTICO (crédito aplicado DESPUÉS de todos los impuestos):
 Si el crédito se aplica tras el IVA (ej: "Solar Wallet: -39,68€" aparece al final, después del total con IVA):
@@ -182,6 +234,7 @@ const INIT = {
   cliente: '', cups: '',
   bonoSocial: '0', alquilerContador: '0',
   compensacionExcedentes: '0',
+  excedentesKwh: '0',
   facturaActual: '',
   dtoCupones: '0',
   asesor: '', asesorLibre: '',
@@ -199,6 +252,7 @@ export default function EstudioComparativo() {
 
   const [tarifaId, setTarifaId]             = useState('directo');
   const [mant, setMant]                     = useState(false);
+  const [compExcActiva, setCompExcActiva]   = useState(true);
   const [form, setForm]                     = useState(INIT);
   const [dragging, setDragging]             = useState(false);
   const [dropped, setDropped]               = useState(null);
@@ -224,7 +278,7 @@ export default function EstudioComparativo() {
   const alqCont  = n(form.alquilerContador);
   const factActual = n(form.facturaActual);
   const dtoCup   = n(form.dtoCupones);
-  const factBase = factActual - dtoCup; // coste real aislando cupones efímeros
+  const factBase = factActual; // el cupón/dto de fidelización nunca se aplica: se compara siempre el bruto de la factura
   const ivaRate  = n(form.iva, 0.21);
   const dto      = n(form.descuento) / 100;
 
@@ -240,10 +294,21 @@ export default function EstudioComparativo() {
   const imtEnP3  = kwhP3 * precioP1;
   const subtotEn = imtEnP1 + imtEnP2 + imtEnP3;
 
-  const excedentes = n(form.compensacionExcedentes);
+  // Tarifas solares: la compensación se calcula a partir del kWh vertido y el precio de
+  // la tarifa, tope legal (RD 244/2019): no puede superar el coste de la energía consumida.
+  // El interruptor "compExcActiva" permite desactivar por completo la compensación.
+  const excedentesKwh       = n(form.excedentesKwh);
+  const excedentesManual    = n(form.compensacionExcedentes);
+  const excedentesSolarBruto = (tarifa.isSolar && compExcActiva) ? excedentesKwh * tarifa.compExcedentes : 0;
+  const excedentes          = compExcActiva ? (tarifa.isSolar ? Math.min(excedentesSolarBruto, subtotEn) : excedentesManual) : 0;
+  // Batería Virtual: el excedente que supera el coste de la energía se acumula para
+  // futuras facturas (no reduce el total de esta factura).
+  const bateriaCredito      = (compExcActiva && tarifa.bateriaVirtual) ? Math.max(0, excedentesSolarBruto - subtotEn) : 0;
+  const cuotaBateriaImporte = tarifa.cuotaBateriaMes ? (tarifa.cuotaBateriaMes * dias / 30) : 0;
+
   const baseIE  = subtotPot + subtotEn - excedentes + bono;
   const impElec = baseIE * IE_RATE;
-  const baseIVA = subtotPot + subtotEn - excedentes + impElec + bono + alqCont;
+  const baseIVA = subtotPot + subtotEn - excedentes + impElec + bono + alqCont + cuotaBateriaImporte;
   const ivaImp  = baseIVA * ivaRate;
   const total   = baseIVA + ivaImp;
 
@@ -285,7 +350,7 @@ export default function EstudioComparativo() {
           text: EXTRACTION_PROMPT,
           history: [
             { role: 'user',  parts: [{ text: 'Actúa como experto en el mercado eléctrico español. Extrae datos estructurados de facturas eléctricas y devuelve JSON válido. Aplica correctamente las reglas de IVA españolas del sector eléctrico.' }] },
-            { role: 'model', parts: [{ text: 'Entendido. Soy experto en facturas eléctricas españolas. Leeré el tipo de IVA directamente de la factura (21% general desde RD-ley 7/2026, 10% reducido, 7% IGIC en Canarias). Para compensación de excedentes de autoconsumo (reducción pre-IEE/IVA): extraeré el importe como número positivo en "compensacionExcedentes" y usaré el total final pagado en "importeTotalFacturaActual". Para créditos post-IVA tipo Solar Wallet: usaré el subtotal bruto y pondré 0 en "compensacionExcedentes". NUNCA incluiré los kWh de excedentes exportados en "totalKwhFacturados". Devolveré exclusivamente el objeto JSON solicitado.' }] },
+            { role: 'model', parts: [{ text: 'Entendido. Soy experto en facturas eléctricas españolas. Leeré el tipo de IVA directamente de la factura (21% general desde RD-ley 7/2026, 10% reducido, 7% IGIC en Canarias). Para compensación de excedentes de autoconsumo (reducción pre-IEE/IVA): extraeré el importe como número positivo en "compensacionExcedentes", el kWh vertido asociado en "kwhExcedentesVertidos", y usaré el total final pagado en "importeTotalFacturaActual". Para créditos post-IVA tipo Solar Wallet: usaré el subtotal bruto y pondré 0 en "compensacionExcedentes" y "kwhExcedentesVertidos". NUNCA incluiré los kWh de excedentes exportados en "totalKwhFacturados". Devolveré exclusivamente el objeto JSON solicitado.' }] },
           ],
           file: { mimeType: file.type || 'application/octet-stream', data: base64 },
         }),
@@ -324,6 +389,7 @@ export default function EstudioComparativo() {
         alquilerContador:       ex.costeAlquilerContador    != null ? String(ex.costeAlquilerContador)        : f.alquilerContador,
         bonoSocial:             ex.costeBonoSocial          != null ? String(ex.costeBonoSocial)              : f.bonoSocial,
         compensacionExcedentes: ex.compensacionExcedentes   != null ? String(ex.compensacionExcedentes)       : f.compensacionExcedentes,
+        excedentesKwh:          ex.kwhExcedentesVertidos    != null ? String(ex.kwhExcedentesVertidos)        : f.excedentesKwh,
         dtoCupones:             ex.descuentoCupon           != null ? String(ex.descuentoCupon)                : f.dtoCupones,
         iva:                    ivaValue,
       }));
@@ -424,14 +490,22 @@ export default function EstudioComparativo() {
                     </div>
                     <p className="text-[11px] text-google-gray mt-0.5 font-mono">
                       {(mant ? t.conMant : t.sinMant).toFixed(6)} €/kWh · Pot. P {t.potPunta.toFixed(3)} — V {t.potValle.toFixed(3)} €/kW·año
+                      {t.isSolar && <> · Comp. excedentes {t.compExcedentes.toFixed(2)} €/kWh</>}
+                      {t.cuotaBateriaMes > 0 && <> · Batería {t.cuotaBateriaMes}€/mes</>}
                     </p>
                   </div>
                 </label>
               ))}
             </div>
-            <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
-              <MiniToggle on={mant} onToggle={() => setMant(v => !v)} />
-              <span className="text-xs text-google-gray">Mantenimiento <span className="text-google-blue font-semibold">(−3%)</span></span>
+            <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+              <div className="flex items-center gap-2">
+                <MiniToggle on={mant} onToggle={() => setMant(v => !v)} />
+                <span className="text-xs text-google-gray">Mantenimiento <span className="text-google-blue font-semibold">(−3%)</span></span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-google-gray">Comp. excedentes</span>
+                <MiniToggle on={compExcActiva} onToggle={() => setCompExcActiva(v => !v)} />
+              </div>
             </div>
           </div>
 
@@ -562,13 +636,52 @@ export default function EstudioComparativo() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-medium text-google-gray mb-1 block">Comp. excedentes (€)</label>
-                  <input type="text" inputMode="decimal" value={form.compensacionExcedentes} onChange={set('compensacionExcedentes')} placeholder="0.00" className="input-field text-sm" />
+                  <label className="text-[10px] font-medium text-google-gray mb-1 block">
+                    Excedentes vertidos a la red (kWh)
+                    {tarifa.isSolar && <span className="ml-1 text-[9px] text-google-blue font-normal italic">Autoconsumo</span>}
+                  </label>
+                  <input
+                    type="text" inputMode="decimal"
+                    value={form.excedentesKwh}
+                    onChange={set('excedentesKwh')}
+                    disabled={!tarifa.isSolar || !compExcActiva}
+                    placeholder="kWh"
+                    className={`input-field text-sm ${(!tarifa.isSolar || !compExcActiva) ? 'opacity-50 cursor-not-allowed bg-gray-50' : ''}`}
+                  />
                 </div>
                 <div>
-                  <label className="text-[10px] font-medium text-google-gray mb-1 block">Factura actual — bruta (€) <span className="text-red-400">*</span></label>
-                  <input type="text" inputMode="decimal" value={form.facturaActual} onChange={set('facturaActual')} placeholder="0.00" className="input-field text-sm" />
+                  <label className="text-[10px] font-medium text-google-gray mb-1 block">Comp. excedentes (€)</label>
+                  {tarifa.isSolar ? (
+                    <div className={`input-field text-sm flex items-center justify-between gap-2 ${compExcActiva ? 'bg-gray-50' : 'bg-gray-100 opacity-50'}`}>
+                      <span className="font-semibold text-green-700 tabular-nums">{eur(excedentes)}</span>
+                      {compExcActiva && <span className="text-[9px] text-google-gray whitespace-nowrap">{excedentesKwh}×{tarifa.compExcedentes.toFixed(2)}</span>}
+                    </div>
+                  ) : (
+                    <input
+                      type="text" inputMode="decimal"
+                      value={form.compensacionExcedentes}
+                      onChange={set('compensacionExcedentes')}
+                      disabled={!compExcActiva}
+                      placeholder="0.00"
+                      className={`input-field text-sm ${!compExcActiva ? 'opacity-50 cursor-not-allowed bg-gray-50' : ''}`}
+                    />
+                  )}
                 </div>
+              </div>
+              {!compExcActiva && (
+                <p className="text-[10px] text-gray-400 leading-snug">Activa "Comp. excedentes" junto a Mantenimiento (arriba, sección 1) para habilitar estos campos.</p>
+              )}
+              {tarifa.isSolar && tarifa.compExcedentes === 0 && excedentesKwh > 0 && compExcActiva && (
+                <p className="text-[10px] text-amber-600 leading-snug">Solar Basic no retribuye excedentes vertidos a la red (0 €/kWh).</p>
+              )}
+              {tarifa.bateriaVirtual && bateriaCredito > 0 && (
+                <p className="text-[10px] text-purple-600 leading-snug">
+                  Excedente no absorbido este período: {eur(bateriaCredito)} se acumulan en la Batería Virtual para próximas facturas.
+                </p>
+              )}
+              <div>
+                <label className="text-[10px] font-medium text-google-gray mb-1 block">Factura actual — bruta (€) <span className="text-red-400">*</span></label>
+                <input type="text" inputMode="decimal" value={form.facturaActual} onChange={set('facturaActual')} placeholder="0.00" className="input-field text-sm" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -588,13 +701,13 @@ export default function EstudioComparativo() {
                 <div className="flex items-end">
                   {dtoCup > 0 && factActual > 0 ? (
                     <div className="w-full bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
-                      <p className="text-[10px] text-orange-600 font-medium leading-none mb-0.5">Base para comparar</p>
-                      <p className="text-sm font-bold text-orange-700 tabular-nums">{eur(factBase)}</p>
-                      <p className="text-[9px] text-orange-400 mt-0.5">{eur(factActual)} − {eur(dtoCup)}</p>
+                      <p className="text-[10px] text-orange-600 font-medium leading-none mb-0.5">Cupón no aplicado a la comparativa</p>
+                      <p className="text-sm font-bold text-orange-700 tabular-nums">−{eur(dtoCup)}</p>
+                      <p className="text-[9px] text-orange-400 mt-0.5">Se compara siempre con el bruto: {eur(factActual)}</p>
                     </div>
                   ) : (
                     <div className="w-full text-[10px] text-google-gray leading-snug px-1">
-                      Introduce el importe de descuentos de fidelización post-IVA que no forman parte del coste energético
+                      Este descuento es solo informativo: la comparativa siempre usa el importe bruto de la factura
                     </div>
                   )}
                 </div>
@@ -732,8 +845,17 @@ export default function EstudioComparativo() {
                   </div>
                   {excedentes > 0 && (
                     <div className="flex justify-between items-baseline text-sm mt-1.5">
-                      <span className="text-[12px] text-green-700">Compensación excedentes (autoconsumo)</span>
+                      <span className="text-[12px] text-green-700">
+                        Compensación excedentes (autoconsumo)
+                        {tarifa.isSolar && <span className="text-google-gray ml-1">({excedentesKwh} kWh × {tarifa.compExcedentes.toFixed(2)} €/kWh)</span>}
+                      </span>
                       <span className="font-semibold text-green-700 tabular-nums ml-4">−{eur(excedentes)}</span>
+                    </div>
+                  )}
+                  {tarifa.bateriaVirtual && bateriaCredito > 0 && (
+                    <div className="flex justify-between items-baseline text-sm mt-1">
+                      <span className="text-[11px] text-purple-600">Saldo acumulado en Batería Virtual (próximas facturas)</span>
+                      <span className="font-semibold text-purple-600 tabular-nums ml-4">{eur(bateriaCredito)}</span>
                     </div>
                   )}
                 </div>
@@ -757,6 +879,12 @@ export default function EstudioComparativo() {
                   <div className="flex justify-between items-baseline text-sm">
                     <span className="text-google-gray">Alquiler de Contador</span>
                     <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(alqCont)}</span>
+                  </div>
+                )}
+                {cuotaBateriaImporte > 0 && (
+                  <div className="flex justify-between items-baseline text-sm">
+                    <span className="text-google-gray">Cuota Batería Virtual ({tarifa.cuotaBateriaMes}€/mes)</span>
+                    <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(cuotaBateriaImporte)}</span>
                   </div>
                 )}
                 <div className="flex justify-between items-baseline text-sm">
@@ -783,7 +911,7 @@ export default function EstudioComparativo() {
                       <p className="text-xl font-bold text-google-dark tabular-nums">{eur(factBase)}</p>
                       {dtoCup > 0 && (
                         <p className="text-[9px] text-orange-500 mt-0.5 leading-tight">
-                          Bruta {eur(factActual)} · dto. cupón −{eur(dtoCup)}
+                          Bruto sin cupón (−{eur(dtoCup)} no aplicado)
                         </p>
                       )}
                     </div>
