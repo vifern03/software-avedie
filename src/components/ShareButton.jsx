@@ -30,6 +30,13 @@ export default function ShareButton({ cliente, onUpdate }) {
   const sharedWith = cliente.compartido_con || [];
   const isShared   = sharedWith.length > 0;
 
+  // Solo quien dio de alta el contrato (el "Tramitado por" original) puede
+  // compartirlo. Un receptor de un contrato compartido no puede re-compartirlo
+  // con otra persona. Admin/manager no tienen esta restricción.
+  const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+  const isOwner = isPrivileged
+    || (cliente.comercial || '').toLowerCase() === (currentUser?.username || '').toLowerCase();
+
   const handleOpen = () => {
     setSelection([...sharedWith]);
     setSaved(false);
@@ -59,6 +66,17 @@ export default function ShareButton({ cliente, onUpdate }) {
   const tooltipLabel = isShared
     ? `Compartido con: ${sharedWith.join(', ')}`
     : 'Compartir con otro trabajador';
+
+  if (!isOwner) {
+    return (
+      <span
+        className="p-1 rounded text-gray-300 cursor-not-allowed inline-flex"
+        title={isShared ? `Compartido con: ${sharedWith.join(', ')} (solo quien lo dio de alta puede compartirlo)` : 'Solo quien dio de alta este contrato puede compartirlo'}
+      >
+        <Share2 size={15} />
+      </span>
+    );
+  }
 
   return (
     <div className="relative" ref={wrapRef}>

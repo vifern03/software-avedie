@@ -177,14 +177,14 @@ async function verifyAsElisa(page, nombre) {
   if (!visible) return false;
 
   const claseFila = await fila.getAttribute('class');
-  const esGris = /bg-gray-100/.test(claseFila || '');
-  log(`  Fila con bg-gray-100: ${esGris ? 'SI ✓' : 'NO ✗'} (class="${claseFila}")`);
+  const esVerde = /bg-green-50/.test(claseFila || '');
+  log(`  Fila con bg-green-50: ${esVerde ? 'SI ✓' : 'NO ✗'} (class="${claseFila}")`);
 
   const primeraCelda = await fila.locator('td').first().innerText();
   const compartidoPorOk = primeraCelda.trim() === PEDRO.display;
   log(`  Columna "Compartido por" = "${primeraCelda.trim()}" (esperado "${PEDRO.display}"): ${compartidoPorOk ? 'SI ✓' : 'NO ✗'}`);
 
-  return visible && esGris && compartidoPorOk;
+  return visible && esVerde && compartidoPorOk;
 }
 
 // ═══════════════════════════════════════════════════════════════

@@ -107,13 +107,13 @@ async function testB2B(page) {
   log(`  Contrato B2B visible para Elisa: ${visible ? 'SI ✓' : 'NO ✗'}`);
   if (!visible) return false;
   const claseFila = await filaElisa.getAttribute('class');
-  const esGris = /bg-gray-100/.test(claseFila || '');
-  log(`  Fila B2B con bg-gray-100: ${esGris ? 'SI ✓' : 'NO ✗'}`);
+  const esVerde = /bg-green-50/.test(claseFila || '');
+  log(`  Fila B2B con bg-green-50: ${esVerde ? 'SI ✓' : 'NO ✗'}`);
   const primeraCelda = (await filaElisa.locator('td').first().innerText()).trim();
   const colOk = primeraCelda === PEDRO.display;
   log(`  Columna "Compartido por" B2B = "${primeraCelda}": ${colOk ? 'SI ✓' : 'NO ✗'}`);
 
-  return soloElisa && visible && esGris && colOk;
+  return soloElisa && visible && esVerde && colOk;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -182,16 +182,16 @@ async function testNewClientModal(page) {
   const filaElisa = page.locator('tr').filter({ hasText: nombreCliente }).first();
   const visible = await filaElisa.count() > 0;
   log(`  Contrato visible para Elisa: ${visible ? 'SI ✓' : 'NO ✗'}`);
-  let esGris = false, colOk = false;
+  let esVerde = false, colOk = false;
   if (visible) {
     const claseFila = await filaElisa.getAttribute('class');
-    esGris = /bg-gray-100/.test(claseFila || '');
+    esVerde = /bg-green-50/.test(claseFila || '');
     const primeraCelda = (await filaElisa.locator('td').first().innerText()).trim();
     colOk = primeraCelda === PEDRO.display;
-    log(`  Fila gris: ${esGris ? 'SI ✓' : 'NO ✗'} · Columna "Compartido por": "${primeraCelda}" ${colOk ? '✓' : '✗'}`);
+    log(`  Fila gris: ${esVerde ? 'SI ✓' : 'NO ✗'} · Columna "Compartido por": "${primeraCelda}" ${colOk ? '✓' : '✗'}`);
   }
 
-  return soloElisa && bdOk && visible && esGris && colOk;
+  return soloElisa && bdOk && visible && esVerde && colOk;
 }
 
 async function cleanup() {
