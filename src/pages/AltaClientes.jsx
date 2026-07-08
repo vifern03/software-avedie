@@ -627,7 +627,7 @@ export default function AltaClientes({ tipo }) {
                 paginated.map((c) => (
                   <tr key={c.id} className={`transition-colors ${
                     c.shared_by && c.shared_by !== currentUser?.username
-                      ? 'bg-gray-100 hover:bg-gray-200'
+                      ? 'bg-gray-50 hover:bg-gray-100'
                       : 'hover:bg-google-bg'
                   }`}>
                     <td className="table-cell text-xs whitespace-nowrap">
