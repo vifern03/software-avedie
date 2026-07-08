@@ -229,10 +229,10 @@ export function DataProvider({ children }) {
         visitasPymesQuery = visitasPymesQuery.eq('registrado_por', currentUser.username);
       }
 
-      // ── compartido_con (query separada, falla silenciosamente si no existe la columna)
+      // ── compartido_con / shared_by (query separada, falla silenciosamente si no existen las columnas)
       const compartidoQuery = supabase
         .from('clientes')
-        .select('id,compartido_con')
+        .select('id,compartido_con,shared_by')
         .is('deleted_at', null);
 
       // ── Contratos compartidos con el usuario (solo para no-admin/manager)
@@ -336,28 +336,31 @@ export function DataProvider({ children }) {
         return;
       }
 
-      // Construir mapa de compartido_con (vacío si la columna no existe aún)
+      // Construir mapa de compartido_con/shared_by (vacío si las columnas no existen aún)
       const compartidoMap = {};
       if (!compartidoErr && compartidoData) {
-        compartidoData.forEach(r => { compartidoMap[r.id] = r.compartido_con || []; });
+        compartidoData.forEach(r => {
+          compartidoMap[r.id] = { compartido_con: r.compartido_con || [], shared_by: r.shared_by || null };
+        });
       }
+      const compartidoFor = (id) => compartidoMap[id] || { compartido_con: [], shared_by: null };
 
-      // Fusionar compartido_con en los registros principales y normalizar vendido_por
+      // Fusionar compartido_con/shared_by en los registros principales y normalizar vendido_por
       const mainClientes = (clientesData || []).map(c => normalizeCliente({
         ...c,
-        compartido_con: compartidoMap[c.id] || [],
+        ...compartidoFor(c.id),
       }));
 
       // Añadir contratos compartidos y contratos vendidos/prescritos que no estén ya en mainClientes
       const ownIds = new Set(mainClientes.map(c => c.id));
       const extraShared = (sharedRaw || [])
         .filter(c => !ownIds.has(c.id))
-        .map(c => normalizeCliente({ ...c, compartido_con: compartidoMap[c.id] || [] }));
+        .map(c => normalizeCliente({ ...c, ...compartidoFor(c.id) }));
 
       const sharedIds = new Set([...ownIds, ...extraShared.map(c => c.id)]);
       const extraVendedor = (vendedorRaw || [])
         .filter(c => !sharedIds.has(c.id))
-        .map(c => normalizeCliente({ ...c, compartido_con: compartidoMap[c.id] || [] }));
+        .map(c => normalizeCliente({ ...c, ...compartidoFor(c.id) }));
 
       const newClientes     = [...mainClientes, ...extraShared, ...extraVendedor];
       const newActividades  = actividadesData  || [];
@@ -701,6 +704,7 @@ export function DataProvider({ children }) {
       fecha_firma:       data.fecha_firma       || null,
       fecha_formalizada: data.fecha_formalizada || null,
       compartido_con:    data.compartido_con    || [],
+      shared_by:         (data.compartido_con || []).length > 0 ? (currentUser?.username || null) : null,
       ...(data.dni_escaneado    ? { dni_escaneado:    data.dni_escaneado    } : {}),
       ...(data.ultima_factura   ? { ultima_factura:   data.ultima_factura   } : {}),
       ...(data.cif_autonomo_url ? { cif_autonomo_url: data.cif_autonomo_url } : {}),
@@ -840,11 +844,13 @@ export function DataProvider({ children }) {
     addActivity('Actualización', desc, currentUser?.username);
   };
 
-  // Actualiza la lista de trabajadores con acceso a un contrato específico
-  const updateCompartidoCon = async (id, compartidoCon) => {
+  // Actualiza la lista de trabajadores con acceso a un contrato específico.
+  // shared_by registra quién compartió (se limpia si la lista queda vacía).
+  const updateCompartidoCon = async (id, compartidoCon, sharedByUsername) => {
     const arr = Array.isArray(compartidoCon) ? compartidoCon : [];
-    setClientes(prev => prev.map(c => c.id === id ? { ...c, compartido_con: arr } : c));
-    const { error } = await supabase.from('clientes').update({ compartido_con: arr }).eq('id', id);
+    const shared_by = arr.length > 0 ? (sharedByUsername || currentUser?.username || null) : null;
+    setClientes(prev => prev.map(c => c.id === id ? { ...c, compartido_con: arr, shared_by } : c));
+    const { error } = await supabase.from('clientes').update({ compartido_con: arr, shared_by }).eq('id', id);
     if (error) { console.error('updateCompartidoCon:', error); return { error }; }
     return { error: null };
   };

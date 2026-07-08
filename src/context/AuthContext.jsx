@@ -35,6 +35,7 @@ export function AuthProvider({ children }) {
   const [pin,             setPin]             = useState('1234');
   const [userPermissions, setUserPermissions] = useState({});
   const [callesPermisos,  setCallesPermisos]  = useState({});
+  const [sharePermissions, setSharePermissions] = useState({}); // { comercial_username: [allowed_username, ...] }
   const [isLoading,       setIsLoading]       = useState(true);
   const [dbError,         setDbError]         = useState(null);
 
@@ -51,11 +52,12 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      const [{ data: usersData, error: uErr }, { data: configData }] = await Promise.all([
+      const [{ data: usersData, error: uErr }, { data: configData }, { data: sharePermsData }] = await Promise.all([
         supabase.from('usuarios')
           .select('username, role, display_name, is_undeletable, security_pin, equipo')
           .is('deleted_at', null),
         supabase.from('configuracion').select('*'),
+        supabase.from('share_permissions').select('comercial_username, allowed_username'),
       ]);
 
       if (uErr) {
@@ -72,6 +74,16 @@ export function AuthProvider({ children }) {
         if (row.clave === 'user_permissions')  setUserPermissions(row.valor || {});
         if (row.clave === 'telemarketing_calles') setCallesPermisos(row.valor || {});
       }
+
+      // share_permissions vive en su propia tabla (no en `configuracion`) para
+      // poder tener FKs reales a usuarios.username. Falla silenciosamente si la
+      // tabla aún no existe (migración no ejecutada todavía).
+      const sharePermsMap = {};
+      (sharePermsData || []).forEach(({ comercial_username, allowed_username }) => {
+        if (!sharePermsMap[comercial_username]) sharePermsMap[comercial_username] = [];
+        sharePermsMap[comercial_username].push(allowed_username);
+      });
+      setSharePermissions(sharePermsMap);
 
       // ── C-2: Verificación de integridad de sesión ─────────────────────────
       // Compara el rol almacenado en localStorage con el registro real de Supabase.
@@ -201,6 +213,28 @@ export function AuthProvider({ children }) {
     });
   }, []);
 
+  // ── Permisos de compartición de contratos ───────────────────────────────────
+  // Reemplaza el conjunto completo de destinatarios permitidos para un comercial
+  // (borra las filas existentes y vuelve a insertar las seleccionadas).
+  const updateSharePermissions = useCallback(async (comercialUsername, allowedUsernames) => {
+    const allowed = [...new Set(allowedUsernames)].filter(u => u !== comercialUsername);
+    setSharePermissions(prev => ({ ...prev, [comercialUsername]: allowed }));
+
+    const { error: delError } = await supabase
+      .from('share_permissions')
+      .delete()
+      .eq('comercial_username', comercialUsername);
+    if (delError) { console.error('updateSharePermissions (delete):', delError); return { error: delError }; }
+
+    if (allowed.length > 0) {
+      const { error: insError } = await supabase
+        .from('share_permissions')
+        .insert(allowed.map(allowed_username => ({ comercial_username: comercialUsername, allowed_username })));
+      if (insError) { console.error('updateSharePermissions (insert):', insError); return { error: insError }; }
+    }
+    return { error: null };
+  }, []);
+
   // ── Gestión de usuarios ─────────────────────────────────────────────────────
 
   const addUser = useCallback((username, hashedPassword, role, displayName) => {
@@ -290,6 +324,7 @@ export function AuthProvider({ children }) {
       addUser, editUser, deleteUser, changePin,
       updateUserPermission, removeUserPermission, resetUserPermissions,
       updateUserEquipo, updateProvinciaAccess, hasProvinciaAccess,
+      sharePermissions, updateSharePermissions,
     }}>
       {children}
     </AuthContext.Provider>

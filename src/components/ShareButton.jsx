@@ -1,21 +1,32 @@
 import { useState, useRef, useEffect } from 'react';
 import { Share2, Check, Users, X } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
-export const SHARE_USERS = [
-  'CARMEN BALLESTEROS',
-  'OSCAR ZAMARRO',
-  'ELISA GARCIA',
-  'ISABEL ERICE',
-  'IRENE BONILLO',
-];
+// Calcula los display names de los usuarios con los que `user` puede compartir:
+// - admin/manager: cualquier otro usuario (sin restricción)
+// - comercial: solo los autorizados explícitamente por el admin en share_permissions
+export function getShareTargets(user, users, sharePermissions) {
+  if (!user) return [];
+  const isPrivileged = user.role === 'admin' || user.role === 'manager';
+  const allowedUsernames = isPrivileged
+    ? users.filter(u => u.username !== user.username).map(u => u.username)
+    : (sharePermissions?.[user.username] || []);
+
+  return allowedUsernames
+    .map(uname => users.find(u => u.username === uname))
+    .filter(Boolean)
+    .map(u => u.displayName || u.username);
+}
 
 export default function ShareButton({ cliente, onUpdate }) {
+  const { currentUser, users, sharePermissions } = useAuth();
   const [open,      setOpen]      = useState(false);
   const [saving,    setSaving]    = useState(false);
   const [saved,     setSaved]     = useState(false);
   const [selection, setSelection] = useState([]);
   const wrapRef = useRef(null);
 
+  const shareTargets = getShareTargets(currentUser, users, sharePermissions);
   const sharedWith = cliente.compartido_con || [];
   const isShared   = sharedWith.length > 0;
 
@@ -39,7 +50,7 @@ export default function ShareButton({ cliente, onUpdate }) {
 
   const handleSave = async () => {
     setSaving(true);
-    await onUpdate(cliente.id, selection);
+    await onUpdate(cliente.id, selection, currentUser?.username);
     setSaving(false);
     setSaved(true);
     setTimeout(() => { setOpen(false); setSaved(false); }, 700);
@@ -81,7 +92,12 @@ export default function ShareButton({ cliente, onUpdate }) {
           {/* User list */}
           <div className="px-3 py-2.5 space-y-2">
             <p className="text-xs text-google-gray">Trabajadores con acceso a este contrato:</p>
-            {SHARE_USERS.map(u => (
+            {shareTargets.length === 0 && (
+              <p className="text-xs text-google-gray italic">
+                No tienes autorización para compartir con nadie. Pídele al administrador que te asigne destinatarios en Gestión de Usuarios.
+              </p>
+            )}
+            {shareTargets.map(u => (
               <button
                 key={u}
                 type="button"

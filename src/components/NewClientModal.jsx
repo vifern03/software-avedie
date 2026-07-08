@@ -3,7 +3,7 @@ import { X, User, Building2, Phone, Zap, FileText, CheckCircle, AlertCircle, Mai
 import DateInput from './DateInput';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
-import { SHARE_USERS } from './ShareButton';
+import { getShareTargets } from './ShareButton';
 
 const tarifas  = ['2.0TD', '3.0TD', '3.1A', '6.1TD', '6.1A', '6.2', '6.3', '6.4', 'RL.1', 'RL.2', 'RL.3'];
 const estados  = ['Pendiente Firma', 'Tramitado', 'Formalizado'];
@@ -21,7 +21,8 @@ const subtipos = [
 const todayStr = () => new Date().toISOString().split('T')[0];
 
 export default function NewClientModal({ tipo, onClose, onSave, initialData, existingCups, editId }) {
-  const { currentUser, users } = useAuth();
+  const { currentUser, users, sharePermissions } = useAuth();
+  const shareTargets = getShareTargets(currentUser, users, sharePermissions);
   const { prescriptores: prescriptoresDB } = useData();
   const prescriptoresList = prescriptoresDB.map(p => p.nombre);
   const isB2B       = tipo === 'B2B' || tipo === 'CUR_B2B';
@@ -78,7 +79,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
 
   // ── Compartir contrato ─────────────────────────────────────────────────────
   const [quiereCompartir, setQuiereCompartir] = useState(false);
-  const [compartidoCon,   setCompartidoCon]   = useState(['CARMEN BALLESTEROS']);
+  const [compartidoCon,   setCompartidoCon]   = useState([]);
 
   const toggleCompartido = (u) =>
     setCompartidoCon(prev => prev.includes(u) ? prev.filter(x => x !== u) : [...prev, u]);
@@ -318,7 +319,12 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
               {quiereCompartir && (
                 <div className="pt-1 space-y-1.5">
                   <p className="text-xs text-google-gray">Selecciona los trabajadores con acceso:</p>
-                  {SHARE_USERS.map(u => (
+                  {shareTargets.length === 0 && (
+                    <p className="text-xs text-google-gray italic">
+                      No tienes autorización para compartir con nadie. Pídele al administrador que te asigne destinatarios en Gestión de Usuarios.
+                    </p>
+                  )}
+                  {shareTargets.map(u => (
                     <button
                       key={u}
                       type="button"

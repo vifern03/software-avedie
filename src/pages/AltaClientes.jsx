@@ -255,6 +255,12 @@ export default function AltaClientes({ tipo }) {
     return [...new Set([...fromUsers, ...fromData])].sort();
   }, [users, clientes]);
 
+  // Lookup de username -> display name para la columna "Compartido por"
+  const usersByUsername = useMemo(
+    () => Object.fromEntries(users.map(u => [u.username, u.displayName || u.username])),
+    [users]
+  );
+
   useEffect(() => { setCurrentPage(1); }, [search, searchNombre, searchVendidoPor, filterPrescriptor, filterComercial, dateFilter, timeFilter, filterTipo, filterEstado]);
 
   const handlePageChange = (page) => {
@@ -367,7 +373,7 @@ export default function AltaClientes({ tipo }) {
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const TOTAL_COLS = isB2B ? 23 : 22;
+  const TOTAL_COLS = isB2B ? 24 : 23;
   const [consumoTarget, setConsumoTarget] = useState(null);
 
   const subtipo = (c) => c.subtipo === 'Otro' ? (c.subtipo_otro || 'Otro') : (c.subtipo || '—');
@@ -582,6 +588,7 @@ export default function AltaClientes({ tipo }) {
           <table className="w-full text-sm min-w-max">
             <thead>
               <tr>
+                <th className="table-header">Compartido por</th>
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('nombre')}><div className="flex items-center gap-1">Cliente <SortIcon field="nombre" /></div></th>
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('tipo')}><div className="flex items-center gap-1">Tipo <SortIcon field="tipo" /></div></th>
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('linea_negocio')}><div className="flex items-center gap-1">Línea de Negocio <SortIcon field="linea_negocio" /></div></th>
@@ -618,7 +625,14 @@ export default function AltaClientes({ tipo }) {
                 </tr>
               ) : (
                 paginated.map((c) => (
-                  <tr key={c.id} className="hover:bg-google-bg transition-colors">
+                  <tr key={c.id} className={`transition-colors ${
+                    c.shared_by && c.shared_by !== currentUser?.username
+                      ? 'bg-gray-100 hover:bg-gray-200'
+                      : 'hover:bg-google-bg'
+                  }`}>
+                    <td className="table-cell text-xs whitespace-nowrap">
+                      {c.shared_by ? (usersByUsername[c.shared_by] || c.shared_by) : '—'}
+                    </td>
                     <td className="table-cell font-medium text-google-dark whitespace-nowrap">{c.nombre}</td>
                     <td className="table-cell">
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Shield, Briefcase, UserCheck, Users, CheckCircle,
-  Pencil, Trash2, Plus, X, Save, Lock, RotateCcw, User, ShieldAlert, KeyRound,
+  Pencil, Trash2, Plus, X, Save, Lock, RotateCcw, User, ShieldAlert, KeyRound, Share2, Check,
 } from 'lucide-react';
 import { useAuth, DEFAULT_PERMISSIONS } from '../context/AuthContext';
 import { hashPassword } from '../lib/crypto';
@@ -321,6 +321,83 @@ function SecurityPinModal({ expectedPin, onSuccess, onClose }) {
   );
 }
 
+// Panel "Permisos de compartición": el admin elige con qué usuarios puede
+// este comercial compartir sus contratos (ShareButton / alta con "Compartir").
+function SharePermissionsModal({ comercial, allUsers, currentAllowed, onSave, onClose }) {
+  const [selection, setSelection] = useState([...currentAllowed]);
+  const [saved, setSaved] = useState(false);
+
+  const candidates = allUsers.filter(u => u.username !== comercial.username);
+
+  const toggle = (username) =>
+    setSelection(prev => prev.includes(username) ? prev.filter(u => u !== username) : [...prev, username]);
+
+  const handleSave = async () => {
+    await onSave(selection);
+    setSaved(true);
+    setTimeout(onClose, 700);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+      <div className="bg-white rounded-2xl shadow-google w-full max-w-md mx-4 overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-google-border bg-green-50">
+          <div className="flex items-center gap-2">
+            <Share2 size={16} className="text-green-600" />
+            <div>
+              <h2 className="text-base font-semibold text-google-dark">Permisos de compartición</h2>
+              <p className="text-xs text-google-gray">
+                {comercial.displayName || comercial.username} solo podrá compartir sus contratos con estos usuarios
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-google-gray hover:text-google-dark transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-2 max-h-[50vh] overflow-y-auto">
+          {candidates.length === 0 && (
+            <p className="text-sm text-google-gray">No hay otros usuarios en el sistema.</p>
+          )}
+          {candidates.map(u => (
+            <button
+              key={u.username}
+              type="button"
+              onClick={() => toggle(u.username)}
+              className="flex items-center gap-2.5 w-full text-left group px-2 py-1.5 rounded-lg hover:bg-google-bg transition-colors"
+            >
+              <div className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
+                selection.includes(u.username)
+                  ? 'bg-google-blue border-google-blue'
+                  : 'border-gray-300 bg-white group-hover:border-google-blue'
+              }`}>
+                {selection.includes(u.username) && <Check size={10} className="text-white" strokeWidth={3} />}
+              </div>
+              <span className="text-sm text-google-dark">{u.displayName || u.username}</span>
+              <span className="text-xs text-google-gray">@{u.username}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="px-6 pb-5 flex justify-end gap-3">
+          <button onClick={onClose} className="btn-secondary text-sm px-4 py-2">Cancelar</button>
+          <button
+            onClick={handleSave}
+            disabled={saved}
+            className={`flex items-center gap-2 text-white text-sm px-4 py-2 rounded-lg transition-colors font-medium disabled:opacity-60 ${
+              saved ? 'bg-green-500' : 'bg-google-blue hover:bg-blue-600'
+            }`}
+          >
+            <Save size={14} />
+            {saved ? 'Guardado' : 'Guardar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const FLASH_CONFIG = {
   saved:   { text: 'Cambios guardados',   cls: 'text-green-700 bg-green-50 border-green-200' },
   deleted: { text: 'Usuario eliminado',   cls: 'text-red-700   bg-red-50   border-red-200'   },
@@ -332,7 +409,7 @@ export default function GestionUsuarios() {
     users, permissions, updatePermissions,
     addUser, editUser, deleteUser, pin, changePin,
     userPermissions, updateUserPermission, removeUserPermission, resetUserPermissions,
-    updateUserEquipo,
+    updateUserEquipo, sharePermissions, updateSharePermissions,
   } = useAuth();
 
   const [flash, setFlash]                           = useState(null);
@@ -342,6 +419,7 @@ export default function GestionUsuarios() {
   const [userFormState, setUserFormState]       = useState(null);
   const [dupError, setDupError]                 = useState(false);
   const [showChangePinModal, setShowChangePinModal] = useState(false);
+  const [sharePermsTarget, setSharePermsTarget]     = useState(null); // usuario comercial editado
 
   const showFlash = (type) => {
     setFlash(type);
@@ -467,6 +545,16 @@ export default function GestionUsuarios() {
           currentPin={pin}
           onSave={(newPin) => changePin(newPin)}
           onClose={() => setShowChangePinModal(false)}
+        />
+      )}
+
+      {sharePermsTarget && (
+        <SharePermissionsModal
+          comercial={sharePermsTarget}
+          allUsers={users}
+          currentAllowed={sharePermissions[sharePermsTarget.username] || []}
+          onSave={(allowed) => updateSharePermissions(sharePermsTarget.username, allowed)}
+          onClose={() => setSharePermsTarget(null)}
         />
       )}
 
@@ -624,6 +712,21 @@ export default function GestionUsuarios() {
                         <option value="Ninguno">Ninguno</option>
                       </select>
                     </div>
+                    {user.role === 'comercial' && (
+                      <button
+                        onClick={() => setSharePermsTarget(user)}
+                        className="flex items-center gap-1.5 text-xs text-green-700 hover:text-green-900 hover:bg-green-50 px-2.5 py-1.5 rounded-lg transition-colors border border-green-200 flex-shrink-0"
+                        title="Elegir con quién puede compartir sus contratos"
+                      >
+                        <Share2 size={12} />
+                        Compartición
+                        {(sharePermissions[user.username]?.length > 0) && (
+                          <span className="bg-green-600 text-white text-[10px] font-semibold rounded-full w-4 h-4 flex items-center justify-center">
+                            {sharePermissions[user.username].length}
+                          </span>
+                        )}
+                      </button>
+                    )}
                     {hasOverrides && (
                       <button
                         onClick={() => requestAction({ type: 'resetUserPerms', username: user.username })}
