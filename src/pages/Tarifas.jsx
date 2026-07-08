@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Zap, Flame, Factory, Info, X, AlertTriangle, Calculator } from 'lucide-react';
+import { Zap, Flame, Factory, Info, X, AlertTriangle, Calculator, Sun, TrendingUp } from 'lucide-react';
 import EstudioComparativo from './EstudioComparativo';
 import EstudioComparativoGas from './EstudioComparativoGas';
 import { GAS } from '../data/tarifasGas';
@@ -61,6 +61,71 @@ const LUZ = [
   },
 ];
 
+/* ── Datos Autoconsumo Solar extraídos de PDFs Endesa (01/06/2026 – 14/07/2026) ─ */
+/* Fuente: Oferta Endesa Solar Basic.pdf / Solar Plus.pdf / Solar Plus & Batería Virtual.pdf */
+
+const LUZ_SOLAR = [
+  {
+    id: 'solar-basic',
+    title: 'Solar Basic',
+    badge: 'Solar',
+    badgeColor: 'bg-yellow-100 text-yellow-700',
+    desc: 'Máximo ahorro en horas Basic (18h–10h). No retribuye excedentes vertidos a la red.',
+    energiaHorasBasic: { promo: 0.124722, noPromo: 0.159900 },
+    energiaRestoHoras: { promo: 0.148707, noPromo: 0.159900 },
+    potPunta: 34.188000,
+    potValle: 34.188000,
+    compExcedentes: 0,
+    bateriaVirtual: false,
+    cuotaBateriaMes: 0,
+    descuentos: ['15% — indefinido en horas Basic (18h–10h)', '7% — 1 año (nuevas contrataciones)'],
+    validez: '01/06/2026 – 14/07/2026',
+  },
+  {
+    id: 'solar-plus',
+    title: 'Solar Plus',
+    badge: 'Solar',
+    badgeColor: 'bg-orange-100 text-orange-700',
+    desc: 'Retribuye los excedentes vertidos a la red (Mecanismo de Compensación Simplificada, RD 244/2019).',
+    energiaConsumida: { promo: 0.148707, noPromo: 0.159900 },
+    potPunta: 34.188000,
+    potValle: 34.188000,
+    compExcedentes: 0.06,
+    bateriaVirtual: false,
+    cuotaBateriaMes: 0,
+    descuentos: ['7% — 1 año (nuevas contrataciones)'],
+    validez: '01/06/2026 – 14/07/2026',
+  },
+  {
+    id: 'solar-bateria',
+    title: 'Solar Plus & Batería Virtual',
+    badge: 'Batería',
+    badgeColor: 'bg-purple-100 text-purple-700',
+    desc: 'El excedente no compensado se acumula como saldo (Batería Virtual) para próximas facturas.',
+    energiaConsumida: { promo: 0.148707, noPromo: 0.159900 },
+    potPunta: 34.188000,
+    potValle: 34.188000,
+    compExcedentes: 0.06,
+    bateriaVirtual: true,
+    cuotaBateriaMes: 2,
+    descuentos: ['7% — 1 año (nuevas contrataciones)'],
+    validez: '01/06/2026 – 14/07/2026',
+  },
+];
+
+/* ── Datos Indexada a OMIE 2.0TD extraídos de PDF Endesa (09/06/2026 – 14/07/2026) ── */
+/* Fuente: "20260609 IND_2.0TD_OMIE_V1.pdf". Precio energía por periodo = A + (B × OMIEmes) */
+
+const INDEXADA_2_0TD = {
+  potenciaTerminos: [
+    { p: 'P1', anyo: 31.216092, mes: 2.601341, dia: 0.085524 },
+    { p: 'P2', anyo: 4.237104,  mes: 0.353092, dia: 0.011608 },
+  ],
+  energiaA: { p1: 0.138015, p2: 0.070477, p3: 0.040620 },
+  energiaB: { p1: 1.448,    p2: 1.239,    p3: 1.137 },
+  validez: '09/06/2026 – 14/07/2026',
+};
+
 
 /* ── Datos Gas Empresa (RL.4 – RL.6) extraídos de PDF Endesa Gas Estable ─────── */
 /* Solo se muestran como tarjetas informativas en Consulta de Tarifas.          */
@@ -102,7 +167,7 @@ const GAS_EMPRESA = [
   },
 ];
 
-/* ── Datos B2B extraídos de PDFs Endesa (09/06/2026 – 23/06/2026) ───────────── */
+/* ── Datos B2B extraídos de PDFs Endesa (09/06/2026 – 14/07/2026) ───────────── */
 
 const TEMPO = {
   energia:    { promo: 0.124777, base: 0.164180 },
@@ -177,10 +242,31 @@ const OPEN_61TD = {
   validez: '24/06/2026 – 14/07/2026',
 };
 
+/* ── Datos Indexada a OMIE 3.0TD / 6.1TD extraídos de PDFs Endesa (09/06/2026 – 14/07/2026) ── */
+/* Fuente: "20260609 IND_3.0TD_OMIE_V1.pdf" / "20260609 IND_6.1TD_OMIE_V1.pdf".            */
+/* Precio energía por periodo = A + (B × OMIEmes). Términos de potencia iguales a Open.    */
+
+const INDEXADA_30TD = {
+  potenciaTerminos: OPEN_30TD.potenciaTerminos,
+  energiaA: { p1: 0.101461, p2: 0.077500, p3: 0.055829, p4: 0.046846, p5: 0.044204, p6: 0.037530 },
+  energiaB: { p1: 1.579,    p2: 1.387,    p3: 1.295,    p4: 1.095,    p5: 0.861,    p6: 1.138 },
+  validez: '09/06/2026 – 14/07/2026',
+};
+
+const INDEXADA_61TD = {
+  potenciaTerminos: OPEN_61TD.potenciaTerminos,
+  energiaA: { p1: 0.080085, p2: 0.061069, p3: 0.046086, p4: 0.040403, p5: 0.038132, p6: 0.032891 },
+  energiaB: { p1: 1.436,    p2: 1.252,    p3: 1.188,    p4: 1.005,    p5: 0.7800,   p6: 1.032 },
+  validez: '09/06/2026 – 14/07/2026',
+};
+
 const B2B_SUBTABS = [
-  { id: 'tempo',  label: 'TEMPO 2.0TD',  sub: 'Negocios ≤ 15 kW' },
-  { id: 'open30', label: 'Open 3.0TD',   sub: 'Negocios 15–100+ kW' },
-  { id: 'open61', label: 'Open 6.1TD',   sub: 'Alta Tensión hasta 450 kW' },
+  { id: 'tempo',      label: 'TEMPO 2.0TD',        sub: 'Negocios ≤ 15 kW' },
+  { id: 'open30',     label: 'Open 3.0TD',         sub: 'Negocios 15–100+ kW' },
+  { id: 'open61',     label: 'Open 6.1TD',         sub: 'Alta Tensión hasta 450 kW' },
+  { id: 'indexada20', label: 'Indexada 2.0TD',     sub: 'Precio OMIE · Residencial ≤ 15 kW' },
+  { id: 'indexada30', label: 'Indexada 3.0TD',     sub: 'Precio OMIE · 15–100+ kW' },
+  { id: 'indexada61', label: 'Indexada 6.1TD',     sub: 'Precio OMIE · Alta Tensión' },
 ];
 
 const TABS = [
@@ -359,6 +445,127 @@ function LuzCard({ tarifa }) {
               Mantenimiento <span className="text-google-blue font-semibold">(−3%)</span>
             </span>
           </div>
+          <button
+            onClick={() => setShowBono(true)}
+            className="flex items-center gap-1 text-[11px] text-google-gray hover:text-google-blue transition-colors"
+          >
+            <Info size={12} />
+            Bono Social
+          </button>
+        </div>
+
+        <div className="px-5 pb-3">
+          <p className="text-[10px] text-gray-400 text-right">Válida: {tarifa.validez} · 2.0TD · 0–15 kW</p>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ── Tarjetas B2C Solar (Autoconsumo) ───────────────────────────────────────── */
+
+function SolarLuzCard({ tarifa }) {
+  const [showBono, setShowBono] = useState(false);
+
+  return (
+    <>
+      {showBono && <BonoSocialModal onClose={() => setShowBono(false)} />}
+      <div className="bg-white border border-google-border rounded-xl shadow-sm flex flex-col">
+        <div className="px-5 pt-5 pb-4 border-b border-gray-100">
+          <div className="flex items-start justify-between gap-2 mb-1.5">
+            <h3 className="text-base font-semibold text-google-dark leading-tight">{tarifa.title}</h3>
+            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${tarifa.badgeColor}`}>
+              {tarifa.badge}
+            </span>
+          </div>
+          <p className="text-xs text-google-gray">{tarifa.desc}</p>
+        </div>
+
+        <div className="px-5 py-4 space-y-4 flex-1">
+          {tarifa.energiaHorasBasic ? (
+            <div>
+              <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-2">Término de energía (€/kWh)</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-yellow-50 rounded-lg p-3 text-center">
+                  <p className="text-[10px] text-yellow-600 font-medium mb-1">Horas Basic (18h–10h)</p>
+                  <p className="text-lg font-bold text-yellow-700 leading-tight">{fmt(tarifa.energiaHorasBasic.promo)}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">promocionado</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3 text-center">
+                  <p className="text-[10px] text-google-gray font-medium mb-1">Resto horas</p>
+                  <p className="text-lg font-bold text-google-dark leading-tight">{fmt(tarifa.energiaRestoHoras.promo)}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">promocionado</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-1 text-center">
+                <p className="text-[10px] text-google-gray">No promo: <span className="line-through">{fmt(tarifa.energiaHorasBasic.noPromo)}</span></p>
+                <p className="text-[10px] text-google-gray">No promo: <span className="line-through">{fmt(tarifa.energiaRestoHoras.noPromo)}</span></p>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-2">Término de energía consumida (€/kWh)</p>
+              <div className="bg-orange-50 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-orange-600 leading-tight">{fmt(tarifa.energiaConsumida.promo)}</p>
+                <p className="text-xs text-orange-500 mt-0.5">precio promocionado</p>
+              </div>
+              <p className="text-xs text-google-gray mt-1.5 text-center">
+                No promocionado: <span className="line-through">{fmt(tarifa.energiaConsumida.noPromo)}</span>
+              </p>
+            </div>
+          )}
+
+          <div>
+            <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-1.5">Término de potencia (€/kW/año)</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-gray-50 rounded-lg px-3 py-2 flex justify-between items-center">
+                <span className="text-[10px] text-google-gray">Punta-llano</span>
+                <span className="text-xs font-semibold text-google-dark">{tarifa.potPunta.toFixed(6)}</span>
+              </div>
+              <div className="bg-gray-50 rounded-lg px-3 py-2 flex justify-between items-center">
+                <span className="text-[10px] text-google-gray">Valle</span>
+                <span className="text-xs font-semibold text-google-dark">{tarifa.potValle.toFixed(6)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-1.5">Compensación de excedentes</p>
+            {tarifa.compExcedentes > 0 ? (
+              <>
+                <div className="bg-green-50 rounded-lg px-3 py-2 flex justify-between items-center border border-green-100">
+                  <span className="text-[10px] text-green-700">€/kWh vertido a la red</span>
+                  <span className="text-xs font-semibold text-green-700">{tarifa.compExcedentes.toFixed(2)}</span>
+                </div>
+                <p className="text-[10px] text-google-gray mt-1.5 leading-snug">
+                  Es lo que Endesa paga al cliente por cada kWh que su instalación solar produce de más y vierte
+                  a la red (no consumido en el momento). Se descuenta directamente del importe de la factura,
+                  hasta cubrir como máximo el coste de la energía consumida (RD 244/2019).
+                </p>
+              </>
+            ) : (
+              <div className="bg-gray-50 rounded-lg px-3 py-2 text-center">
+                <span className="text-[11px] text-google-gray">No retribuye la energía vertida a la red (0 €/kWh)</span>
+              </div>
+            )}
+            {tarifa.bateriaVirtual && (
+              <p className="text-[10px] text-purple-600 mt-1.5 leading-snug">
+                + Si el excedente supera el coste de la energía consumida, el sobrante no se pierde: se convierte
+                en saldo acumulado en la Batería Virtual y se aplica como pago en facturas futuras (cuota {tarifa.cuotaBateriaMes.toFixed(2)} €/mes).
+              </p>
+            )}
+          </div>
+
+          <div>
+            <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-1.5">Descuentos incluidos</p>
+            <div className="flex flex-wrap gap-1.5">
+              {tarifa.descuentos.map((d, i) => <DiscountBadge key={i} label={d} />)}
+            </div>
+          </div>
+        </div>
+
+        <div className="px-5 pt-3 pb-4 border-t border-gray-100 flex items-center justify-between gap-3">
+          <span className="text-xs text-gray-400">Sin Dto. por Mantenimiento</span>
           <button
             onClick={() => setShowBono(true)}
             className="flex items-center gap-1 text-[11px] text-google-gray hover:text-google-blue transition-colors"
@@ -774,6 +981,125 @@ function OpenSection({ datos, titulo, subtitulo }) {
   );
 }
 
+/* ── Sección B2B: Indexada a OMIE (3.0TD / 6.1TD) ───────────────────────────── */
+
+function IndexadaSection({ datos, titulo, subtitulo }) {
+  // Precio medio de OMIE en junio de 2026: 69,59 €/MWh = 0,06959 €/kWh. Valor orientativo
+  // y editable: el comercial debe actualizarlo con el precio medio del mes que corresponda.
+  const [omie, setOmie] = useState('0.06959');
+  const omieNum = parseFloat(String(omie).replace(',', '.')) || 0;
+  // Nº de periodos de energía variable según la tarifa: P1-P3 en 2.0TD, P1-P6 en 3.0TD/6.1TD.
+  const periodos = Object.keys(datos.energiaA);
+
+  return (
+    <div>
+      <div className="flex items-start gap-2 bg-cyan-50 border border-cyan-200 rounded-lg px-4 py-2.5 mb-5">
+        <TrendingUp size={14} className="text-cyan-600 mt-0.5 flex-shrink-0" />
+        <div>
+          <span className="text-xs font-bold text-cyan-700">Sin permanencia</span>
+          <span className="text-xs text-cyan-600 ml-2">·</span>
+          <span className="text-xs text-cyan-600 ml-2">Precio de energía indexado al mercado OMIE. Cambio a tarifa fija en cualquier momento.</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+
+        {/* Panel izquierdo: fórmula + tabla de precios por periodo */}
+        <div className="xl:col-span-2 space-y-4">
+          <div className="bg-white border border-google-border rounded-xl shadow-sm p-5">
+            <div className="flex items-start justify-between gap-3 mb-5">
+              <div>
+                <h3 className="text-base font-semibold text-google-dark">{titulo}</h3>
+                <p className="text-xs text-google-gray mt-0.5">{subtitulo}</p>
+              </div>
+              <span className="flex-shrink-0 bg-cyan-600 text-white text-xs font-bold px-2.5 py-1 rounded-lg whitespace-nowrap">
+                OMIE
+              </span>
+            </div>
+
+            <div className="mb-5">
+              <label className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-2 block">
+                Precio medio OMIE del mes (€/kWh)
+              </label>
+              <input
+                type="text" inputMode="decimal"
+                value={omie}
+                onChange={e => setOmie(e.target.value)}
+                placeholder="Ej. 0,065"
+                className="input-field text-sm w-40"
+              />
+              <p className="text-[10px] text-google-gray mt-1.5">
+                Fórmula: Precio = A + (B × OMIE). La tabla se recalcula automáticamente al modificar este valor.
+              </p>
+              <p className="text-[10px] text-cyan-600 mt-1">
+                Precargado con el precio medio de OMIE de junio de 2026 (69,59 €/MWh). Puedes modificarlo con el valor del mes que corresponda.
+              </p>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="text-left px-3 py-2 text-google-gray font-medium rounded-l-lg">Periodo</th>
+                    <th className="text-center px-2 py-2 text-google-gray font-medium">A (€/kWh)</th>
+                    <th className="text-center px-2 py-2 text-google-gray font-medium">B</th>
+                    <th className="text-center px-2 py-2 text-google-gray font-medium rounded-r-lg">Precio final (€/kWh)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {periodos.map((p, i) => (
+                    <tr key={p} className="border-t border-gray-100 hover:bg-cyan-50/50 transition-colors">
+                      <td className="px-3 py-2 font-medium text-google-dark">
+                        <PBadge p={`P${i + 1}`} />
+                      </td>
+                      <td className="text-center px-2 py-2 font-mono text-google-gray">{datos.energiaA[p].toFixed(6)}</td>
+                      <td className="text-center px-2 py-2 font-mono text-google-gray">{datos.energiaB[p]}</td>
+                      <td className="text-center px-2 py-2 font-mono font-bold text-cyan-700">
+                        {(datos.energiaA[p] + datos.energiaB[p] * omieNum).toFixed(6)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[10px] text-gray-400 text-right mt-2">Válida: {datos.validez}</p>
+          </div>
+        </div>
+
+        {/* Panel derecho: Potencia P1–P6 (idéntico al de las tarifas Open) */}
+        <div className="bg-white border border-google-border rounded-xl shadow-sm p-5 h-fit">
+          <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-4">
+            Término de Potencia (P1–P6)
+          </p>
+          <div className="space-y-2.5">
+            {datos.potenciaTerminos.map(t => (
+              <div key={t.p} className="bg-gray-50 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <PBadge p={t.p} />
+                </div>
+                <p className="text-sm font-bold text-google-dark">
+                  {fmt(t.anyo)}
+                  <span className="text-xs font-normal text-google-gray ml-1">€/kW·año</span>
+                </p>
+                <div className="flex gap-3 mt-0.5">
+                  <p className="text-[11px] text-google-gray">{fmt(t.mes)} €/kW·mes</p>
+                  <p className="text-[11px] text-google-gray">{fmt(t.dia)} €/kW·día</p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 pt-3 border-t border-gray-100">
+            <p className="text-[10px] text-google-gray leading-relaxed">
+              No aplican descuentos. Precio sin impuestos.<br />
+              Sin permanencia: puedes cambiar a tarifa fija en cualquier momento.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Componente principal ───────────────────────────────────────────────────── */
 
 export default function Tarifas() {
@@ -829,6 +1155,19 @@ export default function Tarifas() {
               <Calculator size={17} />
               Realizar Comparativa 2.0
             </button>
+          </div>
+
+          {/* Tarifas Autoconsumo Solar: siempre debajo del botón, en mobile y desktop */}
+          <div className="order-3 pt-4 mt-2 border-t border-google-border">
+            <div className="flex items-center gap-2 mb-1">
+              <Sun size={16} className="text-yellow-500" />
+              <h2 className="text-sm font-semibold text-google-dark">Tarifas Autoconsumo Solar</h2>
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 whitespace-nowrap">2.0TD</span>
+            </div>
+            <p className="text-xs text-google-gray mb-4">Para clientes con instalación fotovoltaica de autoconsumo.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {LUZ_SOLAR.map(t => <SolarLuzCard key={t.id} tarifa={t} />)}
+            </div>
           </div>
         </div>
       )}
@@ -902,6 +1241,27 @@ export default function Tarifas() {
               datos={OPEN_61TD}
               titulo="Tarifa Open 6.1TD"
               subtitulo="Alta Tensión hasta 450 kW · Modalidades adaptadas a cada perfil de consumo industrial"
+            />
+          )}
+          {b2bSub === 'indexada20' && (
+            <IndexadaSection
+              datos={INDEXADA_2_0TD}
+              titulo="Tarifa Indexada a OMIE 2.0TD"
+              subtitulo="Residencial hasta 15 kW · Precio de energía ligado al mercado eléctrico"
+            />
+          )}
+          {b2bSub === 'indexada30' && (
+            <IndexadaSection
+              datos={INDEXADA_30TD}
+              titulo="Tarifa Indexada a OMIE 3.0TD"
+              subtitulo="Negocios con potencia > 15 kW · Precio de energía ligado al mercado eléctrico"
+            />
+          )}
+          {b2bSub === 'indexada61' && (
+            <IndexadaSection
+              datos={INDEXADA_61TD}
+              titulo="Tarifa Indexada a OMIE 6.1TD"
+              subtitulo="Alta Tensión hasta 450 kW · Precio de energía ligado al mercado eléctrico"
             />
           )}
         </div>

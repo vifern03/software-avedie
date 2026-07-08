@@ -103,6 +103,21 @@ const TARIFAS = [
     cuotaBateriaMes: 2,
     validez: '01/06/2026 – 14/07/2026',
   },
+  {
+    id: 'indexada_2.0td',
+    label: 'Indexada a OMIE 2.0TD',
+    shortLabel: 'Indexada OMIE',
+    tag: 'OMIE',
+    tagClass: 'bg-cyan-100 text-cyan-700',
+    // Sin descuentos ni mantenimiento (la propia oferta lo indica). Precio de energía
+    // dinámico por periodo: precio = A + (B × OMIEmes). Ver INIT.omie / cálculo más abajo.
+    isIndexada: true,
+    energiaA: { p1: 0.138015, p2: 0.070477, p3: 0.040620 },
+    energiaB: { p1: 1.448,    p2: 1.239,    p3: 1.137 },
+    potPunta: 31.216092,
+    potValle: 4.237104,
+    validez: '09/06/2026 – 14/07/2026',
+  },
 ];
 
 /* Impuesto Especial sobre la Electricidad — tipo vigente 5,113% */
@@ -235,6 +250,9 @@ const INIT = {
   bonoSocial: '0', alquilerContador: '0',
   compensacionExcedentes: '0',
   excedentesKwh: '0',
+  // Precio medio de OMIE en junio de 2026: 69,59 €/MWh = 0,06959 €/kWh. Valor orientativo
+  // y editable: el asesor debe actualizarlo con el precio medio del mes que corresponda.
+  omie: '0.06959',
   facturaActual: '',
   dtoCupones: '0',
   asesor: '', asesorLibre: '',
@@ -288,10 +306,20 @@ export default function EstudioComparativo() {
   const imtPotValle = kwValle * dias * potValleDia;
   const subtotPot   = imtPotPunta + imtPotValle;
 
-  const precioP1 = precioEn * (1 - dto);
+  // Tarifas Indexadas a OMIE: precio por periodo = A + (B × OMIEmes), en vez de un
+  // único precio fijo. Las demás tarifas mantienen el mismo precio en P1/P2/P3.
+  const isIndexada = !!tarifa.isIndexada;
+  const omie       = n(form.omie);
+  const precioBaseP1 = isIndexada ? tarifa.energiaA.p1 + tarifa.energiaB.p1 * omie : precioEn;
+  const precioBaseP2 = isIndexada ? tarifa.energiaA.p2 + tarifa.energiaB.p2 * omie : precioEn;
+  const precioBaseP3 = isIndexada ? tarifa.energiaA.p3 + tarifa.energiaB.p3 * omie : precioEn;
+
+  const precioP1 = precioBaseP1 * (1 - dto);
+  const precioP2 = precioBaseP2 * (1 - dto);
+  const precioP3 = precioBaseP3 * (1 - dto);
   const imtEnP1  = kwhP1 * precioP1;
-  const imtEnP2  = kwhP2 * precioP1;
-  const imtEnP3  = kwhP3 * precioP1;
+  const imtEnP2  = kwhP2 * precioP2;
+  const imtEnP3  = kwhP3 * precioP3;
   const subtotEn = imtEnP1 + imtEnP2 + imtEnP3;
 
   // Tarifas solares: la compensación se calcula a partir del kWh vertido y el precio de
@@ -489,7 +517,10 @@ export default function EstudioComparativo() {
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${t.tagClass}`}>{t.tag}</span>
                     </div>
                     <p className="text-[11px] text-google-gray mt-0.5 font-mono">
-                      {(mant ? t.conMant : t.sinMant).toFixed(6)} €/kWh · Pot. P {t.potPunta.toFixed(3)} — V {t.potValle.toFixed(3)} €/kW·año
+                      {t.isIndexada
+                        ? <>Precio dinámico OMIE (A + B×OMIE)</>
+                        : <>{(mant ? t.conMant : t.sinMant).toFixed(6)} €/kWh</>
+                      } · Pot. P {t.potPunta.toFixed(3)} — V {t.potValle.toFixed(3)} €/kW·año
                       {t.isSolar && <> · Comp. excedentes {t.compExcedentes.toFixed(2)} €/kWh</>}
                       {t.cuotaBateriaMes > 0 && <> · Batería {t.cuotaBateriaMes}€/mes</>}
                     </p>
@@ -497,16 +528,40 @@ export default function EstudioComparativo() {
                 </label>
               ))}
             </div>
-            <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-              <div className="flex items-center gap-2">
-                <MiniToggle on={mant} onToggle={() => setMant(v => !v)} />
-                <span className="text-xs text-google-gray">Mantenimiento <span className="text-google-blue font-semibold">(−3%)</span></span>
+            {tarifa.isIndexada ? (
+              <div className="pt-3 border-t border-gray-100">
+                <label className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-1.5 block">
+                  Precio medio OMIE del mes (€/kWh) <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text" inputMode="decimal"
+                  value={form.omie}
+                  onChange={set('omie')}
+                  placeholder="Ej. 0,065"
+                  className="input-field text-sm w-40"
+                />
+                <p className="text-[10px] text-google-gray mt-1.5 leading-snug">
+                  Precio final de energía por periodo = A + (B × OMIE). Se recalcula automáticamente en todo el informe al modificar este valor.
+                </p>
+                <p className="text-[10px] text-cyan-600 mt-1">
+                  Precargado con el precio medio de OMIE de junio de 2026 (69,59 €/MWh). Puedes modificarlo con el valor del mes que corresponda.
+                </p>
+                {omie <= 0 && (
+                  <p className="text-[10px] text-amber-600 mt-1">Introduce el precio OMIE del mes para un cálculo real; sin él solo se aplica el componente fijo A.</p>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-google-gray">Comp. excedentes</span>
-                <MiniToggle on={compExcActiva} onToggle={() => setCompExcActiva(v => !v)} />
+            ) : (
+              <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                <div className="flex items-center gap-2">
+                  <MiniToggle on={mant} onToggle={() => setMant(v => !v)} />
+                  <span className="text-xs text-google-gray">Mantenimiento <span className="text-google-blue font-semibold">(−3%)</span></span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-google-gray">Comp. excedentes</span>
+                  <MiniToggle on={compExcActiva} onToggle={() => setCompExcActiva(v => !v)} />
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* 2 · Factura */}
@@ -783,6 +838,7 @@ export default function EstudioComparativo() {
                 </div>
                 <div className="flex flex-wrap gap-2 pr-40">
                   <span className="bg-white/20 text-white text-[11px] font-semibold px-2.5 py-1 rounded-full">{tarifa.shortLabel}</span>
+                  {isIndexada && <span className="bg-white/20 text-white text-[11px] px-2.5 py-1 rounded-full">OMIE {omie.toFixed(4)} €/kWh</span>}
                   {mant && <span className="bg-white/20 text-white text-[11px] px-2.5 py-1 rounded-full">Con Mantenimiento −3%</span>}
                   <span className="bg-white/20 text-white text-[11px] px-2.5 py-1 rounded-full">{dias} días</span>
                   {n(form.descuento) > 0 && <span className="bg-white/20 text-white text-[11px] px-2.5 py-1 rounded-full">Dto. adicional {form.descuento}%</span>}
@@ -823,19 +879,26 @@ export default function EstudioComparativo() {
                   <div className="flex justify-between items-baseline text-sm">
                     <span className="text-google-gray">
                       {kwhP1} kWh (P1) × {precioP1.toFixed(6)} €/kWh
+                      {isIndexada && <span className="text-cyan-600 ml-1.5 text-[11px]">({tarifa.energiaA.p1.toFixed(6)} + {tarifa.energiaB.p1} × {omie.toFixed(4)})</span>}
                       {dto > 0 && <span className="text-google-blue ml-1.5 text-[11px]">(dto. {pct(dto, 0)} incluido)</span>}
                     </span>
                     <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(imtEnP1)}</span>
                   </div>
                   {kwhP2 > 0 && (
                     <div className="flex justify-between items-baseline text-sm">
-                      <span className="text-google-gray">{kwhP2} kWh (P2) × {precioP1.toFixed(6)} €/kWh</span>
+                      <span className="text-google-gray">
+                        {kwhP2} kWh (P2) × {precioP2.toFixed(6)} €/kWh
+                        {isIndexada && <span className="text-cyan-600 ml-1.5 text-[11px]">({tarifa.energiaA.p2.toFixed(6)} + {tarifa.energiaB.p2} × {omie.toFixed(4)})</span>}
+                      </span>
                       <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(imtEnP2)}</span>
                     </div>
                   )}
                   {kwhP3 > 0 && (
                     <div className="flex justify-between items-baseline text-sm">
-                      <span className="text-google-gray">{kwhP3} kWh (P3) × {precioP1.toFixed(6)} €/kWh</span>
+                      <span className="text-google-gray">
+                        {kwhP3} kWh (P3) × {precioP3.toFixed(6)} €/kWh
+                        {isIndexada && <span className="text-cyan-600 ml-1.5 text-[11px]">({tarifa.energiaA.p3.toFixed(6)} + {tarifa.energiaB.p3} × {omie.toFixed(4)})</span>}
+                      </span>
                       <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(imtEnP3)}</span>
                     </div>
                   )}
