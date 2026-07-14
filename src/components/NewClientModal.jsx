@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { X, User, Building2, Phone, Zap, FileText, CheckCircle, AlertCircle, Mail, CreditCard, Upload, Pencil, Calendar, UserCheck, Briefcase, Hash, AlignLeft, BarChart2, Users, Check, ShoppingBag } from 'lucide-react';
 import DateInput from './DateInput';
 import { useAuth } from '../context/AuthContext';
-import { useData } from '../context/DataContext';
+import { useData, fetchSingleDoc } from '../context/DataContext';
 import { getShareTargets } from './ShareButton';
 
 const tarifas  = ['2.0TD', '3.0TD', '3.1A', '6.1TD', '6.1A', '6.2', '6.3', '6.4', 'RL.1', 'RL.2', 'RL.3'];
@@ -83,6 +83,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
   // restricción UNIQUE de clientes.cups ya se eliminó en BD).
   const [cupsMatch,         setCupsMatch]         = useState(null); // cliente existente encontrado, o null
   const [cupsDupAction,     setCupsDupAction]     = useState(null); // null | 'pending' | 'accepted' | 'rejected'
+  const [autorellenando,    setAutorellenando]    = useState(false); // true mientras se descarga el DNI escaneado
   const [cupsDupResolvedFor, setCupsDupResolvedFor] = useState(''); // valor de CUPS ya resuelto (Sí/No)
 
   // ── Compartir contrato ─────────────────────────────────────────────────────
@@ -167,7 +168,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
     return () => clearTimeout(timer);
   }, [form.cups, clientesCtx, initialData, cupsDupResolvedFor]);
 
-  const handleAutorellenarCups = () => {
+  const handleAutorellenarCups = async () => {
     if (!cupsMatch) return;
     setForm((f) => ({
       ...f,
@@ -178,6 +179,26 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
       cuenta_bancaria: cupsMatch.cuenta_bancaria || f.cuenta_bancaria,
     }));
     setErrors((e) => ({ ...e, nombre: false, identificacion: false, telefono: false, cuenta_bancaria: false }));
+
+    // dni_escaneado es un campo Base64 (BINARY_FIELDS) excluido del SELECT
+    // principal de clientes por su tamaño — hay que pedirlo aparte (fetch-on-
+    // click), igual que ya hace el resto del CRM al ver/editar un DNI existente.
+    setAutorellenando(true);
+    try {
+      const dniExistente = await fetchSingleDoc(cupsMatch.id, 'dni_escaneado');
+      if (dniExistente) {
+        setDniBase64(dniExistente);
+        setDniFileName('Archivo existente');
+        setErrors((e) => ({ ...e, dni_b2c: false, dni_b2b: false }));
+      }
+      // Si el cliente antiguo no tenía DNI guardado (null), no se toca nada:
+      // el campo de archivo queda vacío tal cual estaba, sin romper el formulario.
+    } catch (err) {
+      console.error('[NewClientModal] Error al recuperar el DNI escaneado del cliente existente:', err);
+    } finally {
+      setAutorellenando(false);
+    }
+
     setCupsDupResolvedFor(form.cups.trim().toUpperCase());
     setCupsDupAction('accepted');
   };
@@ -513,12 +534,12 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
                 ⚠️ Este CUPS ya está asignado al cliente: <span className="font-semibold">{cupsMatch.nombre}</span>. ¿Deseas autorellenar el formulario con sus datos?
               </p>
               <div className="flex items-center gap-2">
-                <button type="button" onClick={handleAutorellenarCups}
-                  className="px-3 py-1.5 rounded-lg bg-google-blue text-white text-xs font-semibold hover:bg-blue-700 transition-colors">
-                  Sí, autorellenar
+                <button type="button" onClick={handleAutorellenarCups} disabled={autorellenando}
+                  className="px-3 py-1.5 rounded-lg bg-google-blue text-white text-xs font-semibold hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-wait">
+                  {autorellenando ? 'Autorellenando…' : 'Sí, autorellenar'}
                 </button>
-                <button type="button" onClick={handleRechazarAutorelleno}
-                  className="px-3 py-1.5 rounded-lg bg-gray-200 text-gray-700 text-xs font-medium hover:bg-gray-300 transition-colors">
+                <button type="button" onClick={handleRechazarAutorelleno} disabled={autorellenando}
+                  className="px-3 py-1.5 rounded-lg bg-gray-200 text-gray-700 text-xs font-medium hover:bg-gray-300 transition-colors disabled:opacity-60">
                   No
                 </button>
               </div>
