@@ -38,7 +38,7 @@ export const OPEN_30TD = {
     { p: 'P6', anyo:  2.942287, mes: 0.245191, dia: 0.008061 },
   ],
   penalizacion: '5% de la energía pendiente facturada al precio sin descuentos',
-  validez: '24/06/2026 – 14/07/2026',
+  validez: 'del 15/07/2026 hasta el 21/07/2026',
 };
 
 export const OPEN_61TD = {
@@ -69,7 +69,7 @@ export const OPEN_61TD = {
     { p: 'P6', anyo:  2.504181, mes: 0.208682, dia: 0.006861 },
   ],
   penalizacion: '10% del precio del Término de Energía × energía pendiente de suministro',
-  validez: '24/06/2026 – 14/07/2026',
+  validez: 'del 15/07/2026 hasta el 21/07/2026',
 };
 
 /* ── Datos Indexada a OMIE 3.0TD / 6.1TD extraídos de PDFs Endesa (09/06/2026 – 14/07/2026) ── */
@@ -80,12 +80,12 @@ export const INDEXADA_30TD = {
   potenciaTerminos: OPEN_30TD.potenciaTerminos,
   energiaA: { p1: 0.101461, p2: 0.077500, p3: 0.055829, p4: 0.046846, p5: 0.044204, p6: 0.037530 },
   energiaB: { p1: 1.579,    p2: 1.387,    p3: 1.295,    p4: 1.095,    p5: 0.861,    p6: 1.138 },
-  validez: '09/06/2026 – 14/07/2026',
+  validez: 'del 15/07/2026 hasta el 21/07/2026',
 };
 
 export const INDEXADA_61TD = {
   potenciaTerminos: OPEN_61TD.potenciaTerminos,
   energiaA: { p1: 0.080085, p2: 0.061069, p3: 0.046086, p4: 0.040403, p5: 0.038132, p6: 0.032891 },
   energiaB: { p1: 1.436,    p2: 1.252,    p3: 1.188,    p4: 1.005,    p5: 0.7800,   p6: 1.032 },
-  validez: '09/06/2026 – 14/07/2026',
+  validez: 'del 15/07/2026 hasta el 21/07/2026',
 };

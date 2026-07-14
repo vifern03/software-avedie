@@ -219,11 +219,6 @@ export default function AltaClientes({ tipo }) {
   const { clientes: allClientes, clientesB2C, clientesB2B, addCliente, updateCliente, updateCompartidoCon, setConsumoAnualEst, firmarContrato, formalizarContrato, deleteCliente, rankingB2C, rankingB2B, docsFlags, prescriptores, prescriptorLinks, addPrescriptor, renamePrescriptor, deletePrescriptor, bulkReasignPrescriptor, linkPrescriptor, registroPendientes } = useData();
   const rankingActivo = isB2B ? rankingB2B : rankingB2C;
 
-  const allCups = useMemo(
-    () => new Set(allClientes.map(c => (c.cups || '').toUpperCase().trim()).filter(Boolean)),
-    [allClientes]
-  );
-
   // CUPS con una incidencia activa en el embudo de Pendientes (ver [[project_pendientes]]).
   // Fuente de verdad: registro_pendientes — ya no se lee clientes.estado_incidencia.
   const pendientesCupsSet = useMemo(
@@ -820,7 +815,6 @@ export default function AltaClientes({ tipo }) {
           tipo={modalTipoActivo}
           onClose={closeModal}
           onSave={handleModalSave}
-          existingCups={allCups}
           editId={editClient?.id}
           initialData={editClient ? {
             nombre:            editClient.nombre,

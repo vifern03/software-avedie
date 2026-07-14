@@ -37,7 +37,7 @@ const CLIENTES_SELECT = [
 // incidencias (existan o no como contrato en `clientes`). Ver [[project_pendientes]].
 const REGISTRO_PENDIENTES_SELECT = [
   'id', 'cups', 'nombre', 'numero_caso', 'fecha_creacion_excel', 'origen_excel',
-  'estado_incidencia', 'fecha_formalizacion', 'created_at',
+  'raw_data', 'estado_incidencia', 'fecha_formalizacion', 'created_at',
 ].join(',');
 
 // Descarga ÚNICAMENTE el campo Base64 de UN cliente concreto (fetch-on-click)

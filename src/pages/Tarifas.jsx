@@ -143,7 +143,7 @@ const TEMPO = {
     { p: 'P2', anyo: 17.725428, mes: 1.477119, desc: 'Laborables 0h–8h y fines de semana/festivos' },
   ],
   penalizacion: '5% del precio del contrato',
-  validez: '24/06/2026 – 14/07/2026',
+  validez: 'del 15/07/2026 hasta el 21/07/2026',
 };
 
 const B2B_SUBTABS = [

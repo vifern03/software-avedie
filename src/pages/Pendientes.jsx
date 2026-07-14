@@ -1,10 +1,12 @@
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { AlertTriangle, Upload, FileSpreadsheet, X, CheckCircle, Wrench, FileCheck } from 'lucide-react';
 import { useData } from '../context/DataContext';
+import Pagination from '../components/Pagination';
 
 /* Nombre EXACTO de la columna del Excel que contiene el CUPS a cruzar. */
 const CUPS_COLUMN_HEADER = 'CUPS: CUPS';
+const ITEMS_PER_PAGE = 15;
 
 function fileToArrayBuffer(file) {
   return new Promise((resolve, reject) => {
@@ -57,6 +59,47 @@ async function extractRowsFromExcel(file) {
   return { registros, columnFound };
 }
 
+/* Fechas del Excel vienen como "D/M/AAAA" (sin ceros a la izquierda) — Date()
+   nativo las interpreta de forma ambigua/inconsistente entre navegadores, así
+   que se parsean a mano. Devuelve null si no es un formato reconocible. */
+function parseFechaExcel(str) {
+  if (!str) return null;
+  const parts = String(str).trim().split(/[/-]/);
+  if (parts.length !== 3) return null;
+  const [d, m, y] = parts.map(Number);
+  if (!d || !m || !y) return null;
+  const date = new Date(y, m - 1, d);
+  return isNaN(date.getTime()) ? null : date.getTime();
+}
+
+/* Timestamp para ordenar: prioriza la fecha original del Excel; si no se puede
+   parsear, cae al created_at del registro (siempre válido, generado por BD). */
+function sortTimestamp(r) {
+  const fechaExcel = r.raw_data?.['Fecha de creación'] || r.fecha_creacion_excel;
+  const parsed = parseFechaExcel(fechaExcel);
+  if (parsed != null) return parsed;
+  const created = new Date(r.created_at).getTime();
+  return isNaN(created) ? 0 : created;
+}
+
+/* Mapeo de colores para el Estado ORIGINAL del Excel (raw_data->>'Estado') —
+   puramente visual, no tiene relación con nuestro estado_incidencia interno
+   (Pendiente de tareas / Tramitado), que sigue controlando el fondo naranja. */
+function estadoOriginalBadge(estado) {
+  if (!estado) return { label: '—', className: 'bg-gray-100 text-gray-500' };
+  const e = estado.toLowerCase();
+  if (e.includes('cancel'))                      return { label: estado, className: 'bg-red-100 text-red-700' };
+  if (e.includes('recuperaci'))                  return { label: estado, className: 'bg-purple-100 text-purple-700' };
+  if (e.includes('firma'))                        return { label: estado, className: 'bg-blue-100 text-blue-700' };
+  if (e.includes('pendiente') || e.startsWith('pte'))
+                                                    return { label: estado, className: 'bg-amber-100 text-amber-700' };
+  if (e.includes('complet') || e.includes('resuel') || e.includes('activ') || e.includes('formaliz'))
+                                                    return { label: estado, className: 'bg-green-100 text-green-700' };
+  if (e.includes('rechaz') || e.includes('error'))
+                                                    return { label: estado, className: 'bg-red-100 text-red-700' };
+  return { label: estado, className: 'bg-gray-100 text-gray-700' };
+}
+
 export default function Pendientes() {
   const { clientes, registroPendientes, ingestExcelPendientes, tramitarPendiente, formalizarPendiente } = useData();
 
@@ -64,6 +107,7 @@ export default function Pendientes() {
   const [dropped, setDropped]     = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [resultMsg, setResultMsg] = useState(null); // { type: 'success'|'error', text }
+  const [currentPage, setCurrentPage] = useState(1);
   const fileRef = useRef(null);
 
   // Cualquier CUPS ya dado de alta (B2C o B2B) — para el circulito verde/rojo.
@@ -73,9 +117,21 @@ export default function Pendientes() {
   );
 
   const pendientes = useMemo(
-    () => registroPendientes.filter(r => r.estado_incidencia === 'Pendiente de tareas' || r.estado_incidencia === 'Tramitado'),
+    () => registroPendientes
+      .filter(r => r.estado_incidencia === 'Pendiente de tareas' || r.estado_incidencia === 'Tramitado')
+      .slice()
+      .sort((a, b) => sortTimestamp(b) - sortTimestamp(a)), // más nuevo primero
     [registroPendientes]
   );
+
+  const totalPages = Math.max(1, Math.ceil(pendientes.length / ITEMS_PER_PAGE));
+  const paginated = pendientes.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+  // Si sube un Excel nuevo o se tramita/formaliza algo, la página actual puede
+  // quedar fuera de rango — recolocar en la última página válida.
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [totalPages, currentPage]);
 
   async function handleFile(file) {
     if (!file) return;
@@ -97,6 +153,7 @@ export default function Pendientes() {
         setResultMsg({ type: 'error', text: 'Error al guardar en la base de datos. ¿Has ejecutado supabase_pendientes_v2.sql? Inténtalo de nuevo.' });
         return;
       }
+      setCurrentPage(1);
       setResultMsg({
         type: 'success',
         text: `${registros.length} fila(s) leídas del Excel · ${inserted} registradas en el embudo de Pendientes (todas, existan o no ya como contrato en el CRM).`,
@@ -201,25 +258,27 @@ export default function Pendientes() {
             <thead>
               <tr>
                 <th className="table-header w-8"></th>
-                <th className="table-header">Nombre (Excel)</th>
+                <th className="table-header">Número OI</th>
                 <th className="table-header">CUPS</th>
                 <th className="table-header">Nº Caso</th>
                 <th className="table-header">Fecha (Excel)</th>
-                <th className="table-header">Origen</th>
                 <th className="table-header">Estado Incidencia</th>
                 <th className="table-header">Acciones</th>
               </tr>
             </thead>
             <tbody>
-              {pendientes.length === 0 ? (
+              {paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-10 text-google-gray text-sm">
+                  <td colSpan={7} className="text-center py-10 text-google-gray text-sm">
                     No hay incidencias pendientes. Sube un Excel para empezar.
                   </td>
                 </tr>
               ) : (
-                pendientes.map(r => {
+                paginated.map(r => {
                   const existeEnCrm = clientesCupsSet.has((r.cups || '').toUpperCase().trim());
+                  const numeroOi = r.raw_data?.['Nombre'] || r.nombre || '';
+                  const estadoOriginal = r.raw_data?.['Estado'] || null;
+                  const badge = estadoOriginalBadge(estadoOriginal);
                   return (
                     <tr key={r.id} className={`transition-colors ${
                       r.estado_incidencia === 'Tramitado' ? 'bg-orange-100 hover:bg-orange-200' : 'hover:bg-google-bg'
@@ -230,16 +289,13 @@ export default function Pendientes() {
                           title={existeEnCrm ? 'Este CUPS ya está dado de alta en el CRM' : 'Este CUPS todavía no tiene contrato en el CRM'}
                         />
                       </td>
-                      <td className="table-cell font-medium text-google-dark whitespace-nowrap">{r.nombre || '—'}</td>
+                      <td className="table-cell font-medium text-google-dark whitespace-nowrap">{numeroOi}</td>
                       <td className="table-cell text-google-gray font-mono text-xs">{r.cups}</td>
-                      <td className="table-cell text-google-gray text-xs">{r.numero_caso || '—'}</td>
+                      <td className="table-cell text-google-gray text-xs">{r.raw_data?.['Número del caso'] || r.numero_caso || ''}</td>
                       <td className="table-cell text-google-gray text-xs whitespace-nowrap">{r.fecha_creacion_excel || '—'}</td>
-                      <td className="table-cell text-google-gray text-xs truncate max-w-[160px]" title={r.origen_excel || ''}>{r.origen_excel || '—'}</td>
                       <td className="table-cell">
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${
-                          r.estado_incidencia === 'Tramitado' ? 'bg-orange-200 text-orange-800' : 'bg-gray-100 text-gray-700'
-                        }`}>
-                          {r.estado_incidencia}
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${badge.className}`}>
+                          {badge.label}
                         </span>
                       </td>
                       <td className="table-cell">
@@ -250,7 +306,7 @@ export default function Pendientes() {
                               className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-orange-300 bg-orange-50 text-orange-700 text-xs font-medium hover:bg-orange-100 transition-colors whitespace-nowrap"
                               title="Marcar como tramitado"
                             >
-                              <Wrench size={13} /> Tramitar
+                              <Wrench size={13} /> Tramitado
                             </button>
                           )}
                           <button
@@ -269,6 +325,7 @@ export default function Pendientes() {
             </tbody>
           </table>
         </div>
+        <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
       </div>
     </div>
   );

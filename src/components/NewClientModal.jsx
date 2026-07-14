@@ -1,7 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { X, User, Building2, Phone, Zap, FileText, CheckCircle, AlertCircle, Mail, CreditCard, Upload, Pencil, Calendar, UserCheck, Briefcase, Hash, AlignLeft, BarChart2, Users, Check, ShoppingBag } from 'lucide-react';
 import DateInput from './DateInput';
-import ConfirmActionModal from './ConfirmActionModal';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { getShareTargets } from './ShareButton';
@@ -21,7 +20,7 @@ const subtipos = [
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 
-export default function NewClientModal({ tipo, onClose, onSave, initialData, existingCups, editId }) {
+export default function NewClientModal({ tipo, onClose, onSave, initialData, editId }) {
   const { currentUser, users, sharePermissions } = useAuth();
   const shareTargets = getShareTargets(currentUser, users, sharePermissions);
   const { prescriptores: prescriptoresDB, clientes: clientesCtx } = useData();
@@ -79,10 +78,12 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
   const [cupsDbError,  setCupsDbError]  = useState(null);
 
   // ── CUPS duplicado (flujo CURP: alta con otra compañía + alta propia sobre
-  // el mismo suministro) — ya no se bloquea, se pregunta y se deja avanzar.
-  const [showCupsDupModal, setShowCupsDupModal] = useState(false);
-  const [cupsDupInfo,      setCupsDupInfo]      = useState(null); // { cups, nombreCliente }
-  const [cupsConfirmado,   setCupsConfirmado]   = useState('');   // valor de CUPS ya aceptado por el usuario
+  // el mismo suministro) — alerta inline no bloqueante con autorelleno opcional,
+  // en vez de un modal. El envío del formulario nunca se bloquea por esto (la
+  // restricción UNIQUE de clientes.cups ya se eliminó en BD).
+  const [cupsMatch,         setCupsMatch]         = useState(null); // cliente existente encontrado, o null
+  const [cupsDupAction,     setCupsDupAction]     = useState(null); // null | 'pending' | 'accepted' | 'rejected'
+  const [cupsDupResolvedFor, setCupsDupResolvedFor] = useState(''); // valor de CUPS ya resuelto (Sí/No)
 
   // ── Compartir contrato ─────────────────────────────────────────────────────
   const [quiereCompartir, setQuiereCompartir] = useState(false);
@@ -138,6 +139,54 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
     if (field === 'cups') setCupsDbError(null);
   };
 
+  // ── Detección de CUPS duplicado (debounce 500ms tras dejar de escribir) ──────
+  // No hace una consulta nueva a Supabase: `clientesCtx` ya viene sincronizado
+  // en tiempo real desde DataContext, así que buscar ahí es más inmediato y
+  // evita una llamada de red redundante en cada pausa de escritura.
+  useEffect(() => {
+    const cupsVal      = form.cups.trim().toUpperCase();
+    const originalCups = (initialData?.cups || '').toUpperCase().trim();
+
+    if (!cupsVal || cupsVal === originalCups) {
+      setCupsMatch(null);
+      setCupsDupAction(null);
+      return;
+    }
+    if (cupsVal === cupsDupResolvedFor) return; // ya se respondió Sí/No para este valor exacto
+
+    const timer = setTimeout(() => {
+      const match = clientesCtx.find(c => (c.cups || '').toUpperCase().trim() === cupsVal);
+      if (match) {
+        setCupsMatch(match);
+        setCupsDupAction('pending');
+      } else {
+        setCupsMatch(null);
+        setCupsDupAction(null);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [form.cups, clientesCtx, initialData, cupsDupResolvedFor]);
+
+  const handleAutorellenarCups = () => {
+    if (!cupsMatch) return;
+    setForm((f) => ({
+      ...f,
+      nombre:          cupsMatch.nombre          || f.nombre,
+      identificacion:  cupsMatch.cif_dni         || f.identificacion,
+      telefono:        cupsMatch.telefono        || f.telefono,
+      mail:            cupsMatch.mail            || f.mail,
+      cuenta_bancaria: cupsMatch.cuenta_bancaria || f.cuenta_bancaria,
+    }));
+    setErrors((e) => ({ ...e, nombre: false, identificacion: false, telefono: false, cuenta_bancaria: false }));
+    setCupsDupResolvedFor(form.cups.trim().toUpperCase());
+    setCupsDupAction('accepted');
+  };
+
+  const handleRechazarAutorelleno = () => {
+    setCupsDupResolvedFor(form.cups.trim().toUpperCase());
+    setCupsDupAction('rejected');
+  };
+
   const handleFileChange = (e, setFileName, setBase64) => {
     const file = e.target.files[0];
     if (!file) { setFileName(''); setBase64(''); return; }
@@ -189,26 +238,13 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
     return Object.keys(e).length === 0;
   };
 
+  // El CUPS duplicado (flujo CURP) ya nunca bloquea el envío: es solo una
+  // alerta informativa con autorelleno opcional (ver efecto de detección más
+  // abajo). La BD ya admite CUPS repetidos (restricción UNIQUE eliminada).
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (submittingRef.current || !validate()) return;
 
-    // CUPS duplicado (flujo CURP): si coincide con un cliente ya existente y el
-    // usuario todavía no ha confirmado este valor exacto, preguntar antes de
-    // guardar en vez de bloquear el envío.
-    const cupsVal      = form.cups.trim().toUpperCase();
-    const originalCups = (initialData?.cups || '').toUpperCase().trim();
-    if (cupsVal && cupsVal !== originalCups && existingCups?.has(cupsVal) && cupsVal !== cupsConfirmado) {
-      const matching = clientesCtx.find(c => (c.cups || '').toUpperCase().trim() === cupsVal);
-      setCupsDupInfo({ cups: cupsVal, nombreCliente: matching?.nombre || 'un cliente existente' });
-      setShowCupsDupModal(true);
-      return;
-    }
-
-    await doSubmit();
-  };
-
-  const doSubmit = async () => {
     submittingRef.current = true;
     setCupsDbError(null);
 
@@ -461,18 +497,39 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
                 <div className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray"><Zap size={15} /></div>
                 <input type="text" placeholder="Ej: ES1234567890" value={form.cups}
                   onChange={(e) => set('cups', e.target.value.toUpperCase())}
-                  className={`${
-                    errors.cups ? 'input-field !border-red-400 focus:!ring-red-300'
-                    : (cupsConfirmado && form.cups.trim().toUpperCase() === cupsConfirmado) ? 'input-field !border-amber-400 focus:!ring-amber-300'
-                    : 'input-field'
-                  } pl-9`} />
+                  className={`${errors.cups ? 'input-field !border-red-400 focus:!ring-red-300' : 'input-field'} pl-9`} />
               </div>
               {errors.cups && <p className="text-red-500 text-xs mt-1">Obligatorio</p>}
-              {cupsConfirmado && form.cups.trim().toUpperCase() === cupsConfirmado && (
-                <p className="text-amber-600 text-xs mt-1 font-medium">CUPS aceptado: Se creará un nuevo registro vinculado a este mismo cliente</p>
+              {cupsDupAction === 'rejected' && (
+                <p className="text-gray-500 text-xs mt-1">CUPS duplicado aceptado (Alta CURP)</p>
               )}
             </div>
           </div>
+
+          {/* Alerta inline: CUPS ya asignado a otro cliente (flujo CURP) */}
+          {cupsDupAction === 'pending' && cupsMatch && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 flex flex-col gap-2.5">
+              <p className="text-sm text-blue-900 leading-snug">
+                ⚠️ Este CUPS ya está asignado al cliente: <span className="font-semibold">{cupsMatch.nombre}</span>. ¿Deseas autorellenar el formulario con sus datos?
+              </p>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={handleAutorellenarCups}
+                  className="px-3 py-1.5 rounded-lg bg-google-blue text-white text-xs font-semibold hover:bg-blue-700 transition-colors">
+                  Sí, autorellenar
+                </button>
+                <button type="button" onClick={handleRechazarAutorelleno}
+                  className="px-3 py-1.5 rounded-lg bg-gray-200 text-gray-700 text-xs font-medium hover:bg-gray-300 transition-colors">
+                  No
+                </button>
+              </div>
+            </div>
+          )}
+          {cupsDupAction === 'accepted' && (
+            <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 flex items-center gap-2">
+              <CheckCircle size={14} className="text-green-600 flex-shrink-0" />
+              <p className="text-xs text-green-700 font-medium">Datos autorellenados desde el cliente existente.</p>
+            </div>
+          )}
 
           {/* Mail */}
           <div>
@@ -935,22 +992,6 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
           </div>
         </form>
       </div>
-
-      {showCupsDupModal && cupsDupInfo && (
-        <ConfirmActionModal
-          title="CUPS ya registrado"
-          message={`Este CUPS ya está asignado al siguiente cliente: ${cupsDupInfo.nombreCliente}. ¿La gestión va relacionada con este mismo cliente?`}
-          confirmLabel="Sí"
-          cancelLabel="No"
-          confirmClassName="bg-green-600 hover:bg-green-700"
-          onConfirm={() => {
-            setCupsConfirmado(cupsDupInfo.cups);
-            setShowCupsDupModal(false);
-            doSubmit();
-          }}
-          onCancel={() => setShowCupsDupModal(false)}
-        />
-      )}
     </div>
   );
 }
