@@ -476,6 +476,45 @@ export function DataProvider({ children }) {
     loadAll();
   }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Realtime: registro_pendientes (Gestión de Pendientes en vivo) ───────────
+  // Cualquier INSERT (Excel subido por un admin) o UPDATE (Tramitar/Formalizar
+  // desde el modal) se refleja al instante en TODAS las sesiones abiertas, sin
+  // recargar la página. Requiere que la tabla esté añadida a la publicación
+  // `supabase_realtime` en Supabase — ver supabase_realtime_pendientes.sql.
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const channel = supabase
+      .channel('pendientes_channel')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'registro_pendientes' },
+        (payload) => {
+          const { eventType, new: newRow, old: oldRow } = payload;
+
+          setRegistroPendientes((prev) => {
+            if (eventType === 'DELETE') {
+              return prev.filter((r) => r.id !== oldRow.id);
+            }
+            // Soft-delete (deleted_at marcado): sacarlo de la lista local.
+            if (newRow.deleted_at) {
+              return prev.filter((r) => r.id !== newRow.id);
+            }
+            const yaExiste = prev.some((r) => r.id === newRow.id);
+            if (yaExiste) {
+              return prev.map((r) => (r.id === newRow.id ? { ...r, ...newRow } : r));
+            }
+            return [newRow, ...prev];
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser?.username]);
+
   // ── Actividades ─────────────────────────────────────────────────────────────
 
   const addActivity = (tipo, descripcion, comercial) => {

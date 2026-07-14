@@ -11,6 +11,21 @@ import ConfirmActionModal from '../components/ConfirmActionModal';
 const CUPS_COLUMN_HEADER = 'CUPS: CUPS';
 const ITEMS_PER_PAGE = 15;
 
+/* Timeout de seguridad para el guardado en BD (igual patrón que en las
+   Comparativas 3.0/6.1 y Gas): si tarda demasiado, se corta y se informa en
+   vez de dejar la barra de carga colgada indefinidamente. */
+const SAVE_TIMEOUT_MS = 20000;
+
+/* Estimaciones de tiempo NO inventadas, proporcionales al trabajo real:
+   - Lectura del Excel: proporcional al peso del archivo.
+   - Guardado en BD: proporcional al nº de filas a insertar. */
+function estimateReadSeconds(fileSizeBytes) {
+  return Math.max(2, Math.round(2 + (fileSizeBytes / (500 * 1024)) * 1));
+}
+function estimateSaveSeconds(rowCount) {
+  return Math.max(2, Math.round(2 + rowCount * 0.03));
+}
+
 function fileToArrayBuffer(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -111,11 +126,25 @@ export default function Pendientes() {
   const [dragging, setDragging]   = useState(false);
   const [dropped, setDropped]     = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingPhase, setProcessingPhase] = useState(null); // null | 'leyendo' | 'guardando'
+  const [estimatedSeconds, setEstimatedSeconds] = useState(0);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [resultMsg, setResultMsg] = useState(null); // { type: 'success'|'error', text }
   const [currentPage, setCurrentPage] = useState(1);
   const [editingRegistro, setEditingRegistro] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null); // { tipo: 'tramitar'|'formalizar', registro }
   const fileRef = useRef(null);
+  const countdownRef = useRef(null);
+
+  const startPhase = (phase, seconds) => {
+    setProcessingPhase(phase);
+    setEstimatedSeconds(seconds);
+    setRemainingSeconds(seconds);
+    clearInterval(countdownRef.current);
+    countdownRef.current = setInterval(() => {
+      setRemainingSeconds(s => Math.max(0, s - 1));
+    }, 1000);
+  };
 
   // TODOS los registros, en TODOS los estados (Pendiente de tareas, Tramitado,
   // Formalizado). Un contrato formalizado NUNCA se oculta ni se borra de esta
@@ -156,6 +185,7 @@ export default function Pendientes() {
     setDropped(file);
     setResultMsg(null);
     setIsProcessing(true);
+    startPhase('leyendo', estimateReadSeconds(file.size));
     try {
       const { registros, columnFound } = await extractRowsFromExcel(file);
       if (!columnFound) {
@@ -166,7 +196,22 @@ export default function Pendientes() {
         setResultMsg({ type: 'error', text: `La columna "${CUPS_COLUMN_HEADER}" no contiene ningún valor.` });
         return;
       }
-      const { inserted, error } = await ingestExcelPendientes(registros);
+
+      startPhase('guardando', estimateSaveSeconds(registros.length));
+      const savePromise = ingestExcelPendientes(registros);
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('SAVE_TIMEOUT')), SAVE_TIMEOUT_MS));
+
+      let inserted, error;
+      try {
+        ({ inserted, error } = await Promise.race([savePromise, timeoutPromise]));
+      } catch (raceErr) {
+        if (raceErr.message === 'SAVE_TIMEOUT') {
+          setResultMsg({ type: 'error', text: `El guardado ha tardado más de ${Math.round(SAVE_TIMEOUT_MS / 1000)}s. Puede haberse guardado parcialmente — revisa la tabla antes de reintentar.` });
+          return;
+        }
+        throw raceErr;
+      }
+
       if (error) {
         setResultMsg({ type: 'error', text: 'Error al guardar en la base de datos. ¿Has ejecutado supabase_pendientes_v2.sql? Inténtalo de nuevo.' });
         return;
@@ -180,6 +225,8 @@ export default function Pendientes() {
       console.error('Pendientes — extractRowsFromExcel:', err);
       setResultMsg({ type: 'error', text: 'No se pudo leer el archivo. Comprueba que sea un Excel (.xlsx) válido.' });
     } finally {
+      clearInterval(countdownRef.current);
+      setProcessingPhase(null);
       setIsProcessing(false);
     }
   }
@@ -225,9 +272,22 @@ export default function Pendientes() {
               onChange={e => { if (e.target.files[0]) handleFile(e.target.files[0]); e.target.value = ''; }}
             />
             {isProcessing ? (
-              <div className="flex flex-col items-center gap-2.5 py-1">
+              <div className="flex flex-col items-center gap-2.5 py-1 w-full">
                 <FileSpreadsheet size={28} className="text-google-blue animate-pulse" />
-                <p className="text-xs font-semibold text-google-blue">Procesando Excel y guardando en el registro de Pendientes...</p>
+                <div className="w-full max-w-[240px]">
+                  <p className="text-xs font-semibold text-google-blue text-center">
+                    {processingPhase === 'guardando' ? 'Guardando registros en la base de datos...' : 'Leyendo archivo Excel...'}
+                  </p>
+                  <p className="text-[11px] text-blue-400 mt-0.5 text-center">
+                    {remainingSeconds > 0 ? `Tiempo estimado: ${remainingSeconds}s` : 'Casi listo…'}
+                  </p>
+                  <div className="mt-2.5 h-1.5 w-full bg-blue-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-google-blue rounded-full transition-all duration-500 ease-linear"
+                      style={{ width: `${estimatedSeconds > 0 ? Math.min(96, ((estimatedSeconds - remainingSeconds) / estimatedSeconds) * 100) : 0}%` }}
+                    />
+                  </div>
+                </div>
               </div>
             ) : dropped ? (
               <div className="flex items-center justify-center gap-2">
