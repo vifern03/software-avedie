@@ -300,13 +300,14 @@ export function DataProvider({ children }) {
       // así que hay que excluir ambos casos para no marcar falsos positivos.
       const mkFlagFor = (table, col) => supabase.from(table).select('id').is('deleted_at', null).not(col, 'is', null).neq(col, '');
 
-      // registro_pendientes: solo las filas activas (con incidencia sin resolver).
+      // registro_pendientes: TODAS las filas no borradas, sin filtrar por
+      // estado_incidencia — los contratos "Formalizado" NUNCA deben ocultarse,
+      // se quedan como histórico visible en la tabla (ver [[project_pendientes]]).
       // Falla silenciosamente (error tolerado) si la tabla aún no existe en BD.
       const registroPendientesQuery = supabase
         .from('registro_pendientes')
         .select(REGISTRO_PENDIENTES_SELECT)
         .is('deleted_at', null)
-        .not('estado_incidencia', 'is', null)
         .order('created_at', { ascending: false });
 
       const [
@@ -951,7 +952,6 @@ export function DataProvider({ children }) {
       .from('registro_pendientes')
       .select(REGISTRO_PENDIENTES_SELECT)
       .is('deleted_at', null)
-      .not('estado_incidencia', 'is', null)
       .order('created_at', { ascending: false });
     if (fresh) setRegistroPendientes(fresh);
 
@@ -974,21 +974,23 @@ export function DataProvider({ children }) {
     return { error: null };
   };
 
-  // Formaliza y saca el registro del embudo de Pendientes: estado_incidencia → null
-  // + fecha_formalizacion = NOW() en registro_pendientes (tabla propia, no toca
-  // `clientes`). SI Y SOLO SI existe EXACTAMENTE UN contrato en `clientes` con
-  // ese mismo CUPS, se refleja también ahí actualizando fecha_formalizada (mismo
-  // formato ISO que ya usa formalizarContrato()). Con 0 o 2+ coincidencias (CUPS
-  // aún sin alta, o alta duplicada por flujo CURP) NO se toca `clientes` — sería
-  // ambiguo decidir cuál de varios contratos formalizar automáticamente.
+  // Formaliza el registro: estado_incidencia → 'Formalizado' (NUNCA null — un
+  // contrato formalizado se queda SIEMPRE visible en la tabla como histórico,
+  // no se oculta ni se borra bajo ningún concepto) + fecha_formalizacion =
+  // NOW() en registro_pendientes (tabla propia, no toca `clientes`). SI Y SOLO
+  // SI existe EXACTAMENTE UN contrato en `clientes` con ese mismo CUPS, se
+  // refleja también ahí actualizando fecha_formalizada (mismo formato ISO que
+  // ya usa formalizarContrato()). Con 0 o 2+ coincidencias (CUPS aún sin alta,
+  // o alta duplicada por flujo CURP) NO se toca `clientes` — sería ambiguo
+  // decidir cuál de varios contratos formalizar automáticamente.
   const formalizarPendiente = async (id) => {
     const fechaHoy = today();
-    setRegistroPendientes(prev => prev.map(r => r.id === id ? { ...r, estado_incidencia: null, fecha_formalizacion: new Date().toISOString() } : r));
+    setRegistroPendientes(prev => prev.map(r => r.id === id ? { ...r, estado_incidencia: 'Formalizado', fecha_formalizacion: new Date().toISOString() } : r));
     const registro = registroPendientes.find(r => r.id === id);
 
     const { error } = await supabase
       .from('registro_pendientes')
-      .update({ estado_incidencia: null, fecha_formalizacion: new Date().toISOString() })
+      .update({ estado_incidencia: 'Formalizado', fecha_formalizacion: new Date().toISOString() })
       .eq('id', id);
     if (error) { console.error('formalizarPendiente:', error); return { error }; }
 

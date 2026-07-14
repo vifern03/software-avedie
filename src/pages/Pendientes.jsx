@@ -116,13 +116,27 @@ export default function Pendientes() {
     [clientes]
   );
 
+  // TODOS los registros, en TODOS los estados (Pendiente de tareas, Tramitado,
+  // Formalizado). Un contrato formalizado NUNCA se oculta ni se borra de esta
+  // tabla — se queda como histórico visible, con su propio color pastel.
   const pendientes = useMemo(
     () => registroPendientes
-      .filter(r => r.estado_incidencia === 'Pendiente de tareas' || r.estado_incidencia === 'Tramitado')
       .slice()
       .sort((a, b) => sortTimestamp(b) - sortTimestamp(a)), // más nuevo primero
     [registroPendientes]
   );
+
+  const handleTramitarClick = (r) => {
+    if (window.confirm('¿Confirma que ya ha sido tramitado este contrato?')) {
+      tramitarPendiente(r.id);
+    }
+  };
+
+  const handleFormalizarClick = (r) => {
+    if (window.confirm('¿Confirma que ya ha sido formalizado este contrato?')) {
+      formalizarPendiente(r.id);
+    }
+  };
 
   const totalPages = Math.max(1, Math.ceil(pendientes.length / ITEMS_PER_PAGE));
   const paginated = pendientes.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -281,7 +295,9 @@ export default function Pendientes() {
                   const badge = estadoOriginalBadge(estadoOriginal);
                   return (
                     <tr key={r.id} className={`transition-colors ${
-                      r.estado_incidencia === 'Tramitado' ? 'bg-orange-100 hover:bg-orange-200' : 'hover:bg-google-bg'
+                      r.estado_incidencia === 'Formalizado' ? 'bg-green-50 hover:bg-green-100'
+                      : r.estado_incidencia === 'Tramitado'  ? 'bg-orange-50 hover:bg-orange-100'
+                      : 'hover:bg-google-bg'
                     }`}>
                       <td className="table-cell">
                         <span
@@ -299,24 +315,30 @@ export default function Pendientes() {
                         </span>
                       </td>
                       <td className="table-cell">
-                        <div className="flex items-center gap-1.5">
-                          {r.estado_incidencia === 'Pendiente de tareas' && (
+                        {r.estado_incidencia === 'Formalizado' ? (
+                          <span className="flex items-center gap-1 text-xs font-semibold text-green-700 whitespace-nowrap">
+                            <FileCheck size={13} /> Formalizado
+                          </span>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            {r.estado_incidencia === 'Pendiente de tareas' && (
+                              <button
+                                onClick={() => handleTramitarClick(r)}
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-orange-300 bg-orange-50 text-orange-700 text-xs font-medium hover:bg-orange-100 transition-colors whitespace-nowrap"
+                                title="Marcar como tramitado"
+                              >
+                                <Wrench size={13} /> Tramitado
+                              </button>
+                            )}
                             <button
-                              onClick={() => tramitarPendiente(r.id)}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-orange-300 bg-orange-50 text-orange-700 text-xs font-medium hover:bg-orange-100 transition-colors whitespace-nowrap"
-                              title="Marcar como tramitado"
+                              onClick={() => handleFormalizarClick(r)}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors whitespace-nowrap"
+                              title="Formalizar (queda como histórico, no se borra)"
                             >
-                              <Wrench size={13} /> Tramitado
+                              <FileCheck size={13} /> Formalizar
                             </button>
-                          )}
-                          <button
-                            onClick={() => formalizarPendiente(r.id)}
-                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors whitespace-nowrap"
-                            title="Formalizar y sacar del embudo"
-                          >
-                            <FileCheck size={13} /> Formalizar
-                          </button>
-                        </div>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   );
