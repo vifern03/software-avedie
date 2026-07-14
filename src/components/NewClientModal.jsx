@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { X, User, Building2, Phone, Zap, FileText, CheckCircle, AlertCircle, Mail, CreditCard, Upload, Pencil, Calendar, UserCheck, Briefcase, Hash, AlignLeft, BarChart2, Users, Check, ShoppingBag } from 'lucide-react';
 import DateInput from './DateInput';
+import ConfirmActionModal from './ConfirmActionModal';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import { getShareTargets } from './ShareButton';
@@ -23,7 +24,7 @@ const todayStr = () => new Date().toISOString().split('T')[0];
 export default function NewClientModal({ tipo, onClose, onSave, initialData, existingCups, editId }) {
   const { currentUser, users, sharePermissions } = useAuth();
   const shareTargets = getShareTargets(currentUser, users, sharePermissions);
-  const { prescriptores: prescriptoresDB } = useData();
+  const { prescriptores: prescriptoresDB, clientes: clientesCtx } = useData();
   const prescriptoresList = prescriptoresDB.map(p => p.nombre);
   const isB2B       = tipo === 'B2B' || tipo === 'CUR_B2B';
   const isEdit      = !!initialData;
@@ -77,6 +78,12 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
   const [saved,        setSaved]        = useState(false);
   const [cupsDbError,  setCupsDbError]  = useState(null);
 
+  // ── CUPS duplicado (flujo CURP: alta con otra compañía + alta propia sobre
+  // el mismo suministro) — ya no se bloquea, se pregunta y se deja avanzar.
+  const [showCupsDupModal, setShowCupsDupModal] = useState(false);
+  const [cupsDupInfo,      setCupsDupInfo]      = useState(null); // { cups, nombreCliente }
+  const [cupsConfirmado,   setCupsConfirmado]   = useState('');   // valor de CUPS ya aceptado por el usuario
+
   // ── Compartir contrato ─────────────────────────────────────────────────────
   const [quiereCompartir, setQuiereCompartir] = useState(false);
   const [compartidoCon,   setCompartidoCon]   = useState([]);
@@ -127,11 +134,8 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
       }
       return updated;
     });
-    setErrors((e) => {
-      const next = { ...e, [field]: false };
-      if (field === 'cups') { next.cups_duplicate = false; setCupsDbError(null); }
-      return next;
-    });
+    setErrors((e) => ({ ...e, [field]: false }));
+    if (field === 'cups') setCupsDbError(null);
   };
 
   const handleFileChange = (e, setFileName, setBase64) => {
@@ -155,15 +159,9 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
     if (!form.nombre.trim())         e.nombre            = true;
     if (!form.identificacion.trim()) e.identificacion     = true;
     if (!form.telefono.trim())       e.telefono           = true;
-    if (!form.cups.trim()) {
-      e.cups = true;
-    } else if (existingCups?.size) {
-      const cupsVal     = form.cups.trim().toUpperCase();
-      const originalCups = (initialData?.cups || '').toUpperCase().trim();
-      if (existingCups.has(cupsVal) && cupsVal !== originalCups) {
-        e.cups_duplicate = true;
-      }
-    }
+    // El CUPS duplicado ya NO bloquea el envío (flujo CURP): se gestiona con un
+    // modal de confirmación en handleSubmit, no como error de validación aquí.
+    if (!form.cups.trim()) e.cups = true;
     if (!form.tarifa)                e.tarifa             = true;
     if (!form.estado)                e.estado             = true;
     if (!form.fecha_tramitacion)     e.fecha_tramitacion  = true;
@@ -194,6 +192,23 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (submittingRef.current || !validate()) return;
+
+    // CUPS duplicado (flujo CURP): si coincide con un cliente ya existente y el
+    // usuario todavía no ha confirmado este valor exacto, preguntar antes de
+    // guardar en vez de bloquear el envío.
+    const cupsVal      = form.cups.trim().toUpperCase();
+    const originalCups = (initialData?.cups || '').toUpperCase().trim();
+    if (cupsVal && cupsVal !== originalCups && existingCups?.has(cupsVal) && cupsVal !== cupsConfirmado) {
+      const matching = clientesCtx.find(c => (c.cups || '').toUpperCase().trim() === cupsVal);
+      setCupsDupInfo({ cups: cupsVal, nombreCliente: matching?.nombre || 'un cliente existente' });
+      setShowCupsDupModal(true);
+      return;
+    }
+
+    await doSubmit();
+  };
+
+  const doSubmit = async () => {
     submittingRef.current = true;
     setCupsDbError(null);
 
@@ -446,10 +461,16 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
                 <div className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray"><Zap size={15} /></div>
                 <input type="text" placeholder="Ej: ES1234567890" value={form.cups}
                   onChange={(e) => set('cups', e.target.value.toUpperCase())}
-                  className={`${(errors.cups || errors.cups_duplicate) ? 'input-field !border-red-400 focus:!ring-red-300' : 'input-field'} pl-9`} />
+                  className={`${
+                    errors.cups ? 'input-field !border-red-400 focus:!ring-red-300'
+                    : (cupsConfirmado && form.cups.trim().toUpperCase() === cupsConfirmado) ? 'input-field !border-amber-400 focus:!ring-amber-300'
+                    : 'input-field'
+                  } pl-9`} />
               </div>
               {errors.cups && <p className="text-red-500 text-xs mt-1">Obligatorio</p>}
-              {errors.cups_duplicate && <p className="text-red-500 text-xs mt-1">Este CUPS ya está registrado en otro contrato</p>}
+              {cupsConfirmado && form.cups.trim().toUpperCase() === cupsConfirmado && (
+                <p className="text-amber-600 text-xs mt-1 font-medium">CUPS aceptado: Se creará un nuevo registro vinculado a este mismo cliente</p>
+              )}
             </div>
           </div>
 
@@ -914,6 +935,22 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, exi
           </div>
         </form>
       </div>
+
+      {showCupsDupModal && cupsDupInfo && (
+        <ConfirmActionModal
+          title="CUPS ya registrado"
+          message={`Este CUPS ya está asignado al siguiente cliente: ${cupsDupInfo.nombreCliente}. ¿La gestión va relacionada con este mismo cliente?`}
+          confirmLabel="Sí"
+          cancelLabel="No"
+          confirmClassName="bg-green-600 hover:bg-green-700"
+          onConfirm={() => {
+            setCupsConfirmado(cupsDupInfo.cups);
+            setShowCupsDupModal(false);
+            doSubmit();
+          }}
+          onCancel={() => setShowCupsDupModal(false)}
+        />
+      )}
     </div>
   );
 }

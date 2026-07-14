@@ -30,7 +30,14 @@ const CLIENTES_SELECT = [
   'cups', 'tarifa', 'linea_negocio', 'subtipo', 'subtipo_otro', 'id_producto',
   'creado_por', 'vendido_por', 'descripcion', 'estado', 'comercial', 'equipo',
   'fecha_tramitacion', 'fecha_firma', 'fecha_formalizada', 'created_at',
-  'deleted_at', 'consumo_anual_est', 'estado_incidencia',
+  'deleted_at', 'consumo_anual_est',
+].join(',');
+
+// registro_pendientes: ledger independiente de TODAS las filas de los Excels de
+// incidencias (existan o no como contrato en `clientes`). Ver [[project_pendientes]].
+const REGISTRO_PENDIENTES_SELECT = [
+  'id', 'cups', 'nombre', 'numero_caso', 'fecha_creacion_excel', 'origen_excel',
+  'estado_incidencia', 'fecha_formalizacion', 'created_at',
 ].join(',');
 
 // Descarga ÚNICAMENTE el campo Base64 de UN cliente concreto (fetch-on-click)
@@ -119,6 +126,7 @@ export function DataProvider({ children }) {
   const [actividades,   setActividades]   = useState([]);
   const [visitas,       setVisitas]       = useState([]);
   const [visitasPymes,  setVisitasPymes]  = useState([]);
+  const [registroPendientes, setRegistroPendientes] = useState([]);
   const [docsFlags,     setDocsFlags]     = useState({});
   const [visitasDocsFlags,      setVisitasDocsFlags]      = useState({});
   const [visitasPymesDocsFlags, setVisitasPymesDocsFlags] = useState({});
@@ -151,6 +159,7 @@ export function DataProvider({ children }) {
       setActividades([]);
       setVisitas([]);
       setVisitasPymes([]);
+      setRegistroPendientes([]);
       setVisitasDocsFlags({});
       setVisitasPymesDocsFlags({});
       setIsLoading(false);
@@ -170,6 +179,7 @@ export function DataProvider({ children }) {
       setActividades(userCache.actividades || []);
       setVisitas(userCache.visitas         || []);
       setVisitasPymes(userCache.visitasPymes || []);
+      setRegistroPendientes(userCache.registroPendientes || []);
       setDocsFlags(userCache.docsFlags     || {});
       setVisitasDocsFlags(userCache.visitasDocsFlags         || {});
       setVisitasPymesDocsFlags(userCache.visitasPymesDocsFlags || {});
@@ -290,11 +300,21 @@ export function DataProvider({ children }) {
       // así que hay que excluir ambos casos para no marcar falsos positivos.
       const mkFlagFor = (table, col) => supabase.from(table).select('id').is('deleted_at', null).not(col, 'is', null).neq(col, '');
 
+      // registro_pendientes: solo las filas activas (con incidencia sin resolver).
+      // Falla silenciosamente (error tolerado) si la tabla aún no existe en BD.
+      const registroPendientesQuery = supabase
+        .from('registro_pendientes')
+        .select(REGISTRO_PENDIENTES_SELECT)
+        .is('deleted_at', null)
+        .not('estado_incidencia', 'is', null)
+        .order('created_at', { ascending: false });
+
       const [
         { data: clientesData,     error: clientesErr  },
         { data: actividadesData },
         { data: visitasData },
         { data: visitasPymesData },
+        { data: registroPendientesData, error: registroPendientesErr },
         { data: compartidoData,   error: compartidoErr },
         { data: sharedRaw },
         { data: vendedorRaw },
@@ -313,6 +333,7 @@ export function DataProvider({ children }) {
         supabase.from('actividades').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
         visitasQuery,
         visitasPymesQuery,
+        registroPendientesQuery,
         compartidoQuery,
         sharedQuery    || Promise.resolve({ data: [], error: null }),
         vendedorQuery  || Promise.resolve({ data: [], error: null }),
@@ -366,6 +387,8 @@ export function DataProvider({ children }) {
       const newActividades  = actividadesData  || [];
       const newVisitas      = visitasData      || [];
       const newVisitasPymes = visitasPymesData || [];
+      // Tolerante a que la tabla aún no exista (antes de ejecutar supabase_pendientes_v2.sql)
+      const newRegistroPendientes = registroPendientesErr ? [] : (registroPendientesData || []);
 
       // Construir mapa de flags booleanos
       const dniSet     = new Set((dniData    || []).map(r => r.id));
@@ -413,6 +436,7 @@ export function DataProvider({ children }) {
       setActividades(newActividades);
       setVisitas(newVisitas);
       setVisitasPymes(newVisitasPymes);
+      setRegistroPendientes(newRegistroPendientes);
       setDocsFlags(newDocsFlags);
       setVisitasDocsFlags(newVisitasDocsFlags);
       setVisitasPymesDocsFlags(newVisitasPymesDocsFlags);
@@ -422,6 +446,7 @@ export function DataProvider({ children }) {
         actividades:  newActividades,
         visitas:      newVisitas,
         visitasPymes: newVisitasPymes,
+        registroPendientes: newRegistroPendientes,
         docsFlags:    newDocsFlags,
         visitasDocsFlags:      newVisitasDocsFlags,
         visitasPymesDocsFlags: newVisitasPymesDocsFlags,
@@ -892,71 +917,92 @@ export function DataProvider({ children }) {
     }
   };
 
-  // ── Gestión de Pendientes (embudo de incidencias por CUPS) ──────────────────
+  // ── Gestión de Pendientes (registro_pendientes — ledger independiente) ──────
+  // Ver [[project_pendientes]]: cada fila del Excel se conserva SIEMPRE aquí,
+  // exista o no (todavía) como contrato en `clientes`. El cruce con `clientes`
+  // (círculo verde/rojo) se hace en el cliente (Pendientes.jsx), no aquí.
 
-  // Marca "Pendiente de tareas" a todos los contratos cuyo CUPS aparezca en la
-  // lista extraída del Excel subido. Devuelve cuántos CUPS del Excel matchearon
-  // realmente contra la BD (para informar al usuario de los que no se encontraron).
-  const marcarPendientesPorCups = async (cupsList) => {
-    const cupsUnicos = [...new Set((cupsList || []).map(c => String(c).trim()).filter(Boolean))];
-    if (cupsUnicos.length === 0) return { matched: 0, error: null };
+  // Inserta TODAS las filas leídas del/de los Excel(s), sin filtrar por si el
+  // CUPS existe en `clientes` — así no se pierde ningún registro. `rows` es
+  // [{ cups, nombre, numero_caso, fecha_creacion_excel, origen_excel, raw_data }].
+  const ingestExcelPendientes = async (rows) => {
+    const limpias = (rows || [])
+      .map(r => ({ ...r, cups: String(r.cups ?? '').trim() }))
+      .filter(r => r.cups);
+    if (limpias.length === 0) return { inserted: 0, error: null };
 
-    const { data, error } = await supabase
-      .from('clientes')
-      .update({ estado_incidencia: 'Pendiente de tareas' })
-      .in('cups', cupsUnicos)
-      .select('id');
+    const registros = limpias.map((r, i) => ({
+      id:                   Date.now() + i,
+      cups:                 r.cups,
+      nombre:               r.nombre               || null,
+      numero_caso:          r.numero_caso          || null,
+      fecha_creacion_excel: r.fecha_creacion_excel || null,
+      origen_excel:         r.origen_excel         || null,
+      raw_data:             r.raw_data             || null,
+      estado_incidencia:    'Pendiente de tareas',
+    }));
 
-    if (error) { console.error('marcarPendientesPorCups:', error); return { matched: 0, error }; }
+    const { data, error } = await supabase.from('registro_pendientes').insert(registros).select('id');
+    if (error) { console.error('ingestExcelPendientes:', error); return { inserted: 0, error }; }
 
-    const matchedIds = new Set((data || []).map(r => r.id));
-    setClientes(prev => prev.map(c => matchedIds.has(c.id) ? { ...c, estado_incidencia: 'Pendiente de tareas' } : c));
+    // Recargar desde BD en vez de fusionar en memoria: más simple y evita
+    // desincronizar el estado local si la inserción parcial falla en algún punto.
+    const { data: fresh } = await supabase
+      .from('registro_pendientes')
+      .select(REGISTRO_PENDIENTES_SELECT)
+      .is('deleted_at', null)
+      .not('estado_incidencia', 'is', null)
+      .order('created_at', { ascending: false });
+    if (fresh) setRegistroPendientes(fresh);
 
-    if (matchedIds.size > 0) {
-      addActivity(
-        'Pendientes',
-        `${currentUser?.username} ha subido un Excel de incidencias: ${matchedIds.size} contrato(s) marcado(s) como "Pendiente de tareas"`,
-        currentUser?.username
-      );
-    }
-    return { matched: matchedIds.size, error: null };
+    addActivity(
+      'Pendientes',
+      `${currentUser?.username} ha subido Excel(s) de incidencias: ${data?.length || 0} fila(s) registradas en el embudo de Pendientes`,
+      currentUser?.username
+    );
+    return { inserted: data?.length || 0, error: null };
   };
 
-  const tramitarIncidencia = async (id) => {
-    setClientes(prev => prev.map(c => c.id === id ? { ...c, estado_incidencia: 'Tramitado' } : c));
-    const { error } = await supabase.from('clientes').update({ estado_incidencia: 'Tramitado' }).eq('id', id);
-    if (error) { console.error('tramitarIncidencia:', error); return { error }; }
-    const cliente = clientes.find(c => c.id === id);
-    if (cliente) {
-      addActivity(
-        'Pendientes',
-        `${currentUser?.username} ha tramitado la incidencia de ${cliente.nombre}`,
-        currentUser?.username
-      );
+  const tramitarPendiente = async (id) => {
+    setRegistroPendientes(prev => prev.map(r => r.id === id ? { ...r, estado_incidencia: 'Tramitado' } : r));
+    const { error } = await supabase.from('registro_pendientes').update({ estado_incidencia: 'Tramitado' }).eq('id', id);
+    if (error) { console.error('tramitarPendiente:', error); return { error }; }
+    const registro = registroPendientes.find(r => r.id === id);
+    if (registro) {
+      addActivity('Pendientes', `${currentUser?.username} ha tramitado la incidencia de ${registro.nombre || registro.cups}`, currentUser?.username);
     }
     return { error: null };
   };
 
-  // Formaliza y saca el contrato del embudo de Pendientes: estado_incidencia → null
-  // y se actualiza el campo YA EXISTENTE fecha_formalizada (TEXT, formato ISO
-  // YYYY-MM-DD) con la fecha de hoy — mismo formato de almacenamiento que usa
-  // formalizarContrato() más abajo; formatDate()/formatDateDDMMYYYY() se encargan
-  // de mostrarlo en pantalla como DD/MM/YYYY.
-  const formalizarIncidencia = async (id) => {
+  // Formaliza y saca el registro del embudo de Pendientes: estado_incidencia → null
+  // + fecha_formalizacion = NOW() en registro_pendientes (tabla propia, no toca
+  // `clientes`). SI Y SOLO SI existe EXACTAMENTE UN contrato en `clientes` con
+  // ese mismo CUPS, se refleja también ahí actualizando fecha_formalizada (mismo
+  // formato ISO que ya usa formalizarContrato()). Con 0 o 2+ coincidencias (CUPS
+  // aún sin alta, o alta duplicada por flujo CURP) NO se toca `clientes` — sería
+  // ambiguo decidir cuál de varios contratos formalizar automáticamente.
+  const formalizarPendiente = async (id) => {
     const fechaHoy = today();
-    setClientes(prev => prev.map(c => c.id === id ? { ...c, estado_incidencia: null, fecha_formalizada: fechaHoy } : c));
+    setRegistroPendientes(prev => prev.map(r => r.id === id ? { ...r, estado_incidencia: null, fecha_formalizacion: new Date().toISOString() } : r));
+    const registro = registroPendientes.find(r => r.id === id);
+
     const { error } = await supabase
-      .from('clientes')
-      .update({ estado_incidencia: null, fecha_formalizada: fechaHoy })
+      .from('registro_pendientes')
+      .update({ estado_incidencia: null, fecha_formalizacion: new Date().toISOString() })
       .eq('id', id);
-    if (error) { console.error('formalizarIncidencia:', error); return { error }; }
-    const cliente = clientes.find(c => c.id === id);
-    if (cliente) {
-      addActivity(
-        'Pendientes',
-        `${currentUser?.username} ha formalizado la incidencia de ${cliente.nombre} (F. Formalizada: ${fechaHoy})`,
-        currentUser?.username
-      );
+    if (error) { console.error('formalizarPendiente:', error); return { error }; }
+
+    if (registro?.cups) {
+      const matches = clientes.filter(c => (c.cups || '').toUpperCase().trim() === registro.cups.toUpperCase().trim());
+      if (matches.length === 1) {
+        const cliente = matches[0];
+        setClientes(prev => prev.map(c => c.id === cliente.id ? { ...c, fecha_formalizada: fechaHoy } : c));
+        await supabase.from('clientes').update({ fecha_formalizada: fechaHoy }).eq('id', cliente.id);
+      }
+    }
+
+    if (registro) {
+      addActivity('Pendientes', `${currentUser?.username} ha formalizado la incidencia de ${registro.nombre || registro.cups}`, currentUser?.username);
     }
     return { error: null };
   };
@@ -1144,9 +1190,10 @@ export function DataProvider({ children }) {
       formalizarContrato,
       renovarContrato,
       deleteCliente,
-      marcarPendientesPorCups,
-      tramitarIncidencia,
-      formalizarIncidencia,
+      registroPendientes,
+      ingestExcelPendientes,
+      tramitarPendiente,
+      formalizarPendiente,
       prescriptores,
       prescriptorLinks,
       addPrescriptor,

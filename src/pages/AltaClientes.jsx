@@ -216,12 +216,24 @@ function ConsumoModal({ cliente, onClose, onSave }) {
 
 export default function AltaClientes({ tipo }) {
   const isB2B = tipo === 'B2B';
-  const { clientes: allClientes, clientesB2C, clientesB2B, addCliente, updateCliente, updateCompartidoCon, setConsumoAnualEst, firmarContrato, formalizarContrato, deleteCliente, rankingB2C, rankingB2B, docsFlags, prescriptores, prescriptorLinks, addPrescriptor, renamePrescriptor, deletePrescriptor, bulkReasignPrescriptor, linkPrescriptor } = useData();
+  const { clientes: allClientes, clientesB2C, clientesB2B, addCliente, updateCliente, updateCompartidoCon, setConsumoAnualEst, firmarContrato, formalizarContrato, deleteCliente, rankingB2C, rankingB2B, docsFlags, prescriptores, prescriptorLinks, addPrescriptor, renamePrescriptor, deletePrescriptor, bulkReasignPrescriptor, linkPrescriptor, registroPendientes } = useData();
   const rankingActivo = isB2B ? rankingB2B : rankingB2C;
 
   const allCups = useMemo(
     () => new Set(allClientes.map(c => (c.cups || '').toUpperCase().trim()).filter(Boolean)),
     [allClientes]
+  );
+
+  // CUPS con una incidencia activa en el embudo de Pendientes (ver [[project_pendientes]]).
+  // Fuente de verdad: registro_pendientes — ya no se lee clientes.estado_incidencia.
+  const pendientesCupsSet = useMemo(
+    () => new Set(
+      registroPendientes
+        .filter(r => r.estado_incidencia === 'Pendiente de tareas' || r.estado_incidencia === 'Tramitado')
+        .map(r => (r.cups || '').toUpperCase().trim())
+        .filter(Boolean)
+    ),
+    [registroPendientes]
   );
   const { currentUser, users } = useAuth();
   const clientes = isB2B ? clientesB2B : clientesB2C;
@@ -626,7 +638,7 @@ export default function AltaClientes({ tipo }) {
               ) : (
                 paginated.map((c) => (
                   <tr key={c.id} className={`transition-colors ${
-                    (c.estado_incidencia === 'Pendiente de tareas' || c.estado_incidencia === 'Tramitado')
+                    pendientesCupsSet.has((c.cups || '').toUpperCase().trim())
                       ? 'bg-red-100 hover:bg-red-200'
                       : c.shared_by && c.shared_by !== currentUser?.username
                         ? 'bg-green-50 hover:bg-green-100'
@@ -637,8 +649,8 @@ export default function AltaClientes({ tipo }) {
                     </td>
                     <td className="table-cell font-medium text-google-dark whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
-                        {(c.estado_incidencia === 'Pendiente de tareas' || c.estado_incidencia === 'Tramitado') && (
-                          <AlertCircle size={13} className="text-red-500 flex-shrink-0" title={`Incidencia: ${c.estado_incidencia}`} />
+                        {pendientesCupsSet.has((c.cups || '').toUpperCase().trim()) && (
+                          <AlertCircle size={13} className="text-red-500 flex-shrink-0" title="Tiene una incidencia activa en Gestión de Pendientes" />
                         )}
                         {c.nombre}
                       </div>

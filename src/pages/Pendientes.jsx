@@ -6,13 +6,6 @@ import { useData } from '../context/DataContext';
 /* Nombre EXACTO de la columna del Excel que contiene el CUPS a cruzar. */
 const CUPS_COLUMN_HEADER = 'CUPS: CUPS';
 
-const formatDate = (dateStr) => {
-  if (!dateStr) return '—';
-  const parts = dateStr.split('-');
-  if (parts.length !== 3) return dateStr;
-  return `${parts[2]}/${parts[1]}/${parts[0]}`;
-};
-
 function fileToArrayBuffer(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -22,28 +15,50 @@ function fileToArrayBuffer(file) {
   });
 }
 
-/* Lee el Excel y devuelve la lista de valores CUPS bajo la columna "CUPS: CUPS".
-   Usa header:1 (filas como arrays) para poder localizar la cabecera EXACTA sin que
-   la librería la renombre por duplicados o caracteres especiales. */
-async function extractCupsFromExcel(file) {
+/* Lee el Excel y devuelve TODAS las filas (no solo las que matchean contra la
+   BD): cada una se conserva en registro_pendientes para no perder ningún dato.
+   Usa header:1 (filas como arrays) para localizar la cabecera EXACTA sin que
+   la librería la renombre por duplicados o caracteres especiales. Si el Excel
+   no trae fila de cabecera (algún formato antiguo), usa la columna A como CUPS. */
+async function extractRowsFromExcel(file) {
   const buffer = await fileToArrayBuffer(file);
   const workbook = XLSX.read(buffer, { type: 'array' });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-  if (rows.length === 0) return { cups: [], columnFound: false };
+  if (rows.length === 0) return { registros: [], columnFound: false };
 
   const headerRow = rows[0].map(h => String(h ?? '').trim());
-  const colIdx = headerRow.findIndex(h => h === CUPS_COLUMN_HEADER);
-  if (colIdx === -1) return { cups: [], columnFound: false };
+  const cupsIdx    = headerRow.findIndex(h => h === CUPS_COLUMN_HEADER);
+  const nombreIdx  = headerRow.findIndex(h => h === 'Nombre');
+  const casoIdx    = headerRow.findIndex(h => h === 'Número del caso');
+  const fechaIdx   = headerRow.findIndex(h => h === 'Fecha de creación');
 
-  const cups = rows.slice(1)
-    .map(r => String(r[colIdx] ?? '').trim())
+  const columnFound = cupsIdx !== -1;
+  const dataRows = columnFound ? rows.slice(1) : rows; // sin cabecera: todas las filas son datos
+
+  const registros = dataRows
+    .map(r => {
+      const cups = String(r[columnFound ? cupsIdx : 0] ?? '').trim();
+      if (!cups) return null;
+      const raw_data = columnFound
+        ? Object.fromEntries(headerRow.map((h, i) => [h || `col_${i}`, r[i] ?? '']))
+        : { cups };
+      return {
+        cups,
+        nombre:               columnFound ? String(r[nombreIdx] ?? '').trim()  || null : null,
+        numero_caso:          columnFound ? String(r[casoIdx]   ?? '').trim()  || null : null,
+        fecha_creacion_excel: columnFound ? String(r[fechaIdx]  ?? '').trim()  || null : null,
+        origen_excel:         file.name,
+        raw_data,
+      };
+    })
     .filter(Boolean);
-  return { cups, columnFound: true };
+
+  return { registros, columnFound };
 }
 
 export default function Pendientes() {
-  const { clientes, marcarPendientesPorCups, tramitarIncidencia, formalizarIncidencia } = useData();
+  const { clientes, registroPendientes, ingestExcelPendientes, tramitarPendiente, formalizarPendiente } = useData();
 
   const [dragging, setDragging]   = useState(false);
   const [dropped, setDropped]     = useState(null);
@@ -51,9 +66,15 @@ export default function Pendientes() {
   const [resultMsg, setResultMsg] = useState(null); // { type: 'success'|'error', text }
   const fileRef = useRef(null);
 
-  const pendientes = useMemo(
-    () => clientes.filter(c => c.estado_incidencia === 'Pendiente de tareas' || c.estado_incidencia === 'Tramitado'),
+  // Cualquier CUPS ya dado de alta (B2C o B2B) — para el circulito verde/rojo.
+  const clientesCupsSet = useMemo(
+    () => new Set(clientes.map(c => (c.cups || '').toUpperCase().trim()).filter(Boolean)),
     [clientes]
+  );
+
+  const pendientes = useMemo(
+    () => registroPendientes.filter(r => r.estado_incidencia === 'Pendiente de tareas' || r.estado_incidencia === 'Tramitado'),
+    [registroPendientes]
   );
 
   async function handleFile(file) {
@@ -62,26 +83,26 @@ export default function Pendientes() {
     setResultMsg(null);
     setIsProcessing(true);
     try {
-      const { cups, columnFound } = await extractCupsFromExcel(file);
+      const { registros, columnFound } = await extractRowsFromExcel(file);
       if (!columnFound) {
-        setResultMsg({ type: 'error', text: `No se ha encontrado la columna "${CUPS_COLUMN_HEADER}" en el Excel. Revisa que el nombre de la cabecera sea exacto.` });
+        setResultMsg({ type: 'error', text: `No se ha encontrado la columna "${CUPS_COLUMN_HEADER}" en el Excel. Revisa que el nombre de la cabecera sea exacto (o que la primera fila sea la cabecera).` });
         return;
       }
-      if (cups.length === 0) {
+      if (registros.length === 0) {
         setResultMsg({ type: 'error', text: `La columna "${CUPS_COLUMN_HEADER}" no contiene ningún valor.` });
         return;
       }
-      const { matched, error } = await marcarPendientesPorCups(cups);
+      const { inserted, error } = await ingestExcelPendientes(registros);
       if (error) {
-        setResultMsg({ type: 'error', text: 'Error al actualizar la base de datos. Inténtalo de nuevo.' });
+        setResultMsg({ type: 'error', text: 'Error al guardar en la base de datos. ¿Has ejecutado supabase_pendientes_v2.sql? Inténtalo de nuevo.' });
         return;
       }
       setResultMsg({
         type: 'success',
-        text: `${cups.length} CUPS leídos del Excel · ${matched} contrato(s) encontrados y marcados como "Pendiente de tareas"${matched < cups.length ? ` (${cups.length - matched} CUPS no coinciden con ningún contrato)` : ''}.`,
+        text: `${registros.length} fila(s) leídas del Excel · ${inserted} registradas en el embudo de Pendientes (todas, existan o no ya como contrato en el CRM).`,
       });
     } catch (err) {
-      console.error('Pendientes — extractCupsFromExcel:', err);
+      console.error('Pendientes — extractRowsFromExcel:', err);
       setResultMsg({ type: 'error', text: 'No se pudo leer el archivo. Comprueba que sea un Excel (.xlsx) válido.' });
     } finally {
       setIsProcessing(false);
@@ -102,7 +123,7 @@ export default function Pendientes() {
       {/* Cabecera */}
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-google-dark">Gestión de Pendientes</h1>
-        <p className="text-sm text-google-gray mt-1">Embudo de incidencias — sube el Excel diario y cruza los contratos por CUPS.</p>
+        <p className="text-sm text-google-gray mt-1">Embudo de incidencias — sube el Excel diario. Se conservan TODAS las filas, existan o no ya como contrato en el CRM.</p>
       </div>
 
       {/* Zona de subida */}
@@ -131,7 +152,7 @@ export default function Pendientes() {
           {isProcessing ? (
             <div className="flex flex-col items-center gap-2.5 py-1">
               <FileSpreadsheet size={28} className="text-google-blue animate-pulse" />
-              <p className="text-xs font-semibold text-google-blue">Procesando Excel y cruzando con la base de datos...</p>
+              <p className="text-xs font-semibold text-google-blue">Procesando Excel y guardando en el registro de Pendientes...</p>
             </div>
           ) : dropped ? (
             <div className="flex items-center justify-center gap-2">
@@ -145,7 +166,7 @@ export default function Pendientes() {
             <>
               <Upload size={18} className="mx-auto mb-2 text-gray-400" />
               <p className="text-xs text-google-gray">Arrastra el Excel aquí o <span className="text-google-blue underline">selecciona un archivo</span></p>
-              <p className="text-[11px] text-gray-400 mt-0.5">.xlsx · Busca la columna "{CUPS_COLUMN_HEADER}" y marca esos CUPS como "Pendiente de tareas"</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">.xlsx · Todas las filas se guardan, tengan o no ya un contrato dado de alta</p>
             </>
           )}
         </div>
@@ -163,18 +184,28 @@ export default function Pendientes() {
 
       {/* Tabla de pendientes */}
       <div className="bg-white border border-google-border rounded-xl shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-google-dark">Contratos en el embudo de incidencias</h2>
-          <span className="text-[11px] font-semibold text-google-gray bg-gray-100 px-2 py-0.5 rounded-full">{pendientes.length}</span>
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
+          <h2 className="text-sm font-semibold text-google-dark">Registro de incidencias</h2>
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5 text-[11px] text-google-gray">
+              <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" /> Dado de alta en el CRM
+            </span>
+            <span className="flex items-center gap-1.5 text-[11px] text-google-gray">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" /> Sin alta todavía
+            </span>
+            <span className="text-[11px] font-semibold text-google-gray bg-gray-100 px-2 py-0.5 rounded-full">{pendientes.length}</span>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-max">
             <thead>
               <tr>
-                <th className="table-header">Cliente</th>
-                <th className="table-header">Tipo</th>
+                <th className="table-header w-8"></th>
+                <th className="table-header">Nombre (Excel)</th>
                 <th className="table-header">CUPS</th>
-                <th className="table-header">Comercial</th>
+                <th className="table-header">Nº Caso</th>
+                <th className="table-header">Fecha (Excel)</th>
+                <th className="table-header">Origen</th>
                 <th className="table-header">Estado Incidencia</th>
                 <th className="table-header">Acciones</th>
               </tr>
@@ -182,48 +213,58 @@ export default function Pendientes() {
             <tbody>
               {pendientes.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-10 text-google-gray text-sm">
-                    No hay contratos pendientes de incidencia. Sube un Excel para empezar.
+                  <td colSpan={8} className="text-center py-10 text-google-gray text-sm">
+                    No hay incidencias pendientes. Sube un Excel para empezar.
                   </td>
                 </tr>
               ) : (
-                pendientes.map(c => (
-                  <tr key={c.id} className={`transition-colors ${
-                    c.estado_incidencia === 'Tramitado' ? 'bg-orange-100 hover:bg-orange-200' : 'hover:bg-google-bg'
-                  }`}>
-                    <td className="table-cell font-medium text-google-dark whitespace-nowrap">{c.nombre}</td>
-                    <td className="table-cell text-google-gray text-xs">{(c.tipo === 'CUR' || c.tipo === 'CUR_B2B') ? 'CUR' : c.tipo}</td>
-                    <td className="table-cell text-google-gray font-mono text-xs">{c.cups || '—'}</td>
-                    <td className="table-cell text-google-gray text-xs">{c.comercial || '—'}</td>
-                    <td className="table-cell">
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${
-                        c.estado_incidencia === 'Tramitado' ? 'bg-orange-200 text-orange-800' : 'bg-gray-100 text-gray-700'
-                      }`}>
-                        {c.estado_incidencia}
-                      </span>
-                    </td>
-                    <td className="table-cell">
-                      <div className="flex items-center gap-1.5">
-                        {c.estado_incidencia === 'Pendiente de tareas' && (
+                pendientes.map(r => {
+                  const existeEnCrm = clientesCupsSet.has((r.cups || '').toUpperCase().trim());
+                  return (
+                    <tr key={r.id} className={`transition-colors ${
+                      r.estado_incidencia === 'Tramitado' ? 'bg-orange-100 hover:bg-orange-200' : 'hover:bg-google-bg'
+                    }`}>
+                      <td className="table-cell">
+                        <span
+                          className={`w-3 h-3 rounded-full inline-block ${existeEnCrm ? 'bg-green-500' : 'bg-red-500'}`}
+                          title={existeEnCrm ? 'Este CUPS ya está dado de alta en el CRM' : 'Este CUPS todavía no tiene contrato en el CRM'}
+                        />
+                      </td>
+                      <td className="table-cell font-medium text-google-dark whitespace-nowrap">{r.nombre || '—'}</td>
+                      <td className="table-cell text-google-gray font-mono text-xs">{r.cups}</td>
+                      <td className="table-cell text-google-gray text-xs">{r.numero_caso || '—'}</td>
+                      <td className="table-cell text-google-gray text-xs whitespace-nowrap">{r.fecha_creacion_excel || '—'}</td>
+                      <td className="table-cell text-google-gray text-xs truncate max-w-[160px]" title={r.origen_excel || ''}>{r.origen_excel || '—'}</td>
+                      <td className="table-cell">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${
+                          r.estado_incidencia === 'Tramitado' ? 'bg-orange-200 text-orange-800' : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {r.estado_incidencia}
+                        </span>
+                      </td>
+                      <td className="table-cell">
+                        <div className="flex items-center gap-1.5">
+                          {r.estado_incidencia === 'Pendiente de tareas' && (
+                            <button
+                              onClick={() => tramitarPendiente(r.id)}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-orange-300 bg-orange-50 text-orange-700 text-xs font-medium hover:bg-orange-100 transition-colors whitespace-nowrap"
+                              title="Marcar como tramitado"
+                            >
+                              <Wrench size={13} /> Tramitar
+                            </button>
+                          )}
                           <button
-                            onClick={() => tramitarIncidencia(c.id)}
-                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-orange-300 bg-orange-50 text-orange-700 text-xs font-medium hover:bg-orange-100 transition-colors whitespace-nowrap"
-                            title="Marcar como tramitado"
+                            onClick={() => formalizarPendiente(r.id)}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors whitespace-nowrap"
+                            title="Formalizar y sacar del embudo"
                           >
-                            <Wrench size={13} /> Tramitar
+                            <FileCheck size={13} /> Formalizar
                           </button>
-                        )}
-                        <button
-                          onClick={() => formalizarIncidencia(c.id)}
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors whitespace-nowrap"
-                          title="Formalizar y sacar del embudo"
-                        >
-                          <FileCheck size={13} /> Formalizar
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
