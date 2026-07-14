@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { AlertTriangle, Upload, FileSpreadsheet, X, CheckCircle, Wrench, FileCheck } from 'lucide-react';
 import { useData } from '../context/DataContext';
+import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
 
 /* Nombre EXACTO de la columna del Excel que contiene el CUPS a cruzar. */
@@ -102,6 +103,8 @@ function estadoOriginalBadge(estado) {
 
 export default function Pendientes() {
   const { clientes, registroPendientes, ingestExcelPendientes, tramitarPendiente, formalizarPendiente } = useData();
+  const { currentUser } = useAuth();
+  const isAdmin = currentUser?.role?.toLowerCase() === 'admin';
 
   const [dragging, setDragging]   = useState(false);
   const [dropped, setDropped]     = useState(null);
@@ -194,64 +197,65 @@ export default function Pendientes() {
       {/* Cabecera */}
       <div className="mb-6">
         <h1 className="text-xl font-semibold text-google-dark">Gestión de Pendientes</h1>
-        <p className="text-sm text-google-gray mt-1">Embudo de incidencias — sube el Excel diario. Se conservan TODAS las filas, existan o no ya como contrato en el CRM.</p>
       </div>
 
-      {/* Zona de subida */}
-      <div className="bg-white border border-google-border rounded-xl shadow-sm p-5 mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider">Subir Excel de incidencias (.xlsx)</p>
-          <span className="text-[10px] font-semibold text-google-gray bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5">
-            Columna esperada: "{CUPS_COLUMN_HEADER}"
-          </span>
-        </div>
-        <div
-          className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
-            isProcessing ? 'border-blue-300 bg-blue-50 cursor-wait'
-            : dragging    ? 'border-google-blue bg-blue-50 cursor-copy'
-            : 'border-gray-200 bg-gray-50 hover:border-blue-300 cursor-pointer'
-          }`}
-          onDragOver={!isProcessing ? onDragOver  : undefined}
-          onDragLeave={!isProcessing ? onDragLeave : undefined}
-          onDrop={!isProcessing ? onDrop : undefined}
-          onClick={() => { if (!isProcessing) fileRef.current?.click(); }}
-        >
-          <input
-            ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
-            onChange={e => { if (e.target.files[0]) handleFile(e.target.files[0]); e.target.value = ''; }}
-          />
-          {isProcessing ? (
-            <div className="flex flex-col items-center gap-2.5 py-1">
-              <FileSpreadsheet size={28} className="text-google-blue animate-pulse" />
-              <p className="text-xs font-semibold text-google-blue">Procesando Excel y guardando en el registro de Pendientes...</p>
+      {/* Zona de subida — solo Administrador */}
+      {isAdmin && (
+        <div className="bg-white border border-google-border rounded-xl shadow-sm p-5 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider">Subir Excel de incidencias (.xlsx)</p>
+            <span className="text-[10px] font-semibold text-google-gray bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5">
+              Columna esperada: "{CUPS_COLUMN_HEADER}"
+            </span>
+          </div>
+          <div
+            className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors ${
+              isProcessing ? 'border-blue-300 bg-blue-50 cursor-wait'
+              : dragging    ? 'border-google-blue bg-blue-50 cursor-copy'
+              : 'border-gray-200 bg-gray-50 hover:border-blue-300 cursor-pointer'
+            }`}
+            onDragOver={!isProcessing ? onDragOver  : undefined}
+            onDragLeave={!isProcessing ? onDragLeave : undefined}
+            onDrop={!isProcessing ? onDrop : undefined}
+            onClick={() => { if (!isProcessing) fileRef.current?.click(); }}
+          >
+            <input
+              ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
+              onChange={e => { if (e.target.files[0]) handleFile(e.target.files[0]); e.target.value = ''; }}
+            />
+            {isProcessing ? (
+              <div className="flex flex-col items-center gap-2.5 py-1">
+                <FileSpreadsheet size={28} className="text-google-blue animate-pulse" />
+                <p className="text-xs font-semibold text-google-blue">Procesando Excel y guardando en el registro de Pendientes...</p>
+              </div>
+            ) : dropped ? (
+              <div className="flex items-center justify-center gap-2">
+                <FileSpreadsheet size={16} className="text-google-blue flex-shrink-0" />
+                <span className="text-sm font-medium text-google-dark truncate max-w-[240px]">{dropped.name}</span>
+                <button type="button" className="text-gray-400 hover:text-red-500 transition-colors" onClick={e => { e.stopPropagation(); setDropped(null); setResultMsg(null); }}>
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <>
+                <Upload size={18} className="mx-auto mb-2 text-gray-400" />
+                <p className="text-xs text-google-gray">Arrastra el Excel aquí o <span className="text-google-blue underline">selecciona un archivo</span></p>
+                <p className="text-[11px] text-gray-400 mt-0.5">.xlsx · Todas las filas se guardan, tengan o no ya un contrato dado de alta</p>
+              </>
+            )}
+          </div>
+          {resultMsg && (
+            <div className={`flex items-start gap-2 rounded-lg px-3 py-2.5 mt-3 border ${
+              resultMsg.type === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
+            }`}>
+              {resultMsg.type === 'success'
+                ? <CheckCircle size={14} className="text-green-500 flex-shrink-0 mt-0.5" />
+                : <AlertTriangle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />}
+              <p className={`text-[11px] leading-relaxed ${resultMsg.type === 'success' ? 'text-green-700' : 'text-red-700'}`}>{resultMsg.text}</p>
             </div>
-          ) : dropped ? (
-            <div className="flex items-center justify-center gap-2">
-              <FileSpreadsheet size={16} className="text-google-blue flex-shrink-0" />
-              <span className="text-sm font-medium text-google-dark truncate max-w-[240px]">{dropped.name}</span>
-              <button type="button" className="text-gray-400 hover:text-red-500 transition-colors" onClick={e => { e.stopPropagation(); setDropped(null); setResultMsg(null); }}>
-                <X size={14} />
-              </button>
-            </div>
-          ) : (
-            <>
-              <Upload size={18} className="mx-auto mb-2 text-gray-400" />
-              <p className="text-xs text-google-gray">Arrastra el Excel aquí o <span className="text-google-blue underline">selecciona un archivo</span></p>
-              <p className="text-[11px] text-gray-400 mt-0.5">.xlsx · Todas las filas se guardan, tengan o no ya un contrato dado de alta</p>
-            </>
           )}
         </div>
-        {resultMsg && (
-          <div className={`flex items-start gap-2 rounded-lg px-3 py-2.5 mt-3 border ${
-            resultMsg.type === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
-          }`}>
-            {resultMsg.type === 'success'
-              ? <CheckCircle size={14} className="text-green-500 flex-shrink-0 mt-0.5" />
-              : <AlertTriangle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />}
-            <p className={`text-[11px] leading-relaxed ${resultMsg.type === 'success' ? 'text-green-700' : 'text-red-700'}`}>{resultMsg.text}</p>
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Tabla de pendientes */}
       <div className="bg-white border border-google-border rounded-xl shadow-sm overflow-hidden">
