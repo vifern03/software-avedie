@@ -86,6 +86,15 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
   const [autorellenando,    setAutorellenando]    = useState(false); // true mientras se descarga el DNI escaneado
   const [cupsDupResolvedFor, setCupsDupResolvedFor] = useState(''); // valor de CUPS ya resuelto (Sí/No)
 
+  // ── Documento duplicado (DNI/NIE en B2C, CIF en B2B — mismo campo `identificacion`) ──
+  // Sistema gemelo al de CUPS: alerta inline, autorelleno de datos de CONTACTO y
+  // documentos (nunca del suministro nuevo: CUPS/Tarifa/Id Producto/Línea de
+  // Negocio/Subtipo/Factura/Justo Título quedan intocados pase lo que pase).
+  const [docMatch,          setDocMatch]          = useState(null);
+  const [docDupAction,      setDocDupAction]      = useState(null); // null | 'pending' | 'accepted' | 'rejected'
+  const [autorellenandoDoc, setAutorellenandoDoc] = useState(false);
+  const [docDupResolvedFor, setDocDupResolvedFor] = useState('');
+
   // ── Compartir contrato ─────────────────────────────────────────────────────
   const [quiereCompartir, setQuiereCompartir] = useState(false);
   const [compartidoCon,   setCompartidoCon]   = useState([]);
@@ -206,6 +215,90 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
   const handleRechazarAutorelleno = () => {
     setCupsDupResolvedFor(form.cups.trim().toUpperCase());
     setCupsDupAction('rejected');
+  };
+
+  // ── Detección de documento duplicado (DNI/NIE o CIF, campo `identificacion`) ──
+  // Mismo patrón de debounce que el de CUPS, pero comparando contra `cif_dni`.
+  useEffect(() => {
+    const identVal      = form.identificacion.trim().toUpperCase();
+    const originalIdent = (initialData?.identificacion || '').toUpperCase().trim();
+
+    if (!identVal || identVal === originalIdent) {
+      setDocMatch(null);
+      setDocDupAction(null);
+      return;
+    }
+    if (identVal === docDupResolvedFor) return; // ya se respondió Sí/No para este valor exacto
+
+    const timer = setTimeout(() => {
+      const match = clientesCtx.find(c => (c.cif_dni || '').toUpperCase().trim() === identVal);
+      if (match) {
+        setDocMatch(match);
+        setDocDupAction('pending');
+      } else {
+        setDocMatch(null);
+        setDocDupAction(null);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [form.identificacion, clientesCtx, initialData, docDupResolvedFor]);
+
+  // Autorrelleno por documento: SOLO datos de contacto + documentos de identidad
+  // del titular. NUNCA toca CUPS, Tarifa, Id Producto, Línea de Negocio,
+  // Subtipo, Factura ni Justo Título — esos pertenecen al suministro nuevo.
+  const handleAutorellenarDoc = async () => {
+    if (!docMatch) return;
+    setForm((f) => ({
+      ...f,
+      nombre:          docMatch.nombre          || f.nombre,
+      telefono:        docMatch.telefono        || f.telefono,
+      mail:            docMatch.mail            || f.mail,
+      cuenta_bancaria: docMatch.cuenta_bancaria || f.cuenta_bancaria,
+    }));
+    setErrors((e) => ({ ...e, nombre: false, telefono: false, cuenta_bancaria: false }));
+
+    setAutorellenandoDoc(true);
+    try {
+      if (isB2B) {
+        // B2B: dos documentos — "CIF / Recibo Autónomos" y "DNI" del representante.
+        const [cifDoc, dniDoc] = await Promise.all([
+          fetchSingleDoc(docMatch.id, 'cif_autonomo_url'),
+          fetchSingleDoc(docMatch.id, 'dni_escaneado'),
+        ]);
+        if (cifDoc) {
+          setCifAutonomoBase64(cifDoc);
+          setCifAutonomoFileName('Archivo existente');
+          setErrors((e) => ({ ...e, cif_autonomo: false }));
+        }
+        if (dniDoc) {
+          setDniBase64(dniDoc);
+          setDniFileName('Archivo existente');
+          setErrors((e) => ({ ...e, dni_b2b: false }));
+        }
+      } else {
+        // B2C: un único documento — "Escanear DNI/CIF".
+        const dniDoc = await fetchSingleDoc(docMatch.id, 'dni_escaneado');
+        if (dniDoc) {
+          setDniBase64(dniDoc);
+          setDniFileName('Archivo existente');
+          setErrors((e) => ({ ...e, dni_b2c: false }));
+        }
+      }
+      // Si el cliente antiguo no tenía alguno de estos documentos (null), ese
+      // campo concreto se deja tal cual estaba, sin romper el formulario.
+    } catch (err) {
+      console.error('[NewClientModal] Error al recuperar documentos del cliente existente (por DNI/CIF):', err);
+    } finally {
+      setAutorellenandoDoc(false);
+    }
+
+    setDocDupResolvedFor(form.identificacion.trim().toUpperCase());
+    setDocDupAction('accepted');
+  };
+
+  const handleRechazarAutorellenoDoc = () => {
+    setDocDupResolvedFor(form.identificacion.trim().toUpperCase());
+    setDocDupAction('rejected');
   };
 
   const handleFileChange = (e, setFileName, setBase64) => {
@@ -499,7 +592,35 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
               />
             </div>
             {errors.identificacion && <p className="text-red-500 text-xs mt-1">Este campo es obligatorio</p>}
+            {docDupAction === 'rejected' && (
+              <p className="text-gray-500 text-xs mt-1">Documento duplicado aceptado — se creará un nuevo registro.</p>
+            )}
           </div>
+
+          {/* Alerta inline: documento (DNI/NIE o CIF) ya registrado a nombre de otro cliente */}
+          {docDupAction === 'pending' && docMatch && (
+            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 flex flex-col gap-2.5">
+              <p className="text-sm text-blue-900 leading-snug">
+                ⚠️ Este documento ya está registrado a nombre de: <span className="font-semibold">{docMatch.nombre}</span>. ¿Deseas autorellenar sus datos de contacto y documentos?
+              </p>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={handleAutorellenarDoc} disabled={autorellenandoDoc}
+                  className="px-3 py-1.5 rounded-lg bg-google-blue text-white text-xs font-semibold hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-wait">
+                  {autorellenandoDoc ? 'Autorellenando…' : 'Sí, autorellenar'}
+                </button>
+                <button type="button" onClick={handleRechazarAutorellenoDoc} disabled={autorellenandoDoc}
+                  className="px-3 py-1.5 rounded-lg bg-gray-200 text-gray-700 text-xs font-medium hover:bg-gray-300 transition-colors disabled:opacity-60">
+                  No
+                </button>
+              </div>
+            </div>
+          )}
+          {docDupAction === 'accepted' && (
+            <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 flex items-center gap-2">
+              <CheckCircle size={14} className="text-green-600 flex-shrink-0" />
+              <p className="text-xs text-green-700 font-medium">Datos y documentos autorellenados desde el cliente existente.</p>
+            </div>
+          )}
 
           {/* Teléfono + CUPS */}
           <div className="grid grid-cols-2 gap-4">
