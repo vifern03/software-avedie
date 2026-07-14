@@ -19,6 +19,7 @@ const PAGES = [
   { id: 'tarifas',      label: 'Tarifas'        },
   { id: 'fichajes',     label: 'Control Horario' },
   { id: 'reportes',     label: 'Reportes'        },
+  { id: 'pendientes',   label: 'Pendientes'      },
   { id: 'historial',    label: 'Historial'       },
 ];
 

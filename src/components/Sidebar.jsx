@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LayoutDashboard, Database, RefreshCw, UserPlus, Building2, History, LogOut, Settings, User, Store, ClipboardList, Sparkles, Menu, X, Landmark, Clock, Phone, Tag } from 'lucide-react';
+import { LayoutDashboard, Database, RefreshCw, UserPlus, Building2, History, LogOut, Settings, User, Store, ClipboardList, Sparkles, Menu, X, Landmark, Clock, Phone, Tag, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const ALL_ITEMS = [
@@ -14,6 +14,7 @@ const ALL_ITEMS = [
   { id: 'tarifas',       label: 'Consulta de Tarifas',     icon: Tag        },
   { id: 'fichajes',      label: 'Control de Horario',      icon: Clock      },
   { id: 'reportes',      label: 'Reportes de Software',    icon: ClipboardList },
+  { id: 'pendientes',    label: 'Gestión de Pendientes',   icon: AlertTriangle },
   { id: 'historial', label: 'Historial de Actividades', icon: History         },
   { id: 'gestion',   label: 'Gestión de Usuarios',      icon: Settings        },
 ];

@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { Zap, Flame, Factory, Info, X, AlertTriangle, Calculator, Sun, TrendingUp } from 'lucide-react';
 import EstudioComparativo from './EstudioComparativo';
 import EstudioComparativoGas from './EstudioComparativoGas';
-import { GAS } from '../data/tarifasGas';
+import EstudioComparativoB2B from './EstudioComparativoB2B';
+import { GAS, GAS_EMPRESA } from '../data/tarifasGas';
+import { OPEN_30TD, OPEN_61TD, INDEXADA_30TD, INDEXADA_61TD } from '../data/tarifasB2B';
 
 /* GAS importado desde src/data/tarifasGas.js (fuente única de verdad) */
 
@@ -131,42 +133,6 @@ const INDEXADA_2_0TD = {
 /* Solo se muestran como tarjetas informativas en Consulta de Tarifas.          */
 /* NO se incluyen en el Estudio Comparativo de Gas (sigue siendo solo RL.1-3).  */
 
-const GAS_EMPRESA = [
-  {
-    id: 'rl4',
-    title: 'Gas RL.4',
-    consumo: '50.000 – 300.000 kWh/año',
-    terFijo: 41.630000,
-    promo: 0.067415,
-    base: 0.091102,
-    descuentos: ['26% — 1 año sobre término variable'],
-    penalizacion: '20% del término de energía × días restantes hasta fin de contrato (5% si el suministro tiene derecho a tarifa de último recurso)',
-    validez: '09/06/2026 – 14/07/2026',
-  },
-  {
-    id: 'rl5',
-    title: 'Gas RL.5',
-    consumo: '300.000 – 1.500.000 kWh/año',
-    terFijo: 232.340000,
-    promo: 0.067359,
-    base: 0.091026,
-    descuentos: ['26% — 1 año sobre término variable'],
-    penalizacion: '20% del término de energía × días restantes hasta fin de contrato (5% si el suministro tiene derecho a tarifa de último recurso)',
-    validez: '09/06/2026 – 14/07/2026',
-  },
-  {
-    id: 'rl6',
-    title: 'Gas RL.6',
-    consumo: '1.500.000 – 8.000.000 kWh/año',
-    terFijo: 1117.700000,
-    promo: 0.059897,
-    base: 0.080942,
-    descuentos: ['26% — 1 año sobre término variable'],
-    penalizacion: '20% del término de energía × días restantes hasta fin de contrato (5% si el suministro tiene derecho a tarifa de último recurso)',
-    validez: '09/06/2026 – 14/07/2026',
-  },
-];
-
 /* ── Datos B2B extraídos de PDFs Endesa (09/06/2026 – 14/07/2026) ───────────── */
 
 const TEMPO = {
@@ -178,86 +144,6 @@ const TEMPO = {
   ],
   penalizacion: '5% del precio del contrato',
   validez: '24/06/2026 – 14/07/2026',
-};
-
-const OPEN_30TD = {
-  potencias: ['15–30 kW', '30–50 kW', '50–100 kW', '> 100 kW'],
-  baseEnergia: [0.198840, 0.198340, 0.197840, 0.197840],
-  modalidades: [
-    { label: 'Plana',        dto: 15, desc: 'Las 24h del día los 365 días al año' },
-    { label: 'Día',          dto: 20, desc: 'De 8h a 24h todos los días del año' },
-    { label: 'Laboral',      dto: 25, desc: 'De 8h a 24h de lunes a viernes (excepto festivos nacionales)' },
-    { label: 'Fin de Semana',dto: 45, desc: 'Las 24h del día de sábados, domingos y festivos nacionales' },
-    { label: 'Noche',        dto: 55, desc: 'De 0h a 8h todos los días del año' },
-  ],
-  extraAnyo: 14,
-  // Precios con descuentos incluidos (modalidad discount + 14% 1er año): [potencia][modalidad]
-  matrix: [
-    [0.141176, 0.131234, 0.121292, 0.081524, 0.061640],
-    [0.140821, 0.130904, 0.120987, 0.081319, 0.061485],
-    [0.140466, 0.130574, 0.120682, 0.081114, 0.061330],
-    [0.140466, 0.130574, 0.120682, 0.081114, 0.061330],
-  ],
-  horasNoOpen: [0.171002, 0.170572, 0.170142, 0.170142],
-  potenciaTerminos: [
-    { p: 'P1', anyo: 21.876927, mes: 1.823077, dia: 0.059937 },
-    { p: 'P2', anyo: 12.117621, mes: 1.009802, dia: 0.033199 },
-    { p: 'P3', anyo:  5.981534, mes: 0.498461, dia: 0.016388 },
-    { p: 'P4', anyo:  5.386333, mes: 0.448861, dia: 0.014757 },
-    { p: 'P5', anyo:  4.013851, mes: 0.334488, dia: 0.010997 },
-    { p: 'P6', anyo:  2.942287, mes: 0.245191, dia: 0.008061 },
-  ],
-  penalizacion: '5% de la energía pendiente facturada al precio sin descuentos',
-  validez: '24/06/2026 – 14/07/2026',
-};
-
-const OPEN_61TD = {
-  potencias: ['< 30 kW', '30–50 kW', '50–100 kW', '100–450 kW'],
-  baseEnergia: [0.173916, 0.173916, 0.170416, 0.170416],
-  modalidades: [
-    { label: 'Plana',        dto: 15, desc: 'Las 24h del día los 365 días al año' },
-    { label: 'Día',          dto: 20, desc: 'De 8h a 24h (L–V) y de 18h a 24h (S, D, festivos)' },
-    { label: 'Laboral',      dto: 25, desc: 'De 8h a 24h de lunes a viernes (excepto festivos nacionales)' },
-    { label: 'Fin de Semana',dto: 45, desc: 'Las 24h del día de sábados, domingos y festivos nacionales' },
-    { label: 'Noche',        dto: 35, desc: 'De 0h a 8h (L–V) y de 0h a 18h (S, D, festivos)' },
-  ],
-  extraAnyo: 12,
-  // Precios con descuentos incluidos (modalidad discount + 12% 1er año): [potencia][modalidad]
-  matrix: [
-    [0.126959, 0.118263, 0.109567, 0.074784, 0.092175],
-    [0.126959, 0.118263, 0.109567, 0.074784, 0.092175],
-    [0.124404, 0.115883, 0.107362, 0.073279, 0.090320],
-    [0.124404, 0.115883, 0.107362, 0.073279, 0.090320],
-  ],
-  horasNoOpen: [0.153046, 0.153046, 0.149966, 0.149966],
-  potenciaTerminos: [
-    { p: 'P1', anyo: 31.095368, mes: 2.591281, dia: 0.085193 },
-    { p: 'P2', anyo: 17.014709, mes: 1.417892, dia: 0.046616 },
-    { p: 'P3', anyo:  8.301881, mes: 0.691823, dia: 0.022745 },
-    { p: 'P4', anyo:  6.893829, mes: 0.574486, dia: 0.018887 },
-    { p: 'P5', anyo:  3.625113, mes: 0.302093, dia: 0.009932 },
-    { p: 'P6', anyo:  2.504181, mes: 0.208682, dia: 0.006861 },
-  ],
-  penalizacion: '10% del precio del Término de Energía × energía pendiente de suministro',
-  validez: '24/06/2026 – 14/07/2026',
-};
-
-/* ── Datos Indexada a OMIE 3.0TD / 6.1TD extraídos de PDFs Endesa (09/06/2026 – 14/07/2026) ── */
-/* Fuente: "20260609 IND_3.0TD_OMIE_V1.pdf" / "20260609 IND_6.1TD_OMIE_V1.pdf".            */
-/* Precio energía por periodo = A + (B × OMIEmes). Términos de potencia iguales a Open.    */
-
-const INDEXADA_30TD = {
-  potenciaTerminos: OPEN_30TD.potenciaTerminos,
-  energiaA: { p1: 0.101461, p2: 0.077500, p3: 0.055829, p4: 0.046846, p5: 0.044204, p6: 0.037530 },
-  energiaB: { p1: 1.579,    p2: 1.387,    p3: 1.295,    p4: 1.095,    p5: 0.861,    p6: 1.138 },
-  validez: '09/06/2026 – 14/07/2026',
-};
-
-const INDEXADA_61TD = {
-  potenciaTerminos: OPEN_61TD.potenciaTerminos,
-  energiaA: { p1: 0.080085, p2: 0.061069, p3: 0.046086, p4: 0.040403, p5: 0.038132, p6: 0.032891 },
-  energiaB: { p1: 1.436,    p2: 1.252,    p3: 1.188,    p4: 1.005,    p5: 0.7800,   p6: 1.032 },
-  validez: '09/06/2026 – 14/07/2026',
 };
 
 const B2B_SUBTABS = [
@@ -274,6 +160,7 @@ const TABS = [
   { id: 'gas',          label: 'Gas (RL.1 – RL.6)',        icon: Flame,      activeText: 'text-orange-500',   activeBorder: 'border-orange-500'   },
   { id: 'industrial',   label: 'Luz 3.0 y 6.1 (B2B)',     icon: Factory,    activeText: 'text-gray-700',     activeBorder: 'border-gray-600'     },
   { id: 'estudio',      label: 'Comparativas 2.0',         icon: Calculator, activeText: 'text-green-600',    activeBorder: 'border-green-600'    },
+  { id: 'estudio-b2b',  label: 'Comparativas 3.0 y 6.1',   icon: Calculator, activeText: 'text-gray-700',     activeBorder: 'border-gray-600'     },
   { id: 'estudio-gas',  label: 'Comparativas Gas',         icon: Calculator, activeText: 'text-orange-500',   activeBorder: 'border-orange-500'   },
 ];
 
@@ -660,18 +547,18 @@ function GasEmpresaCard({ tarifa }) {
             {tarifa.consumo}
           </span>
         </div>
-        <p className="text-xs text-google-gray">Precio fijo sin permanencia. Sin fluctuaciones del mercado.</p>
+        <p className="text-xs text-google-gray">Precio fijo con permanencia de 1 año. Sin fluctuaciones del mercado.</p>
       </div>
 
       <div className="px-5 py-4 space-y-4 flex-1">
         <div>
           <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-2">Término variable (€/kWh)</p>
           <div className="bg-orange-50 rounded-lg p-3 text-center">
-            <p className="text-2xl font-bold text-orange-600 leading-tight">{fmt(tarifa.promo)}</p>
+            <p className="text-2xl font-bold text-orange-600 leading-tight">{fmt(tarifa.sinMant.promo)}</p>
             <p className="text-xs text-orange-500 mt-0.5">precio promocionado</p>
           </div>
           <p className="text-xs text-google-gray mt-1.5 text-center">
-            No promocionado: <span className="line-through">{fmt(tarifa.base)}</span>
+            No promocionado: <span className="line-through">{fmt(tarifa.sinMant.noPromo)}</span>
           </p>
         </div>
 
@@ -1264,11 +1151,24 @@ export default function Tarifas() {
               subtitulo="Alta Tensión hasta 450 kW · Precio de energía ligado al mercado eléctrico"
             />
           )}
+
+          <div className="flex justify-center pt-6 mt-2 border-t border-google-border">
+            <button
+              onClick={() => setTab('estudio-b2b')}
+              className="flex items-center gap-2.5 bg-gray-800 hover:bg-gray-900 active:bg-black text-white font-semibold text-sm px-7 py-3 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
+            >
+              <Calculator size={17} />
+              Realizar Comparativa 3.0 / 6.1
+            </button>
+          </div>
         </div>
       )}
 
       {/* Tab: Estudio Comparativo Luz */}
       {tab === 'estudio' && <EstudioComparativo />}
+
+      {/* Tab: Estudio Comparativo 3.0 y 6.1 (B2B) */}
+      {tab === 'estudio-b2b' && <EstudioComparativoB2B />}
 
       {/* Tab: Estudio Comparativo Gas */}
       {tab === 'estudio-gas' && <EstudioComparativoGas />}

@@ -626,14 +626,23 @@ export default function AltaClientes({ tipo }) {
               ) : (
                 paginated.map((c) => (
                   <tr key={c.id} className={`transition-colors ${
-                    c.shared_by && c.shared_by !== currentUser?.username
-                      ? 'bg-green-50 hover:bg-green-100'
-                      : 'hover:bg-google-bg'
+                    (c.estado_incidencia === 'Pendiente de tareas' || c.estado_incidencia === 'Tramitado')
+                      ? 'bg-red-100 hover:bg-red-200'
+                      : c.shared_by && c.shared_by !== currentUser?.username
+                        ? 'bg-green-50 hover:bg-green-100'
+                        : 'hover:bg-google-bg'
                   }`}>
                     <td className="table-cell text-xs whitespace-nowrap">
                       {c.shared_by ? (usersByUsername[c.shared_by] || c.shared_by) : '—'}
                     </td>
-                    <td className="table-cell font-medium text-google-dark whitespace-nowrap">{c.nombre}</td>
+                    <td className="table-cell font-medium text-google-dark whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        {(c.estado_incidencia === 'Pendiente de tareas' || c.estado_incidencia === 'Tramitado') && (
+                          <AlertCircle size={13} className="text-red-500 flex-shrink-0" title={`Incidencia: ${c.estado_incidencia}`} />
+                        )}
+                        {c.nombre}
+                      </div>
+                    </td>
                     <td className="table-cell">
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
                         c.tipo === 'B2B'                            ? 'bg-indigo-100 text-indigo-700'

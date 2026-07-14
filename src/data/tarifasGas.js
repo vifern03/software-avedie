@@ -45,3 +45,54 @@ export const GAS = [
     validez: '12/05/2026 – 14/07/2026',
   },
 ];
+
+/**
+ * Gas Empresa (RL.4 – RL.6) — grandes consumos, sin descuento de mantenimiento,
+ * con permanencia/penalización por rescisión anticipada (a diferencia de RL.1-3,
+ * que son residenciales sin permanencia). Mismo shape que GAS para poder unificar
+ * ambos catálogos en el selector de Comparativas Gas (`esEmpresa: true` los distingue).
+ */
+export const GAS_EMPRESA = [
+  {
+    id: 'rl4',
+    title: 'Gas RL.4',
+    consumo: '50.000 – 300.000 kWh/año',
+    terFijo: 41.630000,
+    sinMant: { promo: 0.067415, noPromo: 0.091102 },
+    conMant: { promo: 0.067415, noPromo: 0.091102 },
+    hasMant: false,
+    esEmpresa: true,
+    descuentos: ['26% — 1 año sobre término variable'],
+    mantLabel: null,
+    penalizacion: '20% del término de energía × días restantes hasta fin de contrato (5% si el suministro tiene derecho a tarifa de último recurso)',
+    validez: '09/06/2026 – 14/07/2026',
+  },
+  {
+    id: 'rl5',
+    title: 'Gas RL.5',
+    consumo: '300.000 – 1.500.000 kWh/año',
+    terFijo: 232.340000,
+    sinMant: { promo: 0.067359, noPromo: 0.091026 },
+    conMant: { promo: 0.067359, noPromo: 0.091026 },
+    hasMant: false,
+    esEmpresa: true,
+    descuentos: ['26% — 1 año sobre término variable'],
+    mantLabel: null,
+    penalizacion: '20% del término de energía × días restantes hasta fin de contrato (5% si el suministro tiene derecho a tarifa de último recurso)',
+    validez: '09/06/2026 – 14/07/2026',
+  },
+  {
+    id: 'rl6',
+    title: 'Gas RL.6',
+    consumo: '1.500.000 – 8.000.000 kWh/año',
+    terFijo: 1117.700000,
+    sinMant: { promo: 0.059897, noPromo: 0.080942 },
+    conMant: { promo: 0.059897, noPromo: 0.080942 },
+    hasMant: false,
+    esEmpresa: true,
+    descuentos: ['26% — 1 año sobre término variable'],
+    mantLabel: null,
+    penalizacion: '20% del término de energía × días restantes hasta fin de contrato (5% si el suministro tiene derecho a tarifa de último recurso)',
+    validez: '09/06/2026 – 14/07/2026',
+  },
+];

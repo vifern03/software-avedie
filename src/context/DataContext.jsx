@@ -30,7 +30,7 @@ const CLIENTES_SELECT = [
   'cups', 'tarifa', 'linea_negocio', 'subtipo', 'subtipo_otro', 'id_producto',
   'creado_por', 'vendido_por', 'descripcion', 'estado', 'comercial', 'equipo',
   'fecha_tramitacion', 'fecha_firma', 'fecha_formalizada', 'created_at',
-  'deleted_at', 'consumo_anual_est',
+  'deleted_at', 'consumo_anual_est', 'estado_incidencia',
 ].join(',');
 
 // Descarga ÚNICAMENTE el campo Base64 de UN cliente concreto (fetch-on-click)
@@ -892,6 +892,75 @@ export function DataProvider({ children }) {
     }
   };
 
+  // ── Gestión de Pendientes (embudo de incidencias por CUPS) ──────────────────
+
+  // Marca "Pendiente de tareas" a todos los contratos cuyo CUPS aparezca en la
+  // lista extraída del Excel subido. Devuelve cuántos CUPS del Excel matchearon
+  // realmente contra la BD (para informar al usuario de los que no se encontraron).
+  const marcarPendientesPorCups = async (cupsList) => {
+    const cupsUnicos = [...new Set((cupsList || []).map(c => String(c).trim()).filter(Boolean))];
+    if (cupsUnicos.length === 0) return { matched: 0, error: null };
+
+    const { data, error } = await supabase
+      .from('clientes')
+      .update({ estado_incidencia: 'Pendiente de tareas' })
+      .in('cups', cupsUnicos)
+      .select('id');
+
+    if (error) { console.error('marcarPendientesPorCups:', error); return { matched: 0, error }; }
+
+    const matchedIds = new Set((data || []).map(r => r.id));
+    setClientes(prev => prev.map(c => matchedIds.has(c.id) ? { ...c, estado_incidencia: 'Pendiente de tareas' } : c));
+
+    if (matchedIds.size > 0) {
+      addActivity(
+        'Pendientes',
+        `${currentUser?.username} ha subido un Excel de incidencias: ${matchedIds.size} contrato(s) marcado(s) como "Pendiente de tareas"`,
+        currentUser?.username
+      );
+    }
+    return { matched: matchedIds.size, error: null };
+  };
+
+  const tramitarIncidencia = async (id) => {
+    setClientes(prev => prev.map(c => c.id === id ? { ...c, estado_incidencia: 'Tramitado' } : c));
+    const { error } = await supabase.from('clientes').update({ estado_incidencia: 'Tramitado' }).eq('id', id);
+    if (error) { console.error('tramitarIncidencia:', error); return { error }; }
+    const cliente = clientes.find(c => c.id === id);
+    if (cliente) {
+      addActivity(
+        'Pendientes',
+        `${currentUser?.username} ha tramitado la incidencia de ${cliente.nombre}`,
+        currentUser?.username
+      );
+    }
+    return { error: null };
+  };
+
+  // Formaliza y saca el contrato del embudo de Pendientes: estado_incidencia → null
+  // y se actualiza el campo YA EXISTENTE fecha_formalizada (TEXT, formato ISO
+  // YYYY-MM-DD) con la fecha de hoy — mismo formato de almacenamiento que usa
+  // formalizarContrato() más abajo; formatDate()/formatDateDDMMYYYY() se encargan
+  // de mostrarlo en pantalla como DD/MM/YYYY.
+  const formalizarIncidencia = async (id) => {
+    const fechaHoy = today();
+    setClientes(prev => prev.map(c => c.id === id ? { ...c, estado_incidencia: null, fecha_formalizada: fechaHoy } : c));
+    const { error } = await supabase
+      .from('clientes')
+      .update({ estado_incidencia: null, fecha_formalizada: fechaHoy })
+      .eq('id', id);
+    if (error) { console.error('formalizarIncidencia:', error); return { error }; }
+    const cliente = clientes.find(c => c.id === id);
+    if (cliente) {
+      addActivity(
+        'Pendientes',
+        `${currentUser?.username} ha formalizado la incidencia de ${cliente.nombre} (F. Formalizada: ${fechaHoy})`,
+        currentUser?.username
+      );
+    }
+    return { error: null };
+  };
+
   const renovarContrato = (id, nuevaFechaRef, nuevaFechaVenc, extraData = {}) => {
     const cliente = clientes.find(c => c.id === id);
     const updateObj = {
@@ -1075,6 +1144,9 @@ export function DataProvider({ children }) {
       formalizarContrato,
       renovarContrato,
       deleteCliente,
+      marcarPendientesPorCups,
+      tramitarIncidencia,
+      formalizarIncidencia,
       prescriptores,
       prescriptorLinks,
       addPrescriptor,

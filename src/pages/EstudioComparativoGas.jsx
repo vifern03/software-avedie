@@ -1,12 +1,30 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { GAS } from '../data/tarifasGas';
+import { GAS, GAS_EMPRESA } from '../data/tarifasGas';
 import { Calculator, Upload, FileText, Printer, X, AlertTriangle, Loader2 } from 'lucide-react';
 
 /* ── Constantes ──────────────────────────────────────────────────────────────── */
 
 const DIAS_MES   = 30.4167;   // 365 / 12 — factor de conversión €/mes → €/período
 const PROXY_URL  = '/api/gemini';
+
+/* Catálogo unificado RL.1 – RL.6 (residencial + empresa) — misma fuente que las
+   tarjetas informativas de Tarifas.jsx (src/data/tarifasGas.js). */
+const GAS_ALL = [...GAS, ...GAS_EMPRESA];
+
+/* Timeout de seguridad: si Gemini no responde en este tiempo, se aborta la petición
+   y se muestra un error en vez de dejar la carga colgada indefinidamente. */
+const EXTRACTION_TIMEOUT_MS = 25000;
+
+/* Estimación de tiempo de extracción proporcional al peso del archivo (no inventada):
+   tiempo base de 4s (latencia fija de red + arranque del modelo) + 1.5s por cada
+   500KB de archivo (el tiempo que tarda Gemini en "leer" más páginas/resolución). */
+function estimateExtractionSeconds(fileSizeBytes) {
+  const BASE_SECONDS = 4;
+  const SECONDS_PER_500KB = 1.5;
+  const chunks = fileSizeBytes / (500 * 1024);
+  return Math.round(BASE_SECONDS + chunks * SECONDS_PER_500KB);
+}
 
 /* ── Helpers ─────────────────────────────────────────────────────────────────── */
 
@@ -36,16 +54,19 @@ function fileToBase64(file) {
 
 const GAS_EXTRACTION_PROMPT = `Analiza esta factura de gas natural española y extrae los siguientes datos.
 Devuelve EXCLUSIVAMENTE un objeto JSON válido, sin texto adicional, sin markdown, sin bloques de código.
-El JSON debe tener exactamente estos campos (usa null para strings no encontrados y 0 para números no encontrados):
+
+IMPORTANTE — ORDEN DE ANÁLISIS: el PRIMER dato que debes determinar es "tarifaRL" (el tramo RL.1-RL.6 del punto de suministro), ANTES de extraer el resto de campos. Todo lo demás (término fijo, término variable, kWh) depende de haber identificado correctamente el tramo, así que resuelve "tarifaRL" primero y usa ese contexto para leer el resto de la factura con más precisión.
+
+El JSON debe tener exactamente estos campos, en este orden (usa null para strings no encontrados y 0 para números no encontrados):
 
 {
+  "tarifaRL": "RL.1", "RL.2", "RL.3", "RL.4", "RL.5" o "RL.6" según el tramo de consumo ANUAL del punto de suministro (ver REGLA 3). Determina este campo PRIMERO, antes que ningún otro.,
   "nombreCliente": "razón social o nombre completo del titular",
   "cups": "código CUPS de gas limpio: extrae SOLO los caracteres alfanuméricos que empiezan por ES022 (18-20 caracteres totales, sin espacios ni saltos)",
   "diasFacturacion": número entero de días del período de facturación,
   "totalKwhGas": kWh totales de gas natural consumidos en el período de facturación,
-  "tarifaRL": "RL.1", "RL.2" o "RL.3" según el tramo de consumo anual del punto de suministro,
   "importeTotalFactura": importe TOTAL a pagar de la factura en euros (importe final con todos los impuestos incluidos),
-  "costeTerminoFijo": importe exacto cobrado en esta factura por el término fijo o de capacidad en euros del período facturado (0 si no aparece),
+  "costeTerminoFijo": importe exacto cobrado en esta factura por el término fijo, de capacidad o de conducción (el concepto fijo, sea cual sea su nombre en el tramo detectado) en euros del período facturado (0 si no aparece),
   "costeAlquilerContador": coste del alquiler del contador en euros (0 si no aparece),
   "tipoIVA": tipo de IVA en formato decimal. Localiza la línea con formato "IVA X % s/YY,YY €  ZZ,ZZ €": X es el PORCENTAJE, conviértelo a decimal (10→0.10, 21→0.21, 7→0.07). ZZ,ZZ es el importe en euros — NUNCA lo uses como tipo. Ejemplo: "IVA 10 % s/47,62 €  4,76 €" → devuelve 0.10 (NO 4.76). NUNCA extraigas el importe en euros como tipo de IVA.
 }
@@ -54,9 +75,16 @@ El JSON debe tener exactamente estos campos (usa null para strings no encontrado
 
 REGLA 1 — IVA GAS (2025-2026): El suministro de gas natural en España peninsular tributa al tipo reducido del 10% (medida temporal prorrogada). Devuelve 0.10 para facturas de gas peninsulares de 2024-2026. Solo devuelve 0.07 en Canarias (IGIC) o 0.21 si la factura es anterior a 2021 o lo indica explícitamente.
 
-REGLA 2 — TÉRMINO FIJO vs. VARIABLE: El término fijo (también llamado término de capacidad o cuota fija) es el importe cobrado por tener el servicio activo, independiente del consumo. Extrae el importe EN EUROS del período facturado (no el precio unitario €/día o €/mes).
+REGLA 2 — TÉRMINO FIJO vs. VARIABLE: El término fijo (también llamado término de capacidad, de conducción o cuota fija, según el tramo) es el importe cobrado por tener el servicio activo, independiente del consumo. Extrae el importe EN EUROS del período facturado (no el precio unitario €/día o €/mes).
 
-REGLA 3 — TRAMO RL: RL.1 = 0-5.000 kWh/año; RL.2 = 5.001-15.000 kWh/año; RL.3 = 15.001-50.000 kWh/año. Si no aparece explícitamente, inferir del consumo anual.
+REGLA 3 — TRAMO RL (determínalo ANTES que cualquier otro campo, a partir del consumo ANUAL, no del consumo de este único período):
+  · RL.1 = 0 – 5.000 kWh/año (residencial pequeño)
+  · RL.2 = 5.001 – 15.000 kWh/año (residencial medio)
+  · RL.3 = 15.001 – 50.000 kWh/año (residencial grande / pequeño comercio)
+  · RL.4 = 50.000 – 300.000 kWh/año (empresa/industria pequeña)
+  · RL.5 = 300.000 – 1.500.000 kWh/año (empresa/industria mediana)
+  · RL.6 = 1.500.000 – 8.000.000 kWh/año (gran industria)
+  Si la factura indica explícitamente el tramo (p. ej. "Tarifa: RL.4" o "3.1" en la nomenclatura antigua), úsalo directamente. Si no aparece explícitamente, estima el consumo anual (consumo del período ÷ días × 365) y clasifícalo en el tramo correspondiente.
 
 REGLA 4 — kWh: Extrae SOLO el consumo de gas en kWh del período facturado. Si la factura es combinada (luz+gas), extrae únicamente los kWh de gas.
 
@@ -112,11 +140,14 @@ export default function EstudioComparativoGas() {
   const [isExtracting, setIsExtracting]         = useState(false);
   const [extractionDone, setExtractionDone]     = useState(false);
   const [extractionError, setExtractionError]   = useState('');
+  const [estimatedSeconds, setEstimatedSeconds] = useState(0);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
   const fileRef         = useRef(null);
   const originalTitle   = useRef(document.title);
+  const countdownRef    = useRef(null);
 
   /* ── Tarifa activa ── */
-  const tarifa = GAS.find(t => t.id === tarifaGasId);
+  const tarifa = GAS_ALL.find(t => t.id === tarifaGasId);
 
   /* ════════════ CÁLCULOS ════════════ */
 
@@ -170,9 +201,21 @@ export default function EstudioComparativoGas() {
   /* ════════════ EXTRACCIÓN IA ════════════ */
 
   async function extractFromGasInvoice(file) {
+    const estimated = estimateExtractionSeconds(file.size);
+    setEstimatedSeconds(estimated);
+    setRemainingSeconds(estimated);
     setIsExtracting(true);
     setExtractionDone(false);
     setExtractionError('');
+
+    clearInterval(countdownRef.current);
+    countdownRef.current = setInterval(() => {
+      setRemainingSeconds(s => Math.max(0, s - 1));
+    }, 1000);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), EXTRACTION_TIMEOUT_MS);
+
     try {
       const base64 = await fileToBase64(file);
       const res = await fetch(PROXY_URL, {
@@ -182,10 +225,11 @@ export default function EstudioComparativoGas() {
           text: GAS_EXTRACTION_PROMPT,
           history: [
             { role: 'user',  parts: [{ text: 'Actúa como experto en el mercado gasista español. Extrae datos estructurados de facturas de gas natural y devuelve JSON válido, aplicando correctamente las reglas de IVA y término fijo del sector del gas en España.' }] },
-            { role: 'model', parts: [{ text: 'Entendido. Soy experto en facturas de gas natural español. IVA gas peninsular 2024-2026: 10%. Identificaré el término fijo en euros del período, los kWh de gas, el CUPS (ES022...) y el tramo RL. Devolveré exclusivamente el objeto JSON solicitado.' }] },
+            { role: 'model', parts: [{ text: 'Entendido. Soy experto en facturas de gas natural español, tanto residenciales (RL.1-RL.3) como de empresa/industria (RL.4-RL.6). Lo primero que determinaré es el tramo RL a partir del consumo anual, y usaré ese contexto para leer con precisión el resto de campos: término fijo en euros del período, los kWh de gas, el CUPS (ES022...) y el IVA. Devolveré exclusivamente el objeto JSON solicitado, con "tarifaRL" como primer campo.' }] },
           ],
           file: { mimeType: file.type || 'application/octet-stream', data: base64 },
         }),
+        signal: controller.signal,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -206,12 +250,15 @@ export default function EstudioComparativoGas() {
         else                                  ivaValue = '0.21';
       }
 
-      /* Auto-seleccionar tarifa RL */
+      /* Auto-seleccionar tarifa RL (RL.1-RL.3 residencial, RL.4-RL.6 empresa) */
       if (ex.tarifaRL) {
         const rl = ex.tarifaRL.toString().toLowerCase().replace(/[\s.]/g, '');
         if      (rl.includes('rl1') || rl === '1') setTarifaGasId('rl1');
         else if (rl.includes('rl2') || rl === '2') setTarifaGasId('rl2');
         else if (rl.includes('rl3') || rl === '3') setTarifaGasId('rl3');
+        else if (rl.includes('rl4') || rl === '4') setTarifaGasId('rl4');
+        else if (rl.includes('rl5') || rl === '5') setTarifaGasId('rl5');
+        else if (rl.includes('rl6') || rl === '6') setTarifaGasId('rl6');
       }
 
       setForm(f => ({
@@ -228,8 +275,14 @@ export default function EstudioComparativoGas() {
       setExtractionDone(true);
     } catch (err) {
       console.error('[EC-GAS] Extracción IA:', err);
-      setExtractionError(err.message || 'No se pudo extraer la información automáticamente. Introduce los datos manualmente o inténtalo de nuevo.');
+      if (err.name === 'AbortError') {
+        setExtractionError(`La extracción ha tardado demasiado (más de ${Math.round(EXTRACTION_TIMEOUT_MS / 1000)}s). Revisa el documento o introduce los datos manualmente.`);
+      } else {
+        setExtractionError('Error al extraer los datos. Revisa el documento o introduce los datos manualmente.');
+      }
     } finally {
+      clearTimeout(timeoutId);
+      clearInterval(countdownRef.current);
       setIsExtracting(false);
     }
   }
@@ -307,7 +360,7 @@ export default function EstudioComparativoGas() {
               1 · Tarifa Endesa Gas a comparar <span className="text-red-400">*</span>
             </p>
             <div className="space-y-2 mb-4">
-              {GAS.map(t => {
+              {GAS_ALL.map(t => {
                 const precio = mant ? t.conMant.promo : t.sinMant.promo;
                 return (
                   <label
@@ -320,6 +373,9 @@ export default function EstudioComparativoGas() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium text-google-dark">{t.title}</span>
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${t.esEmpresa ? 'bg-gray-200 text-gray-700' : 'bg-orange-100 text-orange-700'}`}>
+                          {t.esEmpresa ? 'Empresa' : 'Residencial'}
+                        </span>
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 whitespace-nowrap">{t.consumo}</span>
                       </div>
                       <p className="text-[11px] text-google-gray mt-0.5 font-mono">
@@ -330,6 +386,17 @@ export default function EstudioComparativoGas() {
                 );
               })}
             </div>
+
+            {tarifa.esEmpresa && tarifa.penalizacion && (
+              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 mb-3">
+                <AlertTriangle size={14} className="text-red-500 mt-0.5 flex-shrink-0" />
+                <div>
+                  <span className="text-xs font-bold text-red-600">Con Permanencia de 1 Año</span>
+                  <span className="text-xs text-red-500 ml-2">·</span>
+                  <span className="text-xs text-red-500 ml-2">Penalización por rescisión anticipada: {tarifa.penalizacion}</span>
+                </div>
+              </div>
+            )}
 
             {/* Switch mantenimiento */}
             <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-3">
@@ -344,7 +411,7 @@ export default function EstudioComparativoGas() {
                     Mantenimiento <span className="text-orange-600 font-semibold">(−3%)</span>
                   </span>
                 ) : (
-                  <span className="text-xs text-gray-400">Sin dto. de mantenimiento en RL.3</span>
+                  <span className="text-xs text-gray-400">Sin dto. de mantenimiento en esta tarifa</span>
                 )}
               </div>
               {/* Switch TF */}
@@ -384,11 +451,19 @@ export default function EstudioComparativoGas() {
                 onChange={e => { if (e.target.files[0]) handleFileUpload(e.target.files[0]); e.target.value = ''; }}
               />
               {isExtracting ? (
-                <div className="flex flex-col items-center gap-2.5 py-1">
+                <div className="flex flex-col items-center gap-2.5 py-1 w-full">
                   <Loader2 size={28} className="text-orange-500 animate-spin" />
-                  <div>
-                    <p className="text-xs font-semibold text-orange-500">Analizando factura con IA...</p>
-                    <p className="text-[11px] text-orange-400 mt-0.5">Por favor, espere.</p>
+                  <div className="w-full max-w-[240px]">
+                    <p className="text-xs font-semibold text-orange-500 text-center">Analizando documento con IA...</p>
+                    <p className="text-[11px] text-orange-400 mt-0.5 text-center">
+                      {remainingSeconds > 0 ? `Tiempo estimado: ${remainingSeconds}s` : 'Casi listo…'}
+                    </p>
+                    <div className="mt-2.5 h-1.5 w-full bg-orange-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-orange-500 rounded-full transition-all duration-500 ease-linear"
+                        style={{ width: `${estimatedSeconds > 0 ? Math.min(96, ((estimatedSeconds - remainingSeconds) / estimatedSeconds) * 100) : 0}%` }}
+                      />
+                    </div>
                   </div>
                 </div>
               ) : dropped ? (
