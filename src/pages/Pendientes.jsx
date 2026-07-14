@@ -1,9 +1,11 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { AlertTriangle, Upload, FileSpreadsheet, X, CheckCircle, Wrench, FileCheck } from 'lucide-react';
+import { AlertTriangle, Upload, FileSpreadsheet, X, CheckCircle, FileCheck, Wrench, Pencil } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
+import EditarEstadoPendienteModal from '../components/EditarEstadoPendienteModal';
+import ConfirmActionModal from '../components/ConfirmActionModal';
 
 /* Nombre EXACTO de la columna del Excel que contiene el CUPS a cruzar. */
 const CUPS_COLUMN_HEADER = 'CUPS: CUPS';
@@ -102,7 +104,7 @@ function estadoOriginalBadge(estado) {
 }
 
 export default function Pendientes() {
-  const { clientes, registroPendientes, ingestExcelPendientes, tramitarPendiente, formalizarPendiente } = useData();
+  const { registroPendientes, clientesCupsTodos, ingestExcelPendientes, actualizarEstadoPendiente } = useData();
   const { currentUser } = useAuth();
   const isAdmin = currentUser?.role?.toLowerCase() === 'admin';
 
@@ -111,13 +113,9 @@ export default function Pendientes() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [resultMsg, setResultMsg] = useState(null); // { type: 'success'|'error', text }
   const [currentPage, setCurrentPage] = useState(1);
+  const [editingRegistro, setEditingRegistro] = useState(null);
+  const [confirmAction, setConfirmAction] = useState(null); // { tipo: 'tramitar'|'formalizar', registro }
   const fileRef = useRef(null);
-
-  // Cualquier CUPS ya dado de alta (B2C o B2B) — para el circulito verde/rojo.
-  const clientesCupsSet = useMemo(
-    () => new Set(clientes.map(c => (c.cups || '').toUpperCase().trim()).filter(Boolean)),
-    [clientes]
-  );
 
   // TODOS los registros, en TODOS los estados (Pendiente de tareas, Tramitado,
   // Formalizado). Un contrato formalizado NUNCA se oculta ni se borra de esta
@@ -129,16 +127,19 @@ export default function Pendientes() {
     [registroPendientes]
   );
 
-  const handleTramitarClick = (r) => {
-    if (window.confirm('¿Confirma que ya ha sido tramitado este contrato?')) {
-      tramitarPendiente(r.id);
-    }
+  const handleGuardarEstado = async (nuevoEstado) => {
+    if (editingRegistro) await actualizarEstadoPendiente(editingRegistro.id, nuevoEstado);
+    setEditingRegistro(null);
   };
 
-  const handleFormalizarClick = (r) => {
-    if (window.confirm('¿Confirma que ya ha sido formalizado este contrato?')) {
-      formalizarPendiente(r.id);
-    }
+  const handleTramitarClick = (r) => setConfirmAction({ tipo: 'tramitar', registro: r });
+  const handleFormalizarClick = (r) => setConfirmAction({ tipo: 'formalizar', registro: r });
+
+  const handleConfirmAction = async () => {
+    if (!confirmAction) return;
+    const nuevoEstado = confirmAction.tipo === 'tramitar' ? 'Tramitado' : 'Formalizado';
+    await actualizarEstadoPendiente(confirmAction.registro.id, nuevoEstado);
+    setConfirmAction(null);
   };
 
   const totalPages = Math.max(1, Math.ceil(pendientes.length / ITEMS_PER_PAGE));
@@ -260,7 +261,7 @@ export default function Pendientes() {
       {/* Tabla de pendientes */}
       <div className="bg-white border border-google-border rounded-xl shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
-          <h2 className="text-sm font-semibold text-google-dark">Registro de incidencias</h2>
+          <h2 className="text-sm font-semibold text-google-dark">Registro de Pendientes</h2>
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1.5 text-[11px] text-google-gray">
               <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" /> Dado de alta en el CRM
@@ -293,7 +294,7 @@ export default function Pendientes() {
                 </tr>
               ) : (
                 paginated.map(r => {
-                  const existeEnCrm = clientesCupsSet.has((r.cups || '').toUpperCase().trim());
+                  const existeEnCrm = clientesCupsTodos.has((r.cups || '').toUpperCase().trim());
                   const numeroOi = r.raw_data?.['Nombre'] || r.nombre || '';
                   const estadoOriginal = r.raw_data?.['Estado'] || null;
                   const badge = estadoOriginalBadge(estadoOriginal);
@@ -319,30 +320,39 @@ export default function Pendientes() {
                         </span>
                       </td>
                       <td className="table-cell">
-                        {r.estado_incidencia === 'Formalizado' ? (
-                          <span className="flex items-center gap-1 text-xs font-semibold text-green-700 whitespace-nowrap">
-                            <FileCheck size={13} /> Formalizado
-                          </span>
-                        ) : (
-                          <div className="flex items-center gap-1.5">
-                            {r.estado_incidencia === 'Pendiente de tareas' && (
+                        <div className="flex items-center gap-1.5">
+                          {r.estado_incidencia === 'Formalizado' ? (
+                            <span className="flex items-center gap-1 text-xs font-semibold text-green-700 whitespace-nowrap">
+                              <FileCheck size={13} /> Formalizado
+                            </span>
+                          ) : (
+                            <>
+                              {r.estado_incidencia === 'Pendiente de tareas' && (
+                                <button
+                                  onClick={() => handleTramitarClick(r)}
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-orange-300 bg-orange-50 text-orange-700 text-xs font-medium hover:bg-orange-100 transition-colors whitespace-nowrap"
+                                  title="Marcar como tramitado"
+                                >
+                                  <Wrench size={13} /> Tramitado
+                                </button>
+                              )}
                               <button
-                                onClick={() => handleTramitarClick(r)}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-orange-300 bg-orange-50 text-orange-700 text-xs font-medium hover:bg-orange-100 transition-colors whitespace-nowrap"
-                                title="Marcar como tramitado"
+                                onClick={() => handleFormalizarClick(r)}
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors whitespace-nowrap"
+                                title="Formalizar (queda como histórico, no se borra)"
                               >
-                                <Wrench size={13} /> Tramitado
+                                <FileCheck size={13} /> Formalizar
                               </button>
-                            )}
-                            <button
-                              onClick={() => handleFormalizarClick(r)}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg border border-green-300 bg-green-50 text-green-700 text-xs font-medium hover:bg-green-100 transition-colors whitespace-nowrap"
-                              title="Formalizar (queda como histórico, no se borra)"
-                            >
-                              <FileCheck size={13} /> Formalizar
-                            </button>
-                          </div>
-                        )}
+                            </>
+                          )}
+                          <button
+                            onClick={() => setEditingRegistro(r)}
+                            className="flex items-center justify-center w-7 h-7 rounded-lg border border-google-border bg-white text-google-gray hover:border-google-blue hover:text-google-blue transition-colors flex-shrink-0"
+                            title="Editar estado"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -353,6 +363,28 @@ export default function Pendientes() {
         </div>
         <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
       </div>
+
+      {editingRegistro && (
+        <EditarEstadoPendienteModal
+          registro={editingRegistro}
+          onClose={() => setEditingRegistro(null)}
+          onSave={handleGuardarEstado}
+        />
+      )}
+
+      {confirmAction && (
+        <ConfirmActionModal
+          title={confirmAction.tipo === 'tramitar' ? 'Marcar como tramitado' : 'Marcar como formalizado'}
+          message={confirmAction.tipo === 'tramitar'
+            ? '¿Confirma que ya ha sido tramitado este contrato?'
+            : '¿Confirma que ya ha sido formalizado este contrato?'}
+          confirmLabel="Sí, confirmar"
+          cancelLabel="Cancelar"
+          confirmClassName={confirmAction.tipo === 'tramitar' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-600 hover:bg-green-700'}
+          onConfirm={handleConfirmAction}
+          onCancel={() => setConfirmAction(null)}
+        />
+      )}
     </div>
   );
 }

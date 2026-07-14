@@ -127,6 +127,12 @@ export function DataProvider({ children }) {
   const [visitas,       setVisitas]       = useState([]);
   const [visitasPymes,  setVisitasPymes]  = useState([]);
   const [registroPendientes, setRegistroPendientes] = useState([]);
+  // CUPS de TODA la empresa (sin el scoping por equipo/vendedor que aplica al
+  // array `clientes` para roles no-admin/no-manager). Se usa exclusivamente
+  // para el punto verde/rojo de Gestión de Pendientes — ese indicador debe
+  // reflejar si el CUPS existe en el CRM en general, no solo en la cartera
+  // visible del usuario actual. Ver [[project_pendientes]].
+  const [clientesCupsTodos, setClientesCupsTodos] = useState(new Set());
   const [docsFlags,     setDocsFlags]     = useState({});
   const [visitasDocsFlags,      setVisitasDocsFlags]      = useState({});
   const [visitasPymesDocsFlags, setVisitasPymesDocsFlags] = useState({});
@@ -160,6 +166,7 @@ export function DataProvider({ children }) {
       setVisitas([]);
       setVisitasPymes([]);
       setRegistroPendientes([]);
+      setClientesCupsTodos(new Set());
       setVisitasDocsFlags({});
       setVisitasPymesDocsFlags({});
       setIsLoading(false);
@@ -310,12 +317,17 @@ export function DataProvider({ children }) {
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
+      // CUPS de TODA la empresa, sin el scoping por equipo/vendedor que aplica
+      // a `clientesQuery` — solo para el indicador verde/rojo de Pendientes.
+      const clientesCupsTodosQuery = supabase.from('clientes').select('cups').is('deleted_at', null);
+
       const [
         { data: clientesData,     error: clientesErr  },
         { data: actividadesData },
         { data: visitasData },
         { data: visitasPymesData },
         { data: registroPendientesData, error: registroPendientesErr },
+        { data: clientesCupsTodosData },
         { data: compartidoData,   error: compartidoErr },
         { data: sharedRaw },
         { data: vendedorRaw },
@@ -335,6 +347,7 @@ export function DataProvider({ children }) {
         visitasQuery,
         visitasPymesQuery,
         registroPendientesQuery,
+        clientesCupsTodosQuery,
         compartidoQuery,
         sharedQuery    || Promise.resolve({ data: [], error: null }),
         vendedorQuery  || Promise.resolve({ data: [], error: null }),
@@ -390,6 +403,9 @@ export function DataProvider({ children }) {
       const newVisitasPymes = visitasPymesData || [];
       // Tolerante a que la tabla aún no exista (antes de ejecutar supabase_pendientes_v2.sql)
       const newRegistroPendientes = registroPendientesErr ? [] : (registroPendientesData || []);
+      const newClientesCupsTodos = new Set(
+        (clientesCupsTodosData || []).map(c => (c.cups || '').toUpperCase().trim()).filter(Boolean)
+      );
 
       // Construir mapa de flags booleanos
       const dniSet     = new Set((dniData    || []).map(r => r.id));
@@ -438,6 +454,7 @@ export function DataProvider({ children }) {
       setVisitas(newVisitas);
       setVisitasPymes(newVisitasPymes);
       setRegistroPendientes(newRegistroPendientes);
+      setClientesCupsTodos(newClientesCupsTodos);
       setDocsFlags(newDocsFlags);
       setVisitasDocsFlags(newVisitasDocsFlags);
       setVisitasPymesDocsFlags(newVisitasPymesDocsFlags);
@@ -963,48 +980,51 @@ export function DataProvider({ children }) {
     return { inserted: data?.length || 0, error: null };
   };
 
-  const tramitarPendiente = async (id) => {
-    setRegistroPendientes(prev => prev.map(r => r.id === id ? { ...r, estado_incidencia: 'Tramitado' } : r));
-    const { error } = await supabase.from('registro_pendientes').update({ estado_incidencia: 'Tramitado' }).eq('id', id);
-    if (error) { console.error('tramitarPendiente:', error); return { error }; }
-    const registro = registroPendientes.find(r => r.id === id);
-    if (registro) {
-      addActivity('Pendientes', `${currentUser?.username} ha tramitado la incidencia de ${registro.nombre || registro.cups}`, currentUser?.username);
-    }
-    return { error: null };
-  };
-
-  // Formaliza el registro: estado_incidencia → 'Formalizado' (NUNCA null — un
-  // contrato formalizado se queda SIEMPRE visible en la tabla como histórico,
-  // no se oculta ni se borra bajo ningún concepto) + fecha_formalizacion =
-  // NOW() en registro_pendientes (tabla propia, no toca `clientes`). SI Y SOLO
-  // SI existe EXACTAMENTE UN contrato en `clientes` con ese mismo CUPS, se
-  // refleja también ahí actualizando fecha_formalizada (mismo formato ISO que
-  // ya usa formalizarContrato()). Con 0 o 2+ coincidencias (CUPS aún sin alta,
-  // o alta duplicada por flujo CURP) NO se toca `clientes` — sería ambiguo
-  // decidir cuál de varios contratos formalizar automáticamente.
-  const formalizarPendiente = async (id) => {
+  // Cambia el estado de un registro de Pendientes a cualquiera de los 3
+  // posibles: 'Pendiente de tareas' | 'Tramitado' | 'Formalizado'. Sustituye a
+  // las antiguas tramitarPendiente/formalizarPendiente — ahora el comercial
+  // elige el estado desde el modal de edición (lápiz) y puede incluso revertir
+  // un Formalizado/Tramitado de vuelta a Pendiente si se marcó por error.
+  //
+  // Al pasar A 'Formalizado' se fija fecha_formalizacion = NOW(); en cualquier
+  // otro estado se limpia a null. Además, SI Y SOLO SI existe EXACTAMENTE UN
+  // contrato en `clientes` con ese mismo CUPS, se refleja también ahí
+  // actualizando fecha_formalizada (mismo formato ISO que ya usa
+  // formalizarContrato()). Esa comprobación se hace con una consulta en vivo a
+  // Supabase (no contra el array `clientes` en memoria, que para roles no-
+  // admin/no-manager viene recortado por equipo/vendedor y daría un recuento
+  // de coincidencias incorrecto). Con 0 o 2+ coincidencias, o al revertir
+  // desde Formalizado, NO se toca `clientes` — sería ambiguo o inesperado
+  // modificar automáticamente la fecha real de formalización del contrato.
+  const actualizarEstadoPendiente = async (id, nuevoEstado) => {
+    const esFormalizado = nuevoEstado === 'Formalizado';
     const fechaHoy = today();
-    setRegistroPendientes(prev => prev.map(r => r.id === id ? { ...r, estado_incidencia: 'Formalizado', fecha_formalizacion: new Date().toISOString() } : r));
+    const updateObj = {
+      estado_incidencia: nuevoEstado,
+      fecha_formalizacion: esFormalizado ? new Date().toISOString() : null,
+    };
+
+    setRegistroPendientes(prev => prev.map(r => r.id === id ? { ...r, ...updateObj } : r));
     const registro = registroPendientes.find(r => r.id === id);
 
-    const { error } = await supabase
-      .from('registro_pendientes')
-      .update({ estado_incidencia: 'Formalizado', fecha_formalizacion: new Date().toISOString() })
-      .eq('id', id);
-    if (error) { console.error('formalizarPendiente:', error); return { error }; }
+    const { error } = await supabase.from('registro_pendientes').update(updateObj).eq('id', id);
+    if (error) { console.error('actualizarEstadoPendiente:', error); return { error }; }
 
-    if (registro?.cups) {
-      const matches = clientes.filter(c => (c.cups || '').toUpperCase().trim() === registro.cups.toUpperCase().trim());
-      if (matches.length === 1) {
-        const cliente = matches[0];
-        setClientes(prev => prev.map(c => c.id === cliente.id ? { ...c, fecha_formalizada: fechaHoy } : c));
-        await supabase.from('clientes').update({ fecha_formalizada: fechaHoy }).eq('id', cliente.id);
+    if (esFormalizado && registro?.cups) {
+      const { data: matches } = await supabase
+        .from('clientes').select('id').eq('cups', registro.cups).is('deleted_at', null);
+      if (matches?.length === 1) {
+        const clienteId = matches[0].id;
+        setClientes(prev => prev.map(c => c.id === clienteId ? { ...c, fecha_formalizada: fechaHoy } : c));
+        await supabase.from('clientes').update({ fecha_formalizada: fechaHoy }).eq('id', clienteId);
       }
     }
 
     if (registro) {
-      addActivity('Pendientes', `${currentUser?.username} ha formalizado la incidencia de ${registro.nombre || registro.cups}`, currentUser?.username);
+      const verbo = nuevoEstado === 'Formalizado' ? 'formalizado'
+        : nuevoEstado === 'Tramitado' ? 'tramitado'
+        : 'revertido a pendiente';
+      addActivity('Pendientes', `${currentUser?.username} ha ${verbo} la incidencia de ${registro.nombre || registro.cups}`, currentUser?.username);
     }
     return { error: null };
   };
@@ -1193,9 +1213,9 @@ export function DataProvider({ children }) {
       renovarContrato,
       deleteCliente,
       registroPendientes,
+      clientesCupsTodos,
       ingestExcelPendientes,
-      tramitarPendiente,
-      formalizarPendiente,
+      actualizarEstadoPendiente,
       prescriptores,
       prescriptorLinks,
       addPrescriptor,
