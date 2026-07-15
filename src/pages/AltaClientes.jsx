@@ -94,31 +94,6 @@ function FileCell({ hasDoc, clientId, campo }) {
   );
 }
 
-// Icono lazy para celda multi-doc B2B
-function DocIcon({ hasDoc, clientId, campo, label }) {
-  const [loading, setLoading] = useState(false);
-  if (!hasDoc) return null;
-  const handleClick = async () => {
-    if (loading) return;
-    setLoading(true);
-    const tab = openPendingTab();
-    try {
-      const data = await fetchSingleDoc(clientId, campo);
-      openBase64InTab(tab, data);
-    } finally {
-      setLoading(false);
-    }
-  };
-  return (
-    <button onClick={handleClick} disabled={loading}
-      className="p-1 rounded hover:bg-indigo-50 transition-colors" title={label}>
-      {loading
-        ? <Loader2 size={15} className="text-indigo-300 animate-spin" />
-        : <Eye size={15} className="text-indigo-400 hover:text-indigo-600" />}
-    </button>
-  );
-}
-
 function ConsumoModal({ cliente, onClose, onSave }) {
   const [valor,  setValor]  = useState('');
   const [error,  setError]  = useState(false);
@@ -380,7 +355,7 @@ export default function AltaClientes({ tipo }) {
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const TOTAL_COLS = isB2B ? 24 : 23;
+  const TOTAL_COLS = isB2B ? 26 : 23;
   const [consumoTarget, setConsumoTarget] = useState(null);
 
   const subtipo = (c) => c.subtipo === 'Otro' ? (c.subtipo_otro || 'Otro') : (c.subtipo || '—');
@@ -614,8 +589,19 @@ export default function AltaClientes({ tipo }) {
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('fecha_tramitacion')}><div className="flex items-center gap-1">F. Tramitación <SortIcon field="fecha_tramitacion" /></div></th>
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('fecha_formalizada')}><div className="flex items-center gap-1">F. Formalizada <SortIcon field="fecha_formalizada" /></div></th>
                 <th className="table-header">Estado</th>
-                <th className="table-header">{isB2B ? 'Docs' : 'DNI/CIF Esc.'}</th>
-                <th className="table-header">Últ. Factura</th>
+                {isB2B ? (
+                  <>
+                    <th className="table-header">CIF</th>
+                    <th className="table-header">DNI</th>
+                    <th className="table-header">Factura</th>
+                    <th className="table-header">Justo Título</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="table-header">DNI/CIF Esc.</th>
+                    <th className="table-header">Últ. Factura</th>
+                  </>
+                )}
                 <th className="table-header">Descripción</th>
                 {isB2B && <th className="table-header">Consumo Anual Est.</th>}
                 <th className="table-header">Acciones</th>
@@ -665,7 +651,7 @@ export default function AltaClientes({ tipo }) {
                     <td className="table-cell text-google-gray">{c.telefono || '—'}</td>
                     <td className="table-cell text-google-gray text-xs">{c.mail || '—'}</td>
                     <td className="table-cell text-google-gray font-mono text-xs">{c.cuenta_bancaria || '—'}</td>
-                    <td className="table-cell text-google-gray font-mono text-xs truncate max-w-[130px]">{c.cups || '—'}</td>
+                    <td className="table-cell text-google-gray font-mono text-xs whitespace-nowrap">{c.cups || '—'}</td>
                     <td className="table-cell">
                       <span className="bg-blue-50 text-google-blue text-xs font-medium px-2 py-0.5 rounded">{c.tarifa}</span>
                     </td>
@@ -681,24 +667,19 @@ export default function AltaClientes({ tipo }) {
                         : <span className="text-google-gray italic">—</span>}
                     </td>
                     <td className="table-cell"><StatusBadge estado={c.estado} /></td>
-                    <td className="table-cell text-center">
-                      {isB2B ? (
-                        <div className="flex items-center justify-center gap-0.5">
-                          <DocIcon hasDoc={docsFlags[c.id]?.tiene_cif}         clientId={c.id} campo="cif_autonomo_url" label="Ver CIF / Autónomo" />
-                          <DocIcon hasDoc={docsFlags[c.id]?.tiene_dni}         clientId={c.id} campo="dni_escaneado"    label="Ver DNI" />
-                          <DocIcon hasDoc={docsFlags[c.id]?.tiene_factura_b2b} clientId={c.id} campo="factura_b2b_url"  label="Ver Factura B2B" />
-                          <DocIcon hasDoc={docsFlags[c.id]?.tiene_justo}       clientId={c.id} campo="justo_titulo_url" label="Ver Justo Título" />
-                          {!docsFlags[c.id]?.tiene_cif && !docsFlags[c.id]?.tiene_dni && !docsFlags[c.id]?.tiene_factura_b2b && !docsFlags[c.id]?.tiene_justo && (
-                            <span className="text-google-gray">—</span>
-                          )}
-                        </div>
-                      ) : (
-                        <FileCell hasDoc={docsFlags[c.id]?.tiene_dni} clientId={c.id} campo="dni_escaneado" />
-                      )}
-                    </td>
-                    <td className="table-cell text-center">
-                      <FileCell hasDoc={docsFlags[c.id]?.tiene_factura} clientId={c.id} campo="ultima_factura" />
-                    </td>
+                    {isB2B ? (
+                      <>
+                        <td className="table-cell text-center"><FileCell hasDoc={docsFlags[c.id]?.tiene_cif}         clientId={c.id} campo="cif_autonomo_url" /></td>
+                        <td className="table-cell text-center"><FileCell hasDoc={docsFlags[c.id]?.tiene_dni}         clientId={c.id} campo="dni_escaneado"    /></td>
+                        <td className="table-cell text-center"><FileCell hasDoc={docsFlags[c.id]?.tiene_factura_b2b} clientId={c.id} campo="factura_b2b_url"  /></td>
+                        <td className="table-cell text-center"><FileCell hasDoc={docsFlags[c.id]?.tiene_justo}       clientId={c.id} campo="justo_titulo_url" /></td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="table-cell text-center"><FileCell hasDoc={docsFlags[c.id]?.tiene_dni}     clientId={c.id} campo="dni_escaneado"  /></td>
+                        <td className="table-cell text-center"><FileCell hasDoc={docsFlags[c.id]?.tiene_factura} clientId={c.id} campo="ultima_factura" /></td>
+                      </>
+                    )}
                     <td className="table-cell text-google-gray text-xs max-w-[180px] truncate" title={c.descripcion || ''}>{c.descripcion || '—'}</td>
                     {isB2B && (
                       <td className="table-cell text-center">
@@ -816,6 +797,7 @@ export default function AltaClientes({ tipo }) {
           onClose={closeModal}
           onSave={handleModalSave}
           editId={editClient?.id}
+          existingDocs={editClient ? docsFlags[editClient.id] : null}
           initialData={editClient ? {
             nombre:            editClient.nombre,
             identificacion:    editClient.cif_dni          || '',

@@ -4,6 +4,7 @@ import DateInput from './DateInput';
 import { useAuth } from '../context/AuthContext';
 import { useData, fetchSingleDoc } from '../context/DataContext';
 import { getShareTargets } from './ShareButton';
+import { openPendingTab, openBase64InTab } from '../lib/attachmentTab';
 
 const tarifas  = ['2.0TD', '3.0TD', '3.1A', '6.1TD', '6.1A', '6.2', '6.3', '6.4', 'RL.1', 'RL.2', 'RL.3'];
 const estados  = ['Pendiente Firma', 'Tramitado', 'Formalizado'];
@@ -20,7 +21,41 @@ const subtipos = [
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 
-export default function NewClientModal({ tipo, onClose, onSave, initialData, editId }) {
+// Muestra que un documento ya existe en BD para este cliente (edición) con
+// opción de verlo (fetch-on-click, igual que FileCell/DocIcon en las tablas)
+// o sustituirlo por uno nuevo. Los campos Base64 (BINARY_FIELDS) se excluyen
+// del SELECT principal de clientes, así que el modal nunca los recibe en
+// initialData — sin este aviso, el input se veía vacío aunque hubiera archivo.
+function ExistingDocBadge({ clientId, campo, onSustituir }) {
+  const [loading, setLoading] = useState(false);
+  const handleVer = async () => {
+    if (loading) return;
+    setLoading(true);
+    const tab = openPendingTab();
+    try {
+      const data = await fetchSingleDoc(clientId, campo);
+      openBase64InTab(tab, data);
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-green-300 bg-green-50 text-xs">
+      <CheckCircle size={14} className="text-green-600 flex-shrink-0" />
+      <span className="flex-1 text-green-700 font-medium">Archivo actual adjunto</span>
+      <button type="button" onClick={handleVer} disabled={loading}
+        className="text-green-700 underline hover:text-green-900 font-medium disabled:opacity-60">
+        {loading ? 'Abriendo…' : 'Ver'}
+      </button>
+      <button type="button" onClick={onSustituir}
+        className="px-2 py-1 rounded-md border border-green-300 bg-white text-green-700 hover:bg-green-100 transition-colors font-semibold">
+        Sustituir
+      </button>
+    </div>
+  );
+}
+
+export default function NewClientModal({ tipo, onClose, onSave, initialData, editId, existingDocs }) {
   const { currentUser, users, sharePermissions } = useAuth();
   const shareTargets = getShareTargets(currentUser, users, sharePermissions);
   const { prescriptores: prescriptoresDB, clientes: clientesCtx } = useData();
@@ -962,23 +997,27 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
                   </label>
                   <input ref={cifAutonomoInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
                     onChange={(e) => handleFileChange(e, setCifAutonomoFileName, setCifAutonomoBase64)} />
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => cifAutonomoInputRef.current?.click()}
-                      className={`flex-1 flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
-                        cifAutonomoFileName ? 'border-green-300 bg-green-50 text-green-700'
-                        : errors.cif_autonomo ? 'border-red-300 bg-red-50 text-red-600'
-                        : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
-                      <Upload size={14} className="flex-shrink-0" />
-                      <span className="truncate">{cifAutonomoFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
-                    </button>
-                    {cifAutonomoFileName && (
-                      <button type="button" title="Eliminar archivo"
-                        onClick={() => { setCifAutonomoFileName(''); setCifAutonomoBase64(''); if (cifAutonomoInputRef.current) cifAutonomoInputRef.current.value = ''; }}
-                        className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
-                        <X size={13} />
+                  {isEdit && !cifAutonomoFileName && existingDocs?.tiene_cif ? (
+                    <ExistingDocBadge clientId={editId} campo="cif_autonomo_url" onSustituir={() => cifAutonomoInputRef.current?.click()} />
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => cifAutonomoInputRef.current?.click()}
+                        className={`flex-1 flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
+                          cifAutonomoFileName ? 'border-green-300 bg-green-50 text-green-700'
+                          : errors.cif_autonomo ? 'border-red-300 bg-red-50 text-red-600'
+                          : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
+                        <Upload size={14} className="flex-shrink-0" />
+                        <span className="truncate">{cifAutonomoFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
                       </button>
-                    )}
-                  </div>
+                      {cifAutonomoFileName && (
+                        <button type="button" title="Eliminar archivo"
+                          onClick={() => { setCifAutonomoFileName(''); setCifAutonomoBase64(''); if (cifAutonomoInputRef.current) cifAutonomoInputRef.current.value = ''; }}
+                          className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {errors.cif_autonomo && <p className="text-red-500 text-xs mt-1">Este documento es obligatorio</p>}
                 </div>
 
@@ -989,23 +1028,27 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
                   </label>
                   <input ref={dniInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
                     onChange={(e) => handleFileChange(e, setDniFileName, setDniBase64)} />
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => dniInputRef.current?.click()}
-                      className={`flex-1 flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
-                        dniFileName ? 'border-green-300 bg-green-50 text-green-700'
-                        : errors.dni_b2b ? 'border-red-300 bg-red-50 text-red-600'
-                        : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
-                      <Upload size={14} className="flex-shrink-0" />
-                      <span className="truncate">{dniFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
-                    </button>
-                    {dniFileName && (
-                      <button type="button" title="Eliminar archivo"
-                        onClick={() => { setDniFileName(''); setDniBase64(''); if (dniInputRef.current) dniInputRef.current.value = ''; }}
-                        className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
-                        <X size={13} />
+                  {isEdit && !dniFileName && existingDocs?.tiene_dni ? (
+                    <ExistingDocBadge clientId={editId} campo="dni_escaneado" onSustituir={() => dniInputRef.current?.click()} />
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => dniInputRef.current?.click()}
+                        className={`flex-1 flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
+                          dniFileName ? 'border-green-300 bg-green-50 text-green-700'
+                          : errors.dni_b2b ? 'border-red-300 bg-red-50 text-red-600'
+                          : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
+                        <Upload size={14} className="flex-shrink-0" />
+                        <span className="truncate">{dniFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
                       </button>
-                    )}
-                  </div>
+                      {dniFileName && (
+                        <button type="button" title="Eliminar archivo"
+                          onClick={() => { setDniFileName(''); setDniBase64(''); if (dniInputRef.current) dniInputRef.current.value = ''; }}
+                          className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {errors.dni_b2b && <p className="text-red-500 text-xs mt-1">Este documento es obligatorio</p>}
                 </div>
 
@@ -1016,23 +1059,27 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
                   </label>
                   <input ref={facturaB2bInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
                     onChange={(e) => handleFileChange(e, setFacturaB2bFileName, setFacturaB2bBase64)} />
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => facturaB2bInputRef.current?.click()}
-                      className={`flex-1 flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
-                        facturaB2bFileName ? 'border-green-300 bg-green-50 text-green-700'
-                        : errors.factura_b2b ? 'border-red-300 bg-red-50 text-red-600'
-                        : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
-                      <Upload size={14} className="flex-shrink-0" />
-                      <span className="truncate">{facturaB2bFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
-                    </button>
-                    {facturaB2bFileName && (
-                      <button type="button" title="Eliminar archivo"
-                        onClick={() => { setFacturaB2bFileName(''); setFacturaB2bBase64(''); if (facturaB2bInputRef.current) facturaB2bInputRef.current.value = ''; }}
-                        className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
-                        <X size={13} />
+                  {isEdit && !facturaB2bFileName && existingDocs?.tiene_factura_b2b ? (
+                    <ExistingDocBadge clientId={editId} campo="factura_b2b_url" onSustituir={() => facturaB2bInputRef.current?.click()} />
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => facturaB2bInputRef.current?.click()}
+                        className={`flex-1 flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
+                          facturaB2bFileName ? 'border-green-300 bg-green-50 text-green-700'
+                          : errors.factura_b2b ? 'border-red-300 bg-red-50 text-red-600'
+                          : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
+                        <Upload size={14} className="flex-shrink-0" />
+                        <span className="truncate">{facturaB2bFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
                       </button>
-                    )}
-                  </div>
+                      {facturaB2bFileName && (
+                        <button type="button" title="Eliminar archivo"
+                          onClick={() => { setFacturaB2bFileName(''); setFacturaB2bBase64(''); if (facturaB2bInputRef.current) facturaB2bInputRef.current.value = ''; }}
+                          className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {errors.factura_b2b && <p className="text-red-500 text-xs mt-1">Este documento es obligatorio</p>}
                 </div>
 
@@ -1043,22 +1090,26 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
                   </label>
                   <input ref={justoTituloInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
                     onChange={(e) => handleFileChange(e, setJustoTituloFileName, setJustoTituloBase64)} />
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => justoTituloInputRef.current?.click()}
-                      className={`flex-1 flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
-                        justoTituloFileName ? 'border-green-300 bg-green-50 text-green-700'
-                        : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
-                      <Upload size={14} className="flex-shrink-0" />
-                      <span className="truncate">{justoTituloFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
-                    </button>
-                    {justoTituloFileName && (
-                      <button type="button" title="Eliminar archivo"
-                        onClick={() => { setJustoTituloFileName(''); setJustoTituloBase64(''); if (justoTituloInputRef.current) justoTituloInputRef.current.value = ''; }}
-                        className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
-                        <X size={13} />
+                  {isEdit && !justoTituloFileName && existingDocs?.tiene_justo ? (
+                    <ExistingDocBadge clientId={editId} campo="justo_titulo_url" onSustituir={() => justoTituloInputRef.current?.click()} />
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => justoTituloInputRef.current?.click()}
+                        className={`flex-1 flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
+                          justoTituloFileName ? 'border-green-300 bg-green-50 text-green-700'
+                          : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
+                        <Upload size={14} className="flex-shrink-0" />
+                        <span className="truncate">{justoTituloFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
                       </button>
-                    )}
-                  </div>
+                      {justoTituloFileName && (
+                        <button type="button" title="Eliminar archivo"
+                          onClick={() => { setJustoTituloFileName(''); setJustoTituloBase64(''); if (justoTituloInputRef.current) justoTituloInputRef.current.value = ''; }}
+                          className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
@@ -1069,23 +1120,27 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
                   </label>
                   <input ref={dniInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
                     onChange={(e) => handleFileChange(e, setDniFileName, setDniBase64)} />
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => dniInputRef.current?.click()}
-                      className={`flex-1 flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
-                        dniFileName ? 'border-green-300 bg-green-50 text-green-700'
-                        : errors.dni_b2c ? 'border-red-300 bg-red-50 text-red-600'
-                        : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
-                      <Upload size={14} className="flex-shrink-0" />
-                      <span className="truncate">{dniFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
-                    </button>
-                    {dniFileName && (
-                      <button type="button" title="Eliminar archivo"
-                        onClick={() => { setDniFileName(''); setDniBase64(''); if (dniInputRef.current) dniInputRef.current.value = ''; }}
-                        className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
-                        <X size={13} />
+                  {isEdit && !dniFileName && existingDocs?.tiene_dni ? (
+                    <ExistingDocBadge clientId={editId} campo="dni_escaneado" onSustituir={() => dniInputRef.current?.click()} />
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => dniInputRef.current?.click()}
+                        className={`flex-1 flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
+                          dniFileName ? 'border-green-300 bg-green-50 text-green-700'
+                          : errors.dni_b2c ? 'border-red-300 bg-red-50 text-red-600'
+                          : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
+                        <Upload size={14} className="flex-shrink-0" />
+                        <span className="truncate">{dniFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
                       </button>
-                    )}
-                  </div>
+                      {dniFileName && (
+                        <button type="button" title="Eliminar archivo"
+                          onClick={() => { setDniFileName(''); setDniBase64(''); if (dniInputRef.current) dniInputRef.current.value = ''; }}
+                          className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+                  )}
                   {errors.dni_b2c && <p className="text-red-500 text-xs mt-1">Este documento es obligatorio</p>}
                 </div>
 
@@ -1095,22 +1150,26 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
                   </label>
                   <input ref={ultimaFacturaInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden"
                     onChange={(e) => handleFileChange(e, setUltimaFacturaFileName, setUltimaFacturaBase64)} />
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => ultimaFacturaInputRef.current?.click()}
-                      className={`flex-1 flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
-                        ultimaFacturaFileName ? 'border-green-300 bg-green-50 text-green-700'
-                        : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
-                      <Upload size={14} className="flex-shrink-0" />
-                      <span className="truncate">{ultimaFacturaFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
-                    </button>
-                    {ultimaFacturaFileName && (
-                      <button type="button" title="Eliminar archivo"
-                        onClick={() => { setUltimaFacturaFileName(''); setUltimaFacturaBase64(''); if (ultimaFacturaInputRef.current) ultimaFacturaInputRef.current.value = ''; }}
-                        className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
-                        <X size={13} />
+                  {isEdit && !ultimaFacturaFileName && existingDocs?.tiene_factura ? (
+                    <ExistingDocBadge clientId={editId} campo="ultima_factura" onSustituir={() => ultimaFacturaInputRef.current?.click()} />
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => ultimaFacturaInputRef.current?.click()}
+                        className={`flex-1 flex items-center gap-2 px-3 py-2.5 rounded-lg border text-xs transition-colors ${
+                          ultimaFacturaFileName ? 'border-green-300 bg-green-50 text-green-700'
+                          : 'border-dashed border-gray-300 bg-google-bg text-google-gray hover:border-google-blue hover:text-google-blue'}`}>
+                        <Upload size={14} className="flex-shrink-0" />
+                        <span className="truncate">{ultimaFacturaFileName || 'Seleccionar archivo (PDF, JPG, PNG)...'}</span>
                       </button>
-                    )}
-                  </div>
+                      {ultimaFacturaFileName && (
+                        <button type="button" title="Eliminar archivo"
+                          onClick={() => { setUltimaFacturaFileName(''); setUltimaFacturaBase64(''); if (ultimaFacturaInputRef.current) ultimaFacturaInputRef.current.value = ''; }}
+                          className="p-1.5 rounded-lg border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-colors flex-shrink-0">
+                          <X size={13} />
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </>
             )}

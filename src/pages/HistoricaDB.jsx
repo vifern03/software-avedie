@@ -174,6 +174,7 @@ export default function HistoricaDB() {
   };
 
   const subtipo = (c) => c.subtipo === 'Otro' ? (c.subtipo_otro || 'Otro') : (c.subtipo || '—');
+const isB2BRow = (c) => c.tipo === 'B2B' || c.tipo === 'CUR_B2B';
 
   const exportToXLSX = async (data, suffix = '') => {
     const workbook = new ExcelJS.Workbook();
@@ -266,7 +267,7 @@ export default function HistoricaDB() {
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const TOTAL_COLS = 22;
+  const TOTAL_COLS = 24;
 
   // Column definitions (20 cols, exact order)
   const sortableCols = [
@@ -440,8 +441,10 @@ export default function HistoricaDB() {
                   {th('fecha_tramitacion', 'F. Tramitación')}
                   {th('fecha_formalizada', 'F. Formalizada')}
                   {th('estado',            'Estado')}
-                  <th className="table-header">DNI/CIF Esc.</th>
-                  <th className="table-header">Últ. Factura</th>
+                  <th className="table-header">DNI</th>
+                  <th className="table-header">CIF</th>
+                  <th className="table-header">Factura</th>
+                  <th className="table-header">Justo Título</th>
                   <th className="table-header">Descripción</th>
                   <th className="table-header">Acciones</th>
                 </tr>
@@ -474,7 +477,7 @@ export default function HistoricaDB() {
                       <td className="table-cell text-google-gray">{c.telefono}</td>
                       <td className="table-cell text-google-gray text-xs">{c.mail || '—'}</td>
                       <td className="table-cell text-google-gray font-mono text-xs">{c.cuenta_bancaria || '—'}</td>
-                      <td className="table-cell text-google-gray font-mono text-xs truncate max-w-[130px]">{c.cups}</td>
+                      <td className="table-cell text-google-gray font-mono text-xs whitespace-nowrap">{c.cups}</td>
                       <td className="table-cell">
                         <span className="bg-blue-50 text-google-blue text-xs font-medium px-2 py-0.5 rounded">{c.tarifa}</span>
                       </td>
@@ -490,8 +493,16 @@ export default function HistoricaDB() {
                           : <span className="text-google-gray italic">—</span>}
                       </td>
                       <td className="table-cell"><StatusBadge estado={c.estado} /></td>
-                      <td className="table-cell text-center"><FileCell hasDoc={docsFlags[c.id]?.tiene_dni}     clientId={c.id} campo="dni_escaneado"  /></td>
-                      <td className="table-cell text-center"><FileCell hasDoc={docsFlags[c.id]?.tiene_factura} clientId={c.id} campo="ultima_factura" /></td>
+                      <td className="table-cell text-center"><FileCell hasDoc={docsFlags[c.id]?.tiene_dni} clientId={c.id} campo="dni_escaneado"    /></td>
+                      <td className="table-cell text-center"><FileCell hasDoc={docsFlags[c.id]?.tiene_cif} clientId={c.id} campo="cif_autonomo_url" /></td>
+                      <td className="table-cell text-center">
+                        <FileCell
+                          hasDoc={isB2BRow(c) ? docsFlags[c.id]?.tiene_factura_b2b : docsFlags[c.id]?.tiene_factura}
+                          clientId={c.id}
+                          campo={isB2BRow(c) ? 'factura_b2b_url' : 'ultima_factura'}
+                        />
+                      </td>
+                      <td className="table-cell text-center"><FileCell hasDoc={docsFlags[c.id]?.tiene_justo} clientId={c.id} campo="justo_titulo_url" /></td>
                       <td className="table-cell text-google-gray text-xs max-w-[180px] truncate" title={c.descripcion || ''}>{c.descripcion || '—'}</td>
                       <td className="table-cell text-center">
                         <div className="flex items-center justify-center gap-1">
@@ -571,6 +582,7 @@ export default function HistoricaDB() {
           onSave={handleUpdate}
           existingCups={allCups}
           editId={editClient.id}
+          existingDocs={docsFlags[editClient.id]}
           initialData={{
             nombre:            editClient.nombre,
             identificacion:    editClient.cif_dni,
