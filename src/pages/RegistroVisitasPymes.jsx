@@ -18,7 +18,15 @@ const isMobileDevice = () => {
   const ua = navigator.userAgent || navigator.vendor || '';
   return /android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua);
 };
-const todayStr = () => new Date().toISOString().split('T')[0];
+// OJO: usar SIEMPRE getters locales (getFullYear/getHours/...) para fechas y
+// horas de esta página, nunca toISOString() — toISOString() normaliza a UTC y
+// desplaza el día/hora respecto a la zona horaria del comercial (bug detectado:
+// visitas registradas entre las 00:00 y las ~02:00 hora local quedaban con la
+// fecha de "ayer" y desaparecían del filtro "Hoy").
+const todayStr = () => {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+};
 const nowTime  = () => {
   const n = new Date();
   return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
@@ -30,7 +38,11 @@ const monthName = (offset) => {
 };
 const toDatetimeLocal = (isoStr) => {
   if (!isoStr) return '';
-  try { return new Date(isoStr).toISOString().slice(0, 16); } catch { return ''; }
+  try {
+    const d = new Date(isoStr);
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  } catch { return ''; }
 };
 const fmtFechaHora = (isoStr) => {
   if (!isoStr) return '—';
@@ -38,7 +50,7 @@ const fmtFechaHora = (isoStr) => {
   const p = n => String(n).padStart(2, '0');
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 };
-const nowLocal = () => new Date().toISOString().slice(0, 16);
+const nowLocal = () => toDatetimeLocal(new Date().toISOString());
 
 // ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -233,7 +245,11 @@ function AccionRapidaModal({ visita, targetEstado, onClose, onConfirmar }) {
     if (comentario.trim()) extraFields.comentarios_visita = comentario.trim();
     if (isAceptado || isRechazado) extraFields.fecha_resolucion = new Date().toISOString();
     const result = await onConfirmar(visita.id, targetEstado, extraFields);
-    if (result?.error) { setSaving(false); return; }
+    if (result?.error) {
+      setSaving(false);
+      alert(`No se pudo guardar el cambio de estado. Inténtalo de nuevo.\n\nDetalle: ${result.error.message || 'error desconocido'}`);
+      return;
+    }
     setSaved(true);
     setTimeout(() => onClose(), 900);
   };
@@ -387,7 +403,11 @@ function TransicionEstadoModal({ visita, targetEstado, onClose, onConfirmar, doc
     };
 
     const result = await onConfirmar(visita.id, targetEstado, extraFields, facturaFile || null, comparativaFile || null);
-    if (result?.error) { setSaving(false); return; }
+    if (result?.error) {
+      setSaving(false);
+      alert(`No se pudo guardar el cambio de estado. Tus datos siguen en el formulario, revisa la conexión e inténtalo de nuevo.\n\nDetalle: ${result.error.message || 'error desconocido'}`);
+      return;
+    }
     setSaved(true);
     setTimeout(() => onClose(), 900);
   };
@@ -671,19 +691,23 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
     reader.onload = (ev) => setFotoPreview(ev.target.result);
     reader.readAsDataURL(file);
 
-    // Captura silenciosa de coordenadas GPS en segundo plano
+    // Captura silenciosa de coordenadas GPS en segundo plano — nunca bloquea el
+    // formulario: si se deniega el permiso o el móvil tarda en triangular
+    // (mala cobertura), la visita se guarda igualmente sin lat/long.
     if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setForm(f => ({
-            ...f,
-            latitud:  pos.coords.latitude,
-            longitud: pos.coords.longitude,
-          }));
-        },
-        () => { /* permiso denegado o sin señal — continúa sin coordenadas */ },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
+      try {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            setForm(f => ({
+              ...f,
+              latitud:  pos.coords.latitude,
+              longitud: pos.coords.longitude,
+            }));
+          },
+          () => { /* permiso denegado, timeout o sin señal — continúa sin coordenadas */ },
+          { enableHighAccuracy: true, timeout: 7000, maximumAge: 0 }
+        );
+      } catch { /* API de geolocalización no disponible — continúa sin coordenadas */ }
     }
   };
 
@@ -731,7 +755,11 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
       fecha_resolucion:          needsResolucion   ? toISO(form.fecha_resolucion)          : null,
     };
     const result = await onSave(formToSave, fotoFile, facturaFile, comparativaFile, clearFactura, clearComparativa);
-    if (result?.error) { setSaving(false); return; }
+    if (result?.error) {
+      setSaving(false);
+      alert(`No se pudo guardar la visita. Tus datos siguen en el formulario, revisa la conexión e inténtalo de nuevo.\n\nDetalle: ${result.error.message || 'error desconocido'}`);
+      return;
+    }
     setSaved(true);
     setTimeout(() => onClose(), 800);
   };
@@ -988,7 +1016,7 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
             <button type="submit" disabled={saving || saved || !canSubmit}
               className={`btn-primary flex items-center gap-2 ${saved ? 'bg-green-500 hover:bg-green-500' : ''} ${!canSubmit ? 'opacity-50 cursor-not-allowed' : ''}`}>
               {saved ? <><CheckCircle size={15} /><span>Guardado</span></>
-                : saving ? <><Loader2 size={15} className="animate-spin" /><span>Guardando...</span></>
+                : saving ? <><Loader2 size={15} className="animate-spin" /><span>Guardando visita...</span></>
                 : <span>{isEdit ? 'Guardar Cambios' : 'Registrar Visita'}</span>}
             </button>
           </div>
@@ -1052,7 +1080,7 @@ export default function RegistroVisitasPymes() {
   };
 
   const now             = new Date();
-  const todayISO        = now.toISOString().split('T')[0];
+  const todayISO        = todayStr();
   const monthPrefix     = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const prevMonthDate   = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const prevMonthPrefix = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, '0')}`;

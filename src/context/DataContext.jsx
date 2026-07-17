@@ -722,17 +722,33 @@ export function DataProvider({ children }) {
       ...(data.latitud  !== undefined && { latitud:  data.latitud  ?? null }),
       ...(data.longitud !== undefined && { longitud: data.longitud ?? null }),
     };
-    setVisitasPymes(prev => prev.map(v => v.id === id ? { ...v, ...updateObj } : v));
+    let prevVisita;
+    setVisitasPymes(prev => {
+      prevVisita = prev.find(v => v.id === id);
+      return prev.map(v => v.id === id ? { ...v, ...updateObj } : v);
+    });
     const { error } = await supabase.from('visitas_pymes').update(updateObj).eq('id', id);
-    if (error) { console.error('updateVisitaPyme error:', error.message, error.details); return { error }; }
+    if (error) {
+      console.error('updateVisitaPyme error:', error.message, error.details);
+      if (prevVisita) setVisitasPymes(prev => prev.map(v => v.id === id ? prevVisita : v));
+      return { error };
+    }
     return { error: null };
   };
 
   const updateEstadoVisitaPyme = async (id, nuevoEstado, extraFields = {}) => {
     const updateObj = { estado: nuevoEstado, ...extraFields };
-    setVisitasPymes(prev => prev.map(v => v.id === id ? { ...v, ...updateObj } : v));
+    let prevVisita;
+    setVisitasPymes(prev => {
+      prevVisita = prev.find(v => v.id === id);
+      return prev.map(v => v.id === id ? { ...v, ...updateObj } : v);
+    });
     const { error } = await supabase.from('visitas_pymes').update(updateObj).eq('id', id);
-    if (error) { console.error('updateEstadoVisitaPyme:', error); return { error }; }
+    if (error) {
+      console.error('updateEstadoVisitaPyme:', error);
+      if (prevVisita) setVisitasPymes(prev => prev.map(v => v.id === id ? prevVisita : v));
+      return { error };
+    }
     return { error: null };
   };
 
@@ -746,9 +762,17 @@ export function DataProvider({ children }) {
       const url = await _uploadPymeDoc(comparativaFile, 'comparativa');
       if (url) updateObj.comparativa_url = url;
     }
-    setVisitasPymes(prev => prev.map(v => v.id === id ? { ...v, ...updateObj } : v));
+    let prevVisita;
+    setVisitasPymes(prev => {
+      prevVisita = prev.find(v => v.id === id);
+      return prev.map(v => v.id === id ? { ...v, ...updateObj } : v);
+    });
     const { error } = await supabase.from('visitas_pymes').update(updateObj).eq('id', id);
-    if (error) { console.error('transicionEstadoPyme:', error); return { error }; }
+    if (error) {
+      console.error('transicionEstadoPyme:', error);
+      if (prevVisita) setVisitasPymes(prev => prev.map(v => v.id === id ? prevVisita : v));
+      return { error };
+    }
     return { error: null };
   };
 
