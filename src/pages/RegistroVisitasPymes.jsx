@@ -4,10 +4,11 @@ import { saveAs } from 'file-saver';
 import {
   Landmark, Plus, CalendarDays, Users, Search, Trash2, Pencil, CheckCircle,
   X, FileSpreadsheet, Camera, ExternalLink, Loader2, ArrowRight, Check, Minus, Eye,
-  Clock, TrendingUp, FileText, MapPin,
+  Clock, TrendingUp, FileText, MapPin, WifiOff,
 } from 'lucide-react';
 import { useData, fetchVisitaPymeDoc } from '../context/DataContext';
 import { openPendingTab, navigateTab } from '../lib/attachmentTab';
+import { compressImageFile } from '../lib/pymesOfflineQueue';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
 import DeleteConfirmModal from '../components/DeleteConfirmModal';
@@ -692,9 +693,11 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
   const [errors,          setErrors]          = useState({});
   const [saving,          setSaving]          = useState(false);
   const [saved,           setSaved]           = useState(false);
+  const [queued,          setQueued]          = useState(false);
   const fileInputRef         = useRef(null);
   const facturaInputRef      = useRef(null);
   const comparativaInputRef  = useRef(null);
+  const fotoChangeTokenRef   = useRef(0);
 
   // Carga bajo demanda de la foto existente SOLO al abrir la edición de esta visita
   // (no se precarga para todas las filas de la tabla — fetch-on-open, no fetch-on-render)
@@ -715,10 +718,20 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
   const handleFotoChange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const token = ++fotoChangeTokenRef.current;
     setFotoFile(file);
     const reader = new FileReader();
     reader.onload = (ev) => setFotoPreview(ev.target.result);
     reader.readAsDataURL(file);
+
+    // Comprime la foto en segundo plano (máx. 1600px, JPEG) — así el envío
+    // tiene más posibilidades de completarse con mala cobertura y, si hay que
+    // guardarla en la cola local del dispositivo, ocupa mucho menos espacio.
+    compressImageFile(file).then(compressed => {
+      // Descarta el resultado si el comercial ya eligió otra foto mientras
+      // se comprimía esta (evita pisar la selección más reciente).
+      if (fotoChangeTokenRef.current === token && compressed) setFotoFile(compressed);
+    });
 
     // Captura silenciosa de coordenadas GPS en segundo plano — nunca bloquea el
     // formulario: si se deniega el permiso o el móvil tarda en triangular
@@ -787,6 +800,14 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
     if (result?.error) {
       setSaving(false);
       alert(`No se pudo guardar la visita. Tus datos siguen en el formulario, revisa la conexión e inténtalo de nuevo.\n\nDetalle: ${result.error.message || 'error desconocido'}`);
+      return;
+    }
+    if (result?.queued) {
+      // Sin cobertura ahora mismo: los datos ya están a salvo en el
+      // dispositivo (cola local) y se subirán solos en cuanto haya señal —
+      // no es un error, así que no se bloquea al comercial con el formulario.
+      setQueued(true);
+      setTimeout(() => onClose(), 2200);
       return;
     }
     setSaved(true);
@@ -1041,11 +1062,20 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
             {errors.comentarios && <p className="text-red-500 text-xs mt-1">Obligatorio en estado Rechazado</p>}
           </div>
 
+          {queued && (
+            <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 flex items-start gap-2">
+              <WifiOff size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-800 leading-snug">
+                Sin cobertura ahora mismo. La visita ya está guardada en este dispositivo y se subirá sola en cuanto haya señal — no hace falta que hagas nada más.
+              </p>
+            </div>
+          )}
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-google-border">
             <button type="button" onClick={onClose} disabled={saving} className="btn-secondary">Cancelar</button>
-            <button type="submit" disabled={saving || saved || !canSubmit}
-              className={`btn-primary flex items-center gap-2 ${saved ? 'bg-green-500 hover:bg-green-500' : ''} ${!canSubmit ? 'opacity-50 cursor-not-allowed' : ''}`}>
+            <button type="submit" disabled={saving || saved || queued || !canSubmit}
+              className={`btn-primary flex items-center gap-2 ${saved ? 'bg-green-500 hover:bg-green-500' : ''} ${queued ? 'bg-amber-500 hover:bg-amber-500' : ''} ${!canSubmit ? 'opacity-50 cursor-not-allowed' : ''}`}>
               {saved ? <><CheckCircle size={15} /><span>Guardado</span></>
+                : queued ? <><WifiOff size={15} /><span>Guardada — se subirá sola</span></>
                 : saving ? <><Loader2 size={15} className="animate-spin" /><span>Guardando visita...</span></>
                 : <span>{isEdit ? 'Guardar Cambios' : 'Registrar Visita'}</span>}
             </button>

@@ -4,6 +4,7 @@ import { useAuth } from './context/AuthContext';
 import { useData } from './context/DataContext';
 import Sidebar from './components/Sidebar';
 import AIAssistant from './components/AIAssistant';
+import PymesQueueBanner from './components/PymesQueueBanner';
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
 import AltaClientes from './pages/AltaClientes';
@@ -130,6 +131,7 @@ export default function App() {
         {renderPage()}
       </main>
       <AIAssistant isOpen={isAIOpen} onOpenChange={setIsAIOpen} />
+      <PymesQueueBanner />
     </div>
   );
 }

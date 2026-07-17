@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '../lib/supabase';
+import { readQueue, writeQueue, fileToBase64, base64ToBlob } from '../lib/pymesOfflineQueue';
 
 const DataContext = createContext(null);
 
@@ -136,6 +137,9 @@ export function DataProvider({ children }) {
   const [docsFlags,     setDocsFlags]     = useState({});
   const [visitasDocsFlags,      setVisitasDocsFlags]      = useState({});
   const [visitasPymesDocsFlags, setVisitasPymesDocsFlags] = useState({});
+  // Cola local de visitas PYME que no se pudieron confirmar en Supabase al
+  // primer intento (típicamente sin cobertura en el móvil) — ver [[project_pymes_offline_queue]].
+  const [pymesQueuePending, setPymesQueuePending] = useState(() => readQueue());
   const [isLoading,     setIsLoading]     = useState(true);
   const [prescriptores,    setPrescriptores]    = useState([]); // [{id, nombre}]
   const [prescriptorLinks, setPrescriptorLinks] = useState({}); // {nombre_prescriptor: username_crm}
@@ -620,59 +624,182 @@ export function DataProvider({ children }) {
     return supabase.storage.from('pymes-fotos').getPublicUrl(fileName).data.publicUrl;
   };
 
-  const addVisitaPyme = async (data, fotoFile, facturaFile, comparativaFile) => {
-    let foto_url = '';
-    if (fotoFile) {
-      const ext      = fotoFile.name.split('.').pop() || 'jpg';
-      const fileName = `${Date.now()}_${currentUser?.username || 'anon'}.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from('pymes-fotos')
-        .upload(fileName, fotoFile, { upsert: false });
-      if (!upErr) {
-        const { data: urlData } = supabase.storage.from('pymes-fotos').getPublicUrl(fileName);
-        foto_url = urlData.publicUrl;
-      } else {
-        console.error('addVisitaPyme upload:', upErr);
-      }
-    }
-    const factura_url    = facturaFile    ? (await _uploadPymeDoc(facturaFile,    'factura'))    || '' : '';
-    const comparativa_url = comparativaFile ? (await _uploadPymeDoc(comparativaFile, 'comparativa')) || '' : '';
+  // Sube un blob reconstruido desde la cola offline (base64 -> Blob), con el
+  // mismo esquema de nombres que _uploadPymeDoc / el bloque de foto de abajo.
+  const _uploadQueuedBlob = async (base64, ext, prefix = '') => {
+    const blob = base64ToBlob(base64);
+    const safeExt  = (ext || 'jpg').toLowerCase();
+    const fileName = `${prefix}${Date.now()}_${currentUser?.username || 'anon'}.${safeExt}`;
+    const { error } = await supabase.storage.from('pymes-fotos').upload(fileName, blob, { upsert: false });
+    if (error) { console.error('_uploadQueuedBlob:', error); return null; }
+    return supabase.storage.from('pymes-fotos').getPublicUrl(fileName).data.publicUrl;
+  };
+
+  // Convierte los archivos elegidos por el comercial en un item serializable
+  // (base64) que sobrevive aunque se cierre la app antes de poder subirlo.
+  const _buildPymeQueueItem = async (data, fotoFile, facturaFile, comparativaFile) => {
+    const [fotoBase64, facturaBase64, comparativaBase64] = await Promise.all([
+      fotoFile        ? fileToBase64(fotoFile)        : Promise.resolve(null),
+      facturaFile      ? fileToBase64(facturaFile)      : Promise.resolve(null),
+      comparativaFile  ? fileToBase64(comparativaFile)  : Promise.resolve(null),
+    ]);
+    return {
+      localId:      `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      createdAt:    Date.now(),
+      attempts:     0,
+      lastError:    null,
+      lastAttemptAt: null,
+      registrado_por: currentUser?.username || 'Sistema',
+      lockedUntil:  null,
+      data,
+      fotoBase64,        fotoExt:        fotoFile?.name?.split('.').pop()?.toLowerCase()       || 'jpg',
+      facturaBase64,     facturaExt:     facturaFile?.name?.split('.').pop()?.toLowerCase()     || null,
+      comparativaBase64, comparativaExt: comparativaFile?.name?.split('.').pop()?.toLowerCase() || null,
+    };
+  };
+
+  // Bloqueo optimista (20s) persistido en la propia cola: evita que el mismo
+  // item se suba dos veces si el intento inmediato de addVisitaPyme coincide
+  // con el reintento periódico en segundo plano (o con otra pestaña abierta
+  // con la misma sesión). No es un lock atómico de verdad, pero la ventana de
+  // colisión real es minúscula y el peor caso es una fila duplicada, nunca
+  // una visita perdida.
+  const PYME_LOCK_MS = 20000;
+  const _tryLockPymeQueueItem = (localId) => {
+    const queue = readQueue();
+    const idx = queue.findIndex(i => i.localId === localId);
+    if (idx === -1) return null;
+    const current = queue[idx];
+    if (current.lockedUntil && current.lockedUntil > Date.now()) return null;
+    const locked = { ...current, lockedUntil: Date.now() + PYME_LOCK_MS };
+    queue[idx] = locked;
+    writeQueue(queue);
+    setPymesQueuePending(queue);
+    return locked;
+  };
+
+  // Intenta confirmar en Supabase un item de la cola (subida de archivos +
+  // insert de la fila). No toca localStorage — eso lo gestiona el llamante.
+  const _flushPymeQueueItem = async (item) => {
+    const foto_url = item.fotoBase64
+      ? (await _uploadQueuedBlob(item.fotoBase64, item.fotoExt, '')) || ''
+      : '';
+    if (item.fotoBase64 && !foto_url) return { error: { message: 'No se pudo subir la foto (sin conexión)' } };
+
+    const factura_url = item.facturaBase64
+      ? (await _uploadQueuedBlob(item.facturaBase64, item.facturaExt, 'factura_')) || ''
+      : '';
+    const comparativa_url = item.comparativaBase64
+      ? (await _uploadQueuedBlob(item.comparativaBase64, item.comparativaExt, 'comparativa_')) || ''
+      : '';
 
     const newVisita = {
       id:                           Date.now(),
-      fecha:                        data.fecha,
-      hora:                         data.hora,
-      persona_autorizada:           data.persona_autorizada,
-      correo:                       data.correo_persona            || '',
-      telefono_contacto_cliente:    data.telefono_cliente          || '',
-      correo_electronico_cliente:   data.correo_cliente            || '',
+      fecha:                        item.data.fecha,
+      hora:                         item.data.hora,
+      persona_autorizada:           item.data.persona_autorizada,
+      correo:                       item.data.correo_persona            || '',
+      telefono_contacto_cliente:    item.data.telefono_cliente          || '',
+      correo_electronico_cliente:   item.data.correo_cliente            || '',
       foto_negocio_url:             foto_url,
-      comentarios_visita:           data.comentarios               || '',
-      registrado_por:               currentUser?.username          || 'Sistema',
-      nombre_empresa:               data.nombre_empresa            || '',
-      ubicacion:                    data.ubicacion                 || '',
-      estado:                       data.estado                    || 'Solicitado Factura',
-      fecha_enviada_comparativa:    data.fecha_enviada_comparativa || null,
-      fecha_resolucion:             data.fecha_resolucion          || null,
+      comentarios_visita:           item.data.comentarios               || '',
+      registrado_por:               item.registrado_por,
+      nombre_empresa:               item.data.nombre_empresa            || '',
+      ubicacion:                    item.data.ubicacion                 || '',
+      estado:                       item.data.estado                    || 'Solicitado Factura',
+      fecha_enviada_comparativa:    item.data.fecha_enviada_comparativa || null,
+      fecha_resolucion:             item.data.fecha_resolucion          || null,
       factura_url,
       comparativa_url,
-      latitud:                      data.latitud                   ?? null,
-      longitud:                     data.longitud                  ?? null,
+      latitud:                      item.data.latitud                   ?? null,
+      longitud:                     item.data.longitud                  ?? null,
     };
-    setVisitasPymes(prev => [newVisita, ...prev]);
     const { error } = await supabase.from('visitas_pymes').insert([newVisita]);
-    if (error) {
-      console.error('addVisitaPyme error:', error.message, error.details, error.hint);
-      setVisitasPymes(prev => prev.filter(v => v.id !== newVisita.id));
-      return { error };
-    }
+    if (error) { console.error('_flushPymeQueueItem error:', error.message, error.details, error.hint); return { error }; }
+
+    setVisitasPymes(prev => [newVisita, ...prev]);
     addActivity(
       'Visita PYME',
-      `${currentUser?.username || 'Sistema'} ha registrado una visita PYME a ${newVisita.persona_autorizada}`,
-      currentUser?.username
+      `${item.registrado_por} ha registrado una visita PYME a ${newVisita.persona_autorizada}`,
+      item.registrado_por
     );
     return { error: null };
   };
+
+  // Se encola SIEMPRE primero (persistencia local inmediata) y solo después
+  // se intenta subir en el acto: así, aunque el intento falle por falta de
+  // cobertura, los datos ya están a salvo en el dispositivo y el reintento en
+  // segundo plano (flushPymesQueue) se encarga de terminarlo sin que el
+  // comercial tenga que volver a rellenar nada ni acordarse de reintentar.
+  const addVisitaPyme = async (data, fotoFile, facturaFile, comparativaFile) => {
+    const item = await _buildPymeQueueItem(data, fotoFile, facturaFile, comparativaFile);
+    let queue = [...readQueue(), item];
+    writeQueue(queue);
+    setPymesQueuePending(queue);
+
+    const locked = _tryLockPymeQueueItem(item.localId) || item;
+    const result = await _flushPymeQueueItem(locked);
+    queue = readQueue();
+    if (!result.error) {
+      queue = queue.filter(i => i.localId !== item.localId);
+      writeQueue(queue);
+      setPymesQueuePending(queue);
+      return { error: null };
+    }
+    queue = queue.map(i => i.localId === item.localId
+      ? { ...i, attempts: 1, lastError: result.error.message || 'Error desconocido', lastAttemptAt: Date.now(), lockedUntil: null }
+      : i);
+    writeQueue(queue);
+    setPymesQueuePending(queue);
+    // No se devuelve `error` — la visita NO se ha perdido, está en la cola y
+    // se reintentará sola. `queued: true` le dice a la UI que muestre el
+    // mensaje de "sin cobertura, se subirá sola" en vez de un fallo duro.
+    return { error: null, queued: true };
+  };
+
+  // Reintenta subir todos los items pendientes de la cola, uno a uno (para no
+  // saturar una conexión ya débil). Se dispara al cargar, al recuperar
+  // conexión (evento 'online') y periódicamente mientras haya pendientes.
+  const flushingPymesQueueRef = useRef(false);
+  const flushPymesQueue = async () => {
+    if (flushingPymesQueueRef.current) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+    const ids = readQueue().map(i => i.localId);
+    if (ids.length === 0) return;
+    flushingPymesQueueRef.current = true;
+    for (const localId of ids) {
+      const locked = _tryLockPymeQueueItem(localId);
+      if (!locked) continue; // ya no existe o se está subiendo desde otro flujo/pestaña
+      const result = await _flushPymeQueueItem(locked);
+      let queue = readQueue();
+      if (!result.error) {
+        queue = queue.filter(i => i.localId !== localId);
+      } else {
+        queue = queue.map(i => i.localId === localId
+          ? { ...i, attempts: (i.attempts || 0) + 1, lastError: result.error.message || 'Error desconocido', lastAttemptAt: Date.now(), lockedUntil: null }
+          : i);
+      }
+      writeQueue(queue);
+      setPymesQueuePending(queue);
+    }
+    flushingPymesQueueRef.current = false;
+  };
+
+  // Descarte manual desde el banner (solo lo hace el usuario, nunca automático).
+  const discardQueuedVisitaPyme = (localId) => {
+    const queue = readQueue().filter(i => i.localId !== localId);
+    writeQueue(queue);
+    setPymesQueuePending(queue);
+  };
+
+  useEffect(() => {
+    if (!currentUser) return;
+    flushPymesQueue();
+    const onOnline = () => flushPymesQueue();
+    window.addEventListener('online', onOnline);
+    const interval = setInterval(flushPymesQueue, 25000);
+    return () => { window.removeEventListener('online', onOnline); clearInterval(interval); };
+  }, [currentUser?.username]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // El foto/factura/comparativa actuales ya no viajan en el estado local
   // (fetch-on-click), así que si no hay archivo nuevo ni se pide borrar, se
@@ -1263,6 +1390,9 @@ export function DataProvider({ children }) {
       docsFlags,
       visitasDocsFlags,
       visitasPymesDocsFlags,
+      pymesQueuePending,
+      flushPymesQueue,
+      discardQueuedVisitaPyme,
       rankingComerciales,
       rankingB2C,
       rankingB2B,
