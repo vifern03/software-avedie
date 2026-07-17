@@ -149,6 +149,35 @@ function ModalDocLink({ visitaId, campo, label }) {
   );
 }
 
+// ── GpsPermisoTip ─────────────────────────────────────────────────────────────
+// Aviso descartable (una vez por dispositivo/navegador) recordando elegir
+// "Permitir siempre" en el popup de ubicación del navegador — evita que se
+// vuelva a pedir permiso en cada visita. No podemos forzar ese permiso desde
+// el código (decisión exclusiva del navegador), así que solo lo recordamos.
+const GPS_TIP_DISMISSED_KEY = 'pymes_gps_tip_dismissed';
+
+function GpsPermisoTip() {
+  const [dismissed, setDismissed] = useState(() => {
+    try { return localStorage.getItem(GPS_TIP_DISMISSED_KEY) === '1'; } catch { return false; }
+  });
+  if (dismissed) return null;
+  const dismiss = () => {
+    setDismissed(true);
+    try { localStorage.setItem(GPS_TIP_DISMISSED_KEY, '1'); } catch { /* cuota agotada — ignorar */ }
+  };
+  return (
+    <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 flex items-start gap-2">
+      <MapPin size={14} className="text-blue-500 flex-shrink-0 mt-0.5" />
+      <p className="text-xs text-blue-700 leading-snug flex-1">
+        Si el navegador pide permiso de ubicación, elige <strong>&#34;Permitir siempre&#34;</strong> (o &#34;mientras se usa la app&#34;) en vez de &#34;Solo esta vez&#34;, así no lo volverá a preguntar en próximas visitas.
+      </p>
+      <button type="button" onClick={dismiss} title="No volver a mostrar" className="text-blue-400 hover:text-blue-700 flex-shrink-0">
+        <X size={13} />
+      </button>
+    </div>
+  );
+}
+
 // ── AvisoDocumentacion ───────────────────────────────────────────────────────
 
 function AvisoDocumentacion() {
@@ -840,6 +869,7 @@ function VisitaPymeModal({ onClose, onSave, initialData, currentUsername, isPriv
           </div>
           <div>
             <label className="block text-xs font-medium text-google-gray mb-1.5">Foto del Negocio *</label>
+            {canSubmit && <div className="mb-2"><GpsPermisoTip /></div>}
             <input ref={fileInputRef} type="file" accept="image/*" capture="environment"
               onChange={handleFotoChange} className="hidden" disabled={!canSubmit} />
             <div className="flex items-center gap-2">
