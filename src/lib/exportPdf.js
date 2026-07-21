@@ -1,6 +1,8 @@
 /* Exporta el nodo del informe (el "ticket") a un PDF de alta calidad, manteniendo
-   colores de fondo y estructura. Escala el render para que quepa siempre en una
-   única página A4 — así se evita que el corte de página parta texto por la mitad. */
+   colores de fondo y estructura. Aplica un margen fijo y profesional en los 4 lados
+   (en vez de centrar la imagen sin margen real) y escala el render para que quepa
+   siempre en una única página A4 — así se evita que el corte de página parta texto
+   por la mitad. */
 export async function exportElementToPdf(elementId, filename) {
   const element = document.getElementById(elementId);
   if (!element) return;
@@ -17,24 +19,29 @@ export async function exportElementToPdf(elementId, filename) {
   });
 
   const imgData = canvas.toDataURL('image/jpeg', 0.95);
-  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+  const pdf = new jsPDF('p', 'mm', 'a4');
 
-  const pageWidth  = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const canvasRatio = canvas.height / canvas.width;
+  const pageWidth  = pdf.internal.pageSize.getWidth();  // 210mm
+  const pageHeight = pdf.internal.pageSize.getHeight(); // 297mm
+  const margin = 15;
 
-  let renderWidth  = pageWidth;
-  let renderHeight = pageWidth * canvasRatio;
+  const usableWidth  = pageWidth  - margin * 2;
+  const usableHeight = pageHeight - margin * 2;
 
-  if (renderHeight > pageHeight) {
-    renderHeight = pageHeight;
-    renderWidth  = pageHeight / canvasRatio;
+  let imgWidth  = usableWidth;
+  let imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+  // Si el ticket es más alto de lo que cabe en una página, se escala para que quepa
+  // entero (evita cortar texto a la mitad); lo habitual es que quepa de sobra.
+  if (imgHeight > usableHeight) {
+    imgHeight = usableHeight;
+    imgWidth  = (canvas.width * imgHeight) / canvas.height;
   }
 
-  const x = (pageWidth  - renderWidth)  / 2;
-  const y = (pageHeight - renderHeight) / 2;
+  const x = margin + (usableWidth - imgWidth) / 2;
+  const y = margin;
 
-  pdf.addImage(imgData, 'JPEG', x, y, renderWidth, renderHeight);
+  pdf.addImage(imgData, 'JPEG', x, y, imgWidth, imgHeight);
   pdf.save(filename);
 }
 

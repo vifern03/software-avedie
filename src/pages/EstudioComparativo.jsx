@@ -877,12 +877,12 @@ export default function EstudioComparativo() {
             <div id="ec-informe" className="bg-white border border-google-border rounded-xl shadow-sm overflow-hidden">
 
               {/* Cabecera azul */}
-              <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 pt-6 pb-5 text-white relative">
-                <div className="flex items-start justify-between gap-4 mb-3">
+              <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-8 pt-8 pb-7 text-white relative">
+                <div className="flex items-start justify-between gap-4 mb-4">
                   <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-blue-200 mb-1">GRUPO AVEDIE · COMPARATIVA ENERGÉTICA</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-blue-200 mb-1.5">GRUPO AVEDIE · COMPARATIVA ENERGÉTICA</p>
                     <h3 className="text-xl font-bold leading-tight">{form.cliente || 'Sin nombre'}</h3>
-                    {form.cups && <p className="text-xs text-blue-200 font-mono mt-0.5">{form.cups}</p>}
+                    {form.cups && <p className="text-xs text-blue-200 font-mono mt-1">{form.cups}</p>}
                   </div>
                   <div className="flex-shrink-0">
                     <div className="bg-white rounded-xl px-4 py-3">
@@ -890,14 +890,14 @@ export default function EstudioComparativo() {
                     </div>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2 pr-40">
-                  <span className="bg-white/20 text-white text-[11px] font-semibold px-2.5 py-1 rounded-full">{tarifa.shortLabel}</span>
-                  {isIndexada && <span className="bg-white/20 text-white text-[11px] px-2.5 py-1 rounded-full">OMIE {omie.toFixed(4)} €/kWh</span>}
-                  {mant && <span className="bg-white/20 text-white text-[11px] px-2.5 py-1 rounded-full">Con Mantenimiento −3%</span>}
-                  <span className="bg-white/20 text-white text-[11px] px-2.5 py-1 rounded-full">{dias} días</span>
-                  {n(form.descuento) > 0 && <span className="bg-white/20 text-white text-[11px] px-2.5 py-1 rounded-full">Dto. adicional {form.descuento}%</span>}
+                <div className="flex flex-wrap gap-2.5 pr-40">
+                  <span className="bg-white/20 text-white text-[11px] font-semibold px-3 py-1.5 rounded-full">{tarifa.shortLabel}</span>
+                  {isIndexada && <span className="bg-white/20 text-white text-[11px] px-3 py-1.5 rounded-full">OMIE {omie.toFixed(4)} €/kWh</span>}
+                  {mant && <span className="bg-white/20 text-white text-[11px] px-3 py-1.5 rounded-full">Con Mantenimiento −3%</span>}
+                  <span className="bg-white/20 text-white text-[11px] px-3 py-1.5 rounded-full">{dias} días</span>
+                  {n(form.descuento) > 0 && <span className="bg-white/20 text-white text-[11px] px-3 py-1.5 rounded-full">Dto. adicional {form.descuento}%</span>}
                 </div>
-                <div className="absolute bottom-4 right-6 text-right text-xs">
+                <div className="absolute bottom-6 right-8 text-right text-xs">
                   <p className="font-semibold text-white">{today}</p>
                   {asesorDisplay && <p className="text-blue-200 mt-0.5">{asesorDisplay}</p>}
                 </div>
