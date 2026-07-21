@@ -1,6 +1,17 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Calculator, Upload, FileText, Printer, X, AlertTriangle, Loader2 } from 'lucide-react';
+import { Calculator, Upload, FileText, Printer, Download, X, AlertTriangle, Loader2 } from 'lucide-react';
+import { exportElementToPdf, slugifyFilename } from '../lib/exportPdf';
+
+/* Estimación de tiempo de extracción proporcional al peso del archivo (no inventada):
+   tiempo base de 4s (latencia fija de red + arranque del modelo) + 1.5s por cada
+   500KB de archivo (el tiempo que tarda Gemini en "leer" más páginas/resolución). */
+function estimateExtractionSeconds(fileSizeBytes) {
+  const BASE_SECONDS = 4;
+  const SECONDS_PER_500KB = 1.5;
+  const chunks = fileSizeBytes / (500 * 1024);
+  return Math.round(BASE_SECONDS + chunks * SECONDS_PER_500KB);
+}
 
 /* ── Tarifas Endesa LUZ ──────────────────────────────────────────────────────── */
 
@@ -277,8 +288,12 @@ export default function EstudioComparativo() {
   const [isExtracting, setIsExtracting]     = useState(false);
   const [extractionDone, setExtractionDone] = useState(false);
   const [extractionError, setExtractionError] = useState('');
+  const [estimatedSeconds, setEstimatedSeconds] = useState(0);
+  const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const fileRef       = useRef(null);
   const originalTitle = useRef(document.title);
+  const countdownRef  = useRef(null);
 
   /* ════════════ CÁLCULOS ════════════ */
 
@@ -366,9 +381,18 @@ export default function EstudioComparativo() {
   /* ════════════ EXTRACCIÓN IA ════════════ */
 
   async function extractFromInvoice(file) {
+    const estimated = estimateExtractionSeconds(file.size);
+    setEstimatedSeconds(estimated);
+    setRemainingSeconds(estimated);
     setIsExtracting(true);
     setExtractionDone(false);
     setExtractionError('');
+
+    clearInterval(countdownRef.current);
+    countdownRef.current = setInterval(() => {
+      setRemainingSeconds(s => Math.max(0, s - 1));
+    }, 1000);
+
     try {
       const base64 = await fileToBase64(file);
       const res = await fetch(PROXY_URL, {
@@ -426,7 +450,18 @@ export default function EstudioComparativo() {
       console.error('[EC-LUZ] Extracción IA:', err);
       setExtractionError(err.message || 'No se pudo extraer la información automáticamente. Introduce los datos manualmente o inténtalo de nuevo.');
     } finally {
+      clearInterval(countdownRef.current);
       setIsExtracting(false);
+    }
+  }
+
+  async function handleDownloadPdf() {
+    setIsExportingPdf(true);
+    try {
+      const cliente = form.cliente.trim() || 'informe';
+      await exportElementToPdf('ec-informe', `Comparativa_${slugifyFilename(cliente)}_${todayShort.replace(/\//g, '-')}.pdf`);
+    } finally {
+      setIsExportingPdf(false);
     }
   }
 
@@ -486,7 +521,15 @@ export default function EstudioComparativo() {
           </p>
 
           {isReady && (
-            <div className="flex justify-end">
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={handleDownloadPdf}
+                disabled={isExportingPdf}
+                className="flex items-center gap-2 bg-white border border-google-border text-google-dark text-sm font-medium px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-60 disabled:cursor-wait"
+              >
+                {isExportingPdf ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                {isExportingPdf ? 'Generando PDF…' : 'Descargar'}
+              </button>
               <button
                 onClick={() => window.print()}
                 className="flex items-center gap-2 bg-google-dark text-white text-sm font-medium px-4 py-2 rounded-xl hover:bg-gray-800 transition-colors"
@@ -590,9 +633,20 @@ export default function EstudioComparativo() {
             >
               <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={e => { if (e.target.files[0]) handleFileUpload(e.target.files[0]); e.target.value = ''; }} />
               {isExtracting ? (
-                <div className="flex flex-col items-center gap-2.5 py-1">
+                <div className="flex flex-col items-center gap-2.5 py-1 w-full">
                   <Loader2 size={28} className="text-google-blue animate-spin" />
-                  <div><p className="text-xs font-semibold text-google-blue">Analizando factura con IA...</p><p className="text-[11px] text-blue-400 mt-0.5">Por favor, espere.</p></div>
+                  <div className="w-full max-w-[240px]">
+                    <p className="text-xs font-semibold text-google-blue text-center">Analizando factura con IA...</p>
+                    <p className="text-[11px] text-blue-400 mt-0.5 text-center">
+                      {remainingSeconds > 0 ? `Tiempo estimado: ${remainingSeconds}s` : 'Casi listo…'}
+                    </p>
+                    <div className="mt-2.5 h-1.5 w-full bg-blue-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-google-blue rounded-full transition-all duration-500 ease-linear"
+                        style={{ width: `${estimatedSeconds > 0 ? Math.min(96, ((estimatedSeconds - remainingSeconds) / estimatedSeconds) * 100) : 0}%` }}
+                      />
+                    </div>
+                  </div>
                 </div>
               ) : dropped ? (
                 <div className="flex items-center justify-center gap-2">

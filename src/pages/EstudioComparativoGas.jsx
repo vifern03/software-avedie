@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { GAS, GAS_EMPRESA } from '../data/tarifasGas';
-import { Calculator, Upload, FileText, Printer, X, AlertTriangle, Loader2 } from 'lucide-react';
+import { Calculator, Upload, FileText, Printer, Download, X, AlertTriangle, Loader2 } from 'lucide-react';
+import { exportElementToPdf, slugifyFilename } from '../lib/exportPdf';
 
 /* ── Constantes ──────────────────────────────────────────────────────────────── */
 
@@ -142,6 +143,7 @@ export default function EstudioComparativoGas() {
   const [extractionError, setExtractionError]   = useState('');
   const [estimatedSeconds, setEstimatedSeconds] = useState(0);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [isExportingPdf, setIsExportingPdf]     = useState(false);
   const fileRef         = useRef(null);
   const originalTitle   = useRef(document.title);
   const countdownRef    = useRef(null);
@@ -287,6 +289,16 @@ export default function EstudioComparativoGas() {
     }
   }
 
+  async function handleDownloadPdf() {
+    setIsExportingPdf(true);
+    try {
+      const cliente = form.cliente.trim() || 'informe';
+      await exportElementToPdf('ec-informe-gas', `Comparativa_GAS_${slugifyFilename(cliente)}_${todayShort.replace(/\//g, '-')}.pdf`);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  }
+
   /* ════════════ FILE HANDLERS ════════════ */
 
   function handleFileUpload(file) {
@@ -343,7 +355,15 @@ export default function EstudioComparativoGas() {
           </p>
 
           {isReady && (
-            <div className="flex justify-end">
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={handleDownloadPdf}
+                disabled={isExportingPdf}
+                className="flex items-center gap-2 bg-white border border-google-border text-google-dark text-sm font-medium px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-60 disabled:cursor-wait"
+              >
+                {isExportingPdf ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                {isExportingPdf ? 'Generando PDF…' : 'Descargar'}
+              </button>
               <button
                 onClick={() => window.print()}
                 className="flex items-center gap-2 bg-google-dark text-white text-sm font-medium px-4 py-2 rounded-xl hover:bg-gray-800 transition-colors"

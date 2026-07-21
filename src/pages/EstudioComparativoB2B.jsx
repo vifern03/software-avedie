@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Printer, Factory, Upload, FileText, X, AlertTriangle, Loader2 } from 'lucide-react';
+import { Printer, Download, Factory, Upload, FileText, X, AlertTriangle, Loader2 } from 'lucide-react';
 import { OPEN_30TD, OPEN_61TD, INDEXADA_30TD, INDEXADA_61TD } from '../data/tarifasB2B';
+import { exportElementToPdf, slugifyFilename } from '../lib/exportPdf';
 
 /* ── Constantes ──────────────────────────────────────────────────────────────── */
 
@@ -180,6 +181,7 @@ export default function EstudioComparativoB2B() {
   const [extractionError, setExtractionError] = useState('');
   const [estimatedSeconds, setEstimatedSeconds] = useState(0);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const fileRef = useRef(null);
   const countdownRef = useRef(null);
 
@@ -269,6 +271,17 @@ export default function EstudioComparativoB2B() {
       clearTimeout(timeoutId);
       clearInterval(countdownRef.current);
       setIsExtracting(false);
+    }
+  }
+
+  async function handleDownloadPdf() {
+    setIsExportingPdf(true);
+    try {
+      const cliente = form.cliente.trim() || 'informe';
+      const fechaCorta = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }).replace(/\//g, '-');
+      await exportElementToPdf('ecb2b-informe', `Comparativa_${slugifyFilename(cliente)}_${fechaCorta}.pdf`);
+    } finally {
+      setIsExportingPdf(false);
     }
   }
 
@@ -394,7 +407,15 @@ export default function EstudioComparativoB2B() {
           </p>
 
           {isReady && (
-            <div className="flex justify-end">
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={handleDownloadPdf}
+                disabled={isExportingPdf}
+                className="flex items-center gap-2 bg-white border border-google-border text-google-dark text-sm font-medium px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-60 disabled:cursor-wait"
+              >
+                {isExportingPdf ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                {isExportingPdf ? 'Generando PDF…' : 'Descargar'}
+              </button>
               <button
                 onClick={() => window.print()}
                 className="flex items-center gap-2 bg-google-dark text-white text-sm font-medium px-4 py-2 rounded-xl hover:bg-gray-800 transition-colors"
