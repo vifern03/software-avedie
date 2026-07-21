@@ -13,13 +13,14 @@ export async function exportElementToPdf(elementId, filename) {
   ]);
 
   const canvas = await html2canvas(element, {
-    scale: 2,
+    scale: 3,
     useCORS: true,
+    logging: false,
     backgroundColor: '#ffffff',
   });
 
-  const imgData = canvas.toDataURL('image/jpeg', 0.95);
-  const pdf = new jsPDF('p', 'mm', 'a4');
+  const imgData = canvas.toDataURL('image/jpeg', 1.0);
+  const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
 
   const pageWidth  = pdf.internal.pageSize.getWidth();  // 210mm
   const pageHeight = pdf.internal.pageSize.getHeight(); // 297mm
@@ -41,7 +42,7 @@ export async function exportElementToPdf(elementId, filename) {
   const x = margin + (usableWidth - imgWidth) / 2;
   const y = margin;
 
-  pdf.addImage(imgData, 'JPEG', x, y, imgWidth, imgHeight);
+  pdf.addImage(imgData, 'JPEG', x, y, imgWidth, imgHeight, undefined, 'FAST');
   pdf.save(filename);
 }
 

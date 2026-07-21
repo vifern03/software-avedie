@@ -750,10 +750,10 @@ export default function EstudioComparativoB2B() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2.5 pr-40">
-                  <span className="bg-white/20 text-white text-[11px] font-semibold px-3 py-1.5 rounded-full">{tarifaLabel}</span>
-                  {isIndexada && <span className="bg-white/20 text-white text-[11px] px-3 py-1.5 rounded-full">OMIE {omie.toFixed(4)} €/kWh</span>}
-                  <span className="bg-white/20 text-white text-[11px] px-3 py-1.5 rounded-full">{dias} días</span>
-                  {n(form.descuento) > 0 && <span className="bg-white/20 text-white text-[11px] px-3 py-1.5 rounded-full">Dto. adicional {form.descuento}%</span>}
+                  <span className="inline-flex items-center bg-white/20 text-white text-[11px] font-semibold leading-none px-3 py-1.5 rounded-full">{tarifaLabel}</span>
+                  {isIndexada && <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">OMIE {omie.toFixed(4)} €/kWh</span>}
+                  <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">{dias} días</span>
+                  {n(form.descuento) > 0 && <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">Dto. adicional {form.descuento}%</span>}
                 </div>
                 <div className="absolute bottom-6 right-8 text-right text-xs">
                   <p className="font-semibold text-white">{today}</p>
