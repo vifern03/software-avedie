@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { AlertTriangle, Upload, FileSpreadsheet, X, CheckCircle, FileCheck, Wrench, Pencil } from 'lucide-react';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
+import { AlertTriangle, Upload, FileSpreadsheet, X, CheckCircle, FileCheck, Wrench, Pencil, Search } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
@@ -133,6 +135,10 @@ export default function Pendientes() {
   const [currentPage, setCurrentPage] = useState(1);
   const [editingRegistro, setEditingRegistro] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null); // { tipo: 'tramitar'|'formalizar', registro }
+  const [searchCups, setSearchCups] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const fileRef = useRef(null);
   const countdownRef = useRef(null);
 
@@ -156,6 +162,100 @@ export default function Pendientes() {
     [registroPendientes]
   );
 
+  // Estados originales del Excel, tal y como se muestran en la badge de la tabla.
+  const estadosUnicos = useMemo(() => {
+    const set = new Set();
+    pendientes.forEach(r => {
+      const estado = r.raw_data?.['Estado'];
+      if (estado) set.add(estado);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [pendientes]);
+
+  const filteredPendientes = useMemo(() => {
+    const cupsQuery = searchCups.trim().toUpperCase();
+    const fromTs = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
+    const toTs   = dateTo   ? new Date(`${dateTo}T23:59:59`).getTime()   : null;
+
+    return pendientes.filter(r => {
+      if (cupsQuery && !(r.cups || '').toUpperCase().includes(cupsQuery)) return false;
+      if (statusFilter && (r.raw_data?.['Estado'] || '') !== statusFilter) return false;
+      if (fromTs != null || toTs != null) {
+        const ts = sortTimestamp(r);
+        if (fromTs != null && ts < fromTs) return false;
+        if (toTs != null && ts > toTs) return false;
+      }
+      return true;
+    });
+  }, [pendientes, searchCups, dateFrom, dateTo, statusFilter]);
+
+  // Si cambian los filtros, la página actual puede quedar fuera de rango.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchCups, dateFrom, dateTo, statusFilter]);
+
+  const exportToXLSX = async () => {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'CRM Grupo Avedie';
+    workbook.created = new Date();
+
+    const sheet = workbook.addWorksheet('Pendientes');
+
+    sheet.columns = [
+      { header: 'Número OI',        key: 'numero_oi',   width: 20 },
+      { header: 'CUPS',             key: 'cups',        width: 26, style: { numFmt: '@' } },
+      { header: 'Nº Caso',          key: 'numero_caso', width: 16 },
+      { header: 'Fecha (Excel)',    key: 'fecha',       width: 16 },
+      { header: 'Estado Original',  key: 'estado_orig', width: 20 },
+      { header: 'Estado Incidencia', key: 'estado_inc', width: 20 },
+      { header: 'En CRM',           key: 'en_crm',      width: 12 },
+    ];
+
+    const hBorder = { style: 'thin', color: { argb: 'FFBDBDBD' } };
+    sheet.getRow(1).eachCell((cell) => {
+      cell.font      = { bold: true, color: { argb: 'FF1A237E' }, size: 11 };
+      cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8EAF6' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border    = { top: hBorder, left: hBorder, bottom: hBorder, right: hBorder };
+    });
+    sheet.getRow(1).height = 22;
+
+    const dBorder = { style: 'thin', color: { argb: 'FFE0E0E0' } };
+    const textCols = new Set([2]); // CUPS (1-indexed)
+
+    filteredPendientes.forEach(r => {
+      const existeEnCrm = clientesCupsTodos.has((r.cups || '').toUpperCase().trim());
+      const row = sheet.addRow({
+        numero_oi:   r.raw_data?.['Nombre'] || r.nombre || '',
+        cups:        String(r.cups || ''),
+        numero_caso: r.raw_data?.['Número del caso'] || r.numero_caso || '',
+        fecha:       r.fecha_creacion_excel || '',
+        estado_orig: r.raw_data?.['Estado'] || '',
+        estado_inc:  r.estado_incidencia || '',
+        en_crm:      existeEnCrm ? 'Sí' : 'No',
+      });
+      row.eachCell({ includeEmpty: true }, (cell, colNum) => {
+        cell.border    = { top: dBorder, left: dBorder, bottom: dBorder, right: dBorder };
+        cell.alignment = { vertical: 'middle' };
+        if (textCols.has(colNum)) {
+          cell.numFmt = '@';
+          if (typeof cell.value !== 'string') cell.value = String(cell.value ?? '');
+        }
+      });
+    });
+
+    const d   = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const datePart = `${d.getFullYear()}_${pad(d.getMonth() + 1)}_${pad(d.getDate())}`;
+    const filename = `Pendientes_Grupo_Avedie_${datePart}.xlsx`;
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    saveAs(
+      new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+      filename
+    );
+  };
+
   const handleGuardarEstado = async (nuevoEstado) => {
     if (editingRegistro) await actualizarEstadoPendiente(editingRegistro.id, nuevoEstado);
     setEditingRegistro(null);
@@ -171,11 +271,11 @@ export default function Pendientes() {
     setConfirmAction(null);
   };
 
-  const totalPages = Math.max(1, Math.ceil(pendientes.length / ITEMS_PER_PAGE));
-  const paginated = pendientes.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const totalPages = Math.max(1, Math.ceil(filteredPendientes.length / ITEMS_PER_PAGE));
+  const paginated = filteredPendientes.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  // Si sube un Excel nuevo o se tramita/formaliza algo, la página actual puede
-  // quedar fuera de rango — recolocar en la última página válida.
+  // Si sube un Excel nuevo, se tramita/formaliza algo o cambian los filtros,
+  // la página actual puede quedar fuera de rango — recolocar en la última válida.
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [totalPages, currentPage]);
@@ -318,6 +418,77 @@ export default function Pendientes() {
         </div>
       )}
 
+      {/* Barra de filtros avanzados */}
+      <div className="bg-white border border-google-border rounded-xl shadow-sm p-4 mb-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-google-gray" />
+            <input
+              type="text"
+              placeholder="Buscar por CUPS..."
+              value={searchCups}
+              onChange={e => setSearchCups(e.target.value)}
+              className="input-field pl-9 h-9"
+            />
+            {searchCups && (
+              <button onClick={() => setSearchCups('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-google-gray hover:text-google-dark">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-google-gray">Desde</label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={e => setDateFrom(e.target.value)}
+              className="input-field h-9 w-auto text-xs"
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-google-gray">Hasta</label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={e => setDateTo(e.target.value)}
+              className="input-field h-9 w-auto text-xs"
+            />
+          </div>
+
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            className="input-field h-9 w-auto text-xs min-w-[160px]"
+          >
+            <option value="">Todos los estados</option>
+            {estadosUnicos.map(estado => (
+              <option key={estado} value={estado}>{estado}</option>
+            ))}
+          </select>
+
+          {(searchCups || dateFrom || dateTo || statusFilter) && (
+            <button
+              onClick={() => { setSearchCups(''); setDateFrom(''); setDateTo(''); setStatusFilter(''); }}
+              className="text-xs text-google-blue hover:underline"
+            >
+              Limpiar filtros
+            </button>
+          )}
+
+          {isAdmin && (
+            <button
+              onClick={exportToXLSX}
+              className="btn-primary flex items-center gap-2 ml-auto"
+              title="Exportar filas filtradas a Excel"
+            >
+              <FileSpreadsheet size={15} />
+              <span>Exportar Excel</span>
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Tabla de pendientes */}
       <div className="bg-white border border-google-border rounded-xl shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
@@ -329,7 +500,9 @@ export default function Pendientes() {
             <span className="flex items-center gap-1.5 text-[11px] text-google-gray">
               <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" /> Sin alta todavía
             </span>
-            <span className="text-[11px] font-semibold text-google-gray bg-gray-100 px-2 py-0.5 rounded-full">{pendientes.length}</span>
+            <span className="text-[11px] font-semibold text-google-gray bg-gray-100 px-2 py-0.5 rounded-full">
+              {filteredPendientes.length}{filteredPendientes.length !== pendientes.length ? ` / ${pendientes.length}` : ''}
+            </span>
           </div>
         </div>
         <div className="overflow-x-auto">
