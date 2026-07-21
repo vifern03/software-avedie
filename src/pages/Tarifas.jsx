@@ -994,17 +994,17 @@ export default function Tarifas() {
   const [b2bSub, setB2bSub] = useState('tempo');
 
   return (
-    <div className="p-4 sm:p-6 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto print:p-0 print:max-w-none">
 
       {/* Cabecera */}
-      <div className="mb-6">
+      <div className="mb-6 print:hidden">
         <h1 className="text-xl font-semibold text-google-dark">Consulta de Tarifas</h1>
         <p className="text-sm text-google-gray mt-1">Precios vigentes Endesa · Sin impuestos</p>
         <p className="text-sm text-gray-400 mt-0.5">Documento editado el 03/07/2026</p>
       </div>
 
       {/* Tabs principales */}
-      <div className="flex border-b border-google-border mb-6 overflow-x-auto">
+      <div className="flex border-b border-google-border mb-6 overflow-x-auto print:hidden">
         {TABS.map(t => {
           const Icon = t.icon;
           const isActive = tab === t.id;

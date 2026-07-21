@@ -121,13 +121,13 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-google-bg">
+    <div className="flex h-screen overflow-hidden bg-google-bg print:block print:h-auto print:overflow-visible">
       <Sidebar
         activeSection={activeSection}
         onNavigate={handleNavigate}
         onOpenAI={() => setIsAIOpen(true)}
       />
-      <main className="flex-1 overflow-y-auto bg-white pt-14 md:pt-0">
+      <main className="flex-1 overflow-y-auto bg-white pt-14 md:pt-0 print:overflow-visible print:pt-0 print:block">
         {renderPage()}
       </main>
       <AIAssistant isOpen={isAIOpen} onOpenChange={setIsAIOpen} />

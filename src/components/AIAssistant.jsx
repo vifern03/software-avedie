@@ -164,7 +164,7 @@ export default function AIAssistant({ isOpen, onOpenChange }) {
     <>
       {/* Botón flotante + tooltip — ocultos cuando el panel está abierto */}
       {!isOpen && (
-        <div className="fixed bottom-6 right-6 z-50 hidden md:flex flex-col items-center gap-2 pointer-events-none">
+        <div className="fixed bottom-6 right-6 z-50 hidden md:flex flex-col items-center gap-2 pointer-events-none print:hidden">
           <div className="ai-float bg-slate-900/90 text-white text-xs font-medium rounded-lg py-1.5 px-3 shadow-lg whitespace-nowrap select-none">
             ✨ ¿Te ayudo con una gestión?
           </div>
@@ -180,12 +180,12 @@ export default function AIAssistant({ isOpen, onOpenChange }) {
 
       {/* Backdrop */}
       {isOpen && (
-        <div className="fixed inset-0 z-40 bg-black/10" onClick={() => onOpenChange(false)} />
+        <div className="fixed inset-0 z-40 bg-black/10 print:hidden" onClick={() => onOpenChange(false)} />
       )}
 
       {/* Panel lateral deslizante */}
       <div
-        className={`fixed top-0 right-0 h-full w-[400px] z-50 bg-white shadow-google flex flex-col transition-transform duration-300 ease-in-out ${
+        className={`fixed top-0 right-0 h-full w-[400px] z-50 bg-white shadow-google flex flex-col transition-transform duration-300 ease-in-out print:hidden ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
       >

@@ -291,6 +291,7 @@ export default function EstudioComparativo() {
   const [estimatedSeconds, setEstimatedSeconds] = useState(0);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [pdfError, setPdfError]             = useState('');
   const fileRef       = useRef(null);
   const originalTitle = useRef(document.title);
   const countdownRef  = useRef(null);
@@ -457,9 +458,13 @@ export default function EstudioComparativo() {
 
   async function handleDownloadPdf() {
     setIsExportingPdf(true);
+    setPdfError('');
     try {
       const cliente = form.cliente.trim() || 'informe';
       await exportElementToPdf('ec-informe', `Comparativa_${slugifyFilename(cliente)}_${todayShort.replace(/\//g, '-')}.pdf`);
+    } catch (err) {
+      console.error('[EC-LUZ] Descarga PDF:', err);
+      setPdfError('No se pudo generar el PDF. Prueba de nuevo o usa "Imprimir informe" como alternativa.');
     } finally {
       setIsExportingPdf(false);
     }
@@ -491,30 +496,21 @@ export default function EstudioComparativo() {
 
   return (
     <>
-      {/* CSS impresión */}
+      {/* CSS impresión — se oculta todo el CRM (sidebar, IA, tabs, formulario) por
+          print:hidden en cada componente; aquí solo forzamos el tamaño de página y
+          que los fondos de color se impriman tal cual (Chrome/Safari los omiten
+          por defecto en impresión para ahorrar tinta). */}
       <style>{`
         @media print {
-          @page { margin: 0; size: A4 portrait; }
-          body * { visibility: hidden !important; }
-          #ec-informe, #ec-informe * {
-            visibility: visible !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          #ec-informe {
-            position: fixed !important;
-            inset: 0 !important;
-            padding: 14mm 18mm !important;
-            background: white !important;
-            overflow: visible !important;
-          }
+          @page { margin: 12mm; size: A4 portrait; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
       `}</style>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[460px_1fr] gap-6 items-start">
+      <div className="grid grid-cols-1 xl:grid-cols-[460px_1fr] gap-6 items-start print:block">
 
         {/* ── COLUMNA IZQUIERDA ── */}
-        <div className="space-y-4">
+        <div className="space-y-4 print:hidden">
 
           <p className="text-xs text-gray-400 leading-relaxed">
             * Puede introducir los valores numéricos usando comas (,) para los decimales.
@@ -537,6 +533,13 @@ export default function EstudioComparativo() {
                 <Printer size={15} />
                 Imprimir informe
               </button>
+            </div>
+          )}
+
+          {pdfError && (
+            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
+              <AlertTriangle size={13} className="text-red-500 flex-shrink-0 mt-0.5" />
+              <p className="text-[11px] text-red-700 leading-relaxed">{pdfError}</p>
             </div>
           )}
 
@@ -864,7 +867,7 @@ export default function EstudioComparativo() {
         </div>
 
         {/* ── COLUMNA DERECHA — Informe ── */}
-        <div>
+        <div className="print:w-full">
           {!isReady ? (
             <div className="bg-white border border-google-border rounded-xl shadow-sm p-12 text-center flex flex-col items-center gap-3 min-h-[300px] justify-center">
               <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center">
@@ -874,7 +877,7 @@ export default function EstudioComparativo() {
               <p className="text-xs text-google-gray max-w-xs text-center">Rellena al menos: consumo P1, kW Punta, días de facturación y factura actual.</p>
             </div>
           ) : (
-            <div id="ec-informe" className="bg-white border border-google-border rounded-xl shadow-sm overflow-hidden">
+            <div id="ec-informe" className="bg-white border border-google-border rounded-xl shadow-sm overflow-hidden print:border-0 print:shadow-none print:rounded-none print:w-full">
 
               {/* Cabecera azul */}
               <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-8 pt-8 pb-7 text-white relative">

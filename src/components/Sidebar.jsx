@@ -41,7 +41,7 @@ export default function Sidebar({ activeSection, onNavigate, onOpenAI }) {
   return (
     <>
       {/* Cabecera móvil: hamburguesa + logo — solo visible en móvil */}
-      <div className="fixed top-0 left-0 z-40 md:hidden flex items-center gap-3 px-4 pt-4">
+      <div className="fixed top-0 left-0 z-40 md:hidden flex items-center gap-3 px-4 pt-4 print:hidden">
         <button
           onClick={() => setIsMobileMenuOpen(true)}
           className="bg-white p-2 rounded-md shadow-md"
@@ -59,7 +59,7 @@ export default function Sidebar({ activeSection, onNavigate, onOpenAI }) {
       {/* Fondo oscuro semitransparente — móvil, cierra el menú al pulsarlo */}
       {isMobileMenuOpen && (
         <div
-          className="fixed inset-0 bg-black/40 z-40 md:hidden"
+          className="fixed inset-0 bg-black/40 z-40 md:hidden print:hidden"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
@@ -70,6 +70,7 @@ export default function Sidebar({ activeSection, onNavigate, onOpenAI }) {
         'md:relative md:top-auto md:left-auto md:h-auto md:z-auto',
         'w-64 bg-white border-r border-google-border flex flex-col',
         'transition-transform duration-300 ease-in-out',
+        'print:hidden',
         isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
       ].join(' ')}>
 

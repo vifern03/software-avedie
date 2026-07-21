@@ -22,7 +22,7 @@ export default function PymesQueueBanner() {
   };
 
   return (
-    <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-[70] w-[min(92vw,420px)]">
+    <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-[70] w-[min(92vw,420px)] print:hidden">
       <div className="bg-white rounded-2xl shadow-google border border-amber-200 overflow-hidden">
         <button
           type="button"
