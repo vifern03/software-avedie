@@ -155,8 +155,8 @@ const INIT = Object.assign(
     iva: '0.21',
     descuento: '0',
     notas: '',
-    // Precio medio de OMIE en junio de 2026: 69,59 €/MWh = 0,06959 €/kWh. Editable por el asesor.
-    omie: '0.06959',
+    // Precio medio de OMIE de referencia: 0,014915 €/kWh. Editable por el asesor.
+    omie: '0.014915',
   },
   ...PERIODS.map(i => ({ [`kwhP${i}`]: '0', [`kwPotP${i}`]: '', [`kwMaxP${i}`]: '0' })),
 );
@@ -477,7 +477,7 @@ export default function EstudioComparativoB2B() {
                   Precio final de energía por periodo = A + (B × OMIE). Se recalcula automáticamente en todo el informe al modificar este valor.
                 </p>
                 <p className="text-[10px] text-cyan-600 mt-1">
-                  Precargado con el precio medio de OMIE de junio de 2026 (69,59 €/MWh). Puedes modificarlo con el valor del mes que corresponda.
+                  Precargado con el valor actual de referencia. Puedes modificarlo con el valor del mes que corresponda.
                 </p>
               </div>
             ) : (

@@ -871,9 +871,9 @@ function OpenSection({ datos, titulo, subtitulo }) {
 /* ── Sección B2B: Indexada a OMIE (3.0TD / 6.1TD) ───────────────────────────── */
 
 function IndexadaSection({ datos, titulo, subtitulo }) {
-  // Precio medio de OMIE en junio de 2026: 69,59 €/MWh = 0,06959 €/kWh. Valor orientativo
+  // Precio medio de OMIE de referencia: 0,014915 €/kWh. Valor orientativo
   // y editable: el comercial debe actualizarlo con el precio medio del mes que corresponda.
-  const [omie, setOmie] = useState('0.06959');
+  const [omie, setOmie] = useState('0.014915');
   const omieNum = parseFloat(String(omie).replace(',', '.')) || 0;
   // Nº de periodos de energía variable según la tarifa: P1-P3 en 2.0TD, P1-P6 en 3.0TD/6.1TD.
   const periodos = Object.keys(datos.energiaA);
@@ -919,7 +919,7 @@ function IndexadaSection({ datos, titulo, subtitulo }) {
                 Fórmula: Precio = A + (B × OMIE). La tabla se recalcula automáticamente al modificar este valor.
               </p>
               <p className="text-[10px] text-cyan-600 mt-1">
-                Precargado con el precio medio de OMIE de junio de 2026 (69,59 €/MWh). Puedes modificarlo con el valor del mes que corresponda.
+                Precargado con el valor actual de referencia. Puedes modificarlo con el valor del mes que corresponda.
               </p>
             </div>
 
