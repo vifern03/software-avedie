@@ -34,11 +34,11 @@ export default function LoginPage() {
       >
         {/* Header */}
         <div className="bg-gradient-to-br from-google-blue to-blue-700 px-8 pt-10 pb-8 text-center">
-          <div className="w-20 h-20 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg overflow-hidden">
+          <div className="w-24 h-24 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg overflow-hidden">
             <img
-              src="https://multimedia-logos.infojobs.net/image/upload/w_155,h_155/9b/9b38ef65-853a-4c46-a58e-5e56bbceb467"
+              src="/logo-avedie-main.png"
               alt="Grupo Avedie"
-              className="w-16 h-16 object-contain"
+              className="w-20 h-20 object-contain"
             />
           </div>
           <h1 className="text-white text-2xl font-semibold">Grupo Avedie</h1>

@@ -25,7 +25,7 @@ function LoadingScreen() {
     <div className="min-h-screen bg-google-bg flex flex-col items-center justify-center gap-4">
       <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-google overflow-hidden">
         <img
-          src="https://multimedia-logos.infojobs.net/image/upload/w_155,h_155/9b/9b38ef65-853a-4c46-a58e-5e56bbceb467"
+          src="/logo-avedie-main.png"
           alt="Grupo Avedie"
           className="w-12 h-12 object-contain"
         />

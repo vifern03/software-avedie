@@ -50,9 +50,9 @@ export default function Sidebar({ activeSection, onNavigate, onOpenAI }) {
           <Menu size={20} className="text-google-dark" />
         </button>
         <img
-          src="https://multimedia-logos.infojobs.net/image/upload/w_155,h_155/9b/9b38ef65-853a-4c46-a58e-5e56bbceb467"
+          src="/logo-avedie-main.png"
           alt="Grupo Avedie"
-          className="h-9 w-9 rounded-lg object-cover shadow-md bg-white"
+          className="h-9 w-9 rounded-lg object-contain shadow-md bg-white"
         />
       </div>
 
@@ -78,12 +78,16 @@ export default function Sidebar({ activeSection, onNavigate, onOpenAI }) {
         <div className="px-6 py-5 border-b border-google-border flex items-center justify-between">
           <div className="flex items-center gap-3">
             <img
-              src="https://multimedia-logos.infojobs.net/image/upload/w_155,h_155/9b/9b38ef65-853a-4c46-a58e-5e56bbceb467"
+              src="/logo-avedie-main.png"
               alt="Grupo Avedie"
-              className="w-9 h-9 rounded-lg object-cover flex-shrink-0"
+              className="w-9 h-9 rounded-lg object-contain flex-shrink-0 bg-white"
             />
             <div>
-              <p className="text-sm font-semibold text-google-dark leading-tight">Grupo Avedie</p>
+              <p className="text-sm font-semibold text-black leading-tight">
+                <span style={{ letterSpacing: '0.02em' }}>Grupo </span>
+                <span>A</span>
+                <span style={{ letterSpacing: '0.04em' }}>vedie</span>
+              </p>
               <p className="text-xs text-google-gray">Software de Gestión</p>
             </div>
           </div>
