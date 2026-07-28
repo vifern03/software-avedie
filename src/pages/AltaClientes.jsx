@@ -6,8 +6,7 @@ import ConfirmActionModal from '../components/ConfirmActionModal';
 import Pagination from '../components/Pagination';
 import ShareButton from '../components/ShareButton';
 import PrescriptoresModal from '../components/PrescriptoresModal';
-import ContratoB2BModal from '../components/ContratoB2BModal';
-import { useData, fetchSingleDoc, fetchContratoArchivo } from '../context/DataContext';
+import { useData, fetchSingleDoc } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { openPendingTab, openBase64InTab } from '../lib/attachmentTab';
 import DateInput from '../components/DateInput';
@@ -88,35 +87,6 @@ function FileCell({ hasDoc, clientId, campo }) {
   return (
     <button onClick={handleClick} disabled={loading}
       className="p-1 rounded hover:bg-slate-100 transition-colors" title="Ver archivo">
-      {loading
-        ? <Loader2 size={15} className="text-slate-400 animate-spin" />
-        : <Eye size={15} className="text-slate-500" />}
-    </button>
-  );
-}
-
-// Solo el generador de contratos B2B provisionales aplica a 3.0TD/6.1TD
-// (incluidas sus variantes indexada/Tempo — ver [[project_contratos_b2b_generados]]).
-const esTarifaContrato = (tarifa) => /^(3\.|6\.)/.test(tarifa || '');
-
-// Celda "Contrato" de Alta B2B: mismo componente visual que FileCell (ojo con
-// fetch-on-click), pero apuntando al PDF más reciente en contratos_generados.
-function ContratoCell({ clienteId }) {
-  const [loading, setLoading] = useState(false);
-  const handleClick = async () => {
-    if (loading) return;
-    setLoading(true);
-    const tab = openPendingTab();
-    try {
-      const data = await fetchContratoArchivo(clienteId);
-      openBase64InTab(tab, data);
-    } finally {
-      setLoading(false);
-    }
-  };
-  return (
-    <button onClick={handleClick} disabled={loading}
-      className="p-1 rounded hover:bg-slate-100 transition-colors" title="Ver contrato generado">
       {loading
         ? <Loader2 size={15} className="text-slate-400 animate-spin" />
         : <Eye size={15} className="text-slate-500" />}
@@ -221,7 +191,7 @@ function ConsumoModal({ cliente, onClose, onSave }) {
 
 export default function AltaClientes({ tipo }) {
   const isB2B = tipo === 'B2B';
-  const { clientes: allClientes, clientesB2C, clientesB2B, addCliente, updateCliente, updateCompartidoCon, setConsumoAnualEst, firmarContrato, formalizarContrato, deleteCliente, rankingB2C, rankingB2B, docsFlags, contratosGeneradosFlags, prescriptores, prescriptorLinks, addPrescriptor, renamePrescriptor, deletePrescriptor, bulkReasignPrescriptor, linkPrescriptor, registroPendientes } = useData();
+  const { clientes: allClientes, clientesB2C, clientesB2B, addCliente, updateCliente, updateCompartidoCon, setConsumoAnualEst, firmarContrato, formalizarContrato, deleteCliente, rankingB2C, rankingB2B, docsFlags, prescriptores, prescriptorLinks, addPrescriptor, renamePrescriptor, deletePrescriptor, bulkReasignPrescriptor, linkPrescriptor, registroPendientes } = useData();
   const rankingActivo = isB2B ? rankingB2B : rankingB2C;
 
   // CUPS con una incidencia activa en el embudo de Pendientes (ver [[project_pendientes]]).
@@ -385,9 +355,8 @@ export default function AltaClientes({ tipo }) {
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated  = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const TOTAL_COLS = isB2B ? 27 : 23;
+  const TOTAL_COLS = isB2B ? 26 : 23;
   const [consumoTarget, setConsumoTarget] = useState(null);
-  const [contratoTarget, setContratoTarget] = useState(null);
 
   const subtipo = (c) => c.subtipo === 'Otro' ? (c.subtipo_otro || 'Otro') : (c.subtipo || '—');
 
@@ -602,7 +571,6 @@ export default function AltaClientes({ tipo }) {
             <thead>
               <tr>
                 <th className="table-header">Compartido por</th>
-                {isB2B && <th className="table-header">Contrato</th>}
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('nombre')}><div className="flex items-center gap-1">Cliente <SortIcon field="nombre" /></div></th>
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('tipo')}><div className="flex items-center gap-1">Tipo <SortIcon field="tipo" /></div></th>
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('linea_negocio')}><div className="flex items-center gap-1">Línea de Negocio <SortIcon field="linea_negocio" /></div></th>
@@ -660,22 +628,6 @@ export default function AltaClientes({ tipo }) {
                     <td className="table-cell text-xs whitespace-nowrap">
                       {c.shared_by ? (usersByUsername[c.shared_by] || c.shared_by) : '—'}
                     </td>
-                    {isB2B && (
-                      <td className="table-cell text-center">
-                        {!esTarifaContrato(c.tarifa) ? (
-                          <span className="text-google-gray">—</span>
-                        ) : contratosGeneradosFlags[c.id] ? (
-                          <ContratoCell clienteId={c.id} />
-                        ) : (
-                          <button
-                            onClick={() => setContratoTarget(c)}
-                            className="px-2 py-0.5 rounded border border-blue-300 bg-blue-50 text-blue-700 text-xs font-medium hover:bg-blue-100 transition-colors whitespace-nowrap"
-                          >
-                            Generar
-                          </button>
-                        )}
-                      </td>
-                    )}
                     <td className="table-cell font-medium text-google-dark whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
                         {pendientesCupsSet.has((c.cups || '').toUpperCase().trim()) && (
@@ -820,13 +772,6 @@ export default function AltaClientes({ tipo }) {
           cliente={consumoTarget}
           onClose={() => setConsumoTarget(null)}
           onSave={async (id, val) => { setConsumoAnualEst(id, val); }}
-        />
-      )}
-
-      {contratoTarget && (
-        <ContratoB2BModal
-          cliente={contratoTarget}
-          onClose={() => setContratoTarget(null)}
         />
       )}
 

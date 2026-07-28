@@ -52,21 +52,6 @@ export const fetchSingleDoc = async (clientId, campo) => {
   return data[campo] || null;
 };
 
-// Descarga el PDF (Base64) del contrato B2B generado más reciente de un
-// cliente — mismo patrón fetch-on-click que fetchSingleDoc, pero contra la
-// tabla independiente contratos_generados (ver [[project_contratos_b2b_generados]]).
-export const fetchContratoArchivo = async (clienteId) => {
-  const { data, error } = await supabase
-    .from('contratos_generados')
-    .select('archivo_base64')
-    .eq('cliente_id', clienteId)
-    .order('generado_en', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error || !data) return null;
-  return data.archivo_base64 || null;
-};
-
 // Campos de archivo (URLs de Supabase Storage) excluidos del SELECT principal de
 // visitas / visitas_pymes — se piden SOLO al hacer clic (fetch-on-click), igual
 // que fetchSingleDoc para clientes.
@@ -150,10 +135,6 @@ export function DataProvider({ children }) {
   // visible del usuario actual. Ver [[project_pendientes]].
   const [clientesCupsTodos, setClientesCupsTodos] = useState(new Set());
   const [docsFlags,     setDocsFlags]     = useState({});
-  // Flags ligeros (sin el PDF) de qué clientes ya tienen un contrato B2B
-  // generado — mapa cliente_id -> { estado, generado_en }. El PDF real solo
-  // se pide bajo demanda con fetchContratoArchivo (ver arriba).
-  const [contratosGeneradosFlags, setContratosGeneradosFlags] = useState({});
   const [visitasDocsFlags,      setVisitasDocsFlags]      = useState({});
   const [visitasPymesDocsFlags, setVisitasPymesDocsFlags] = useState({});
   // Cola local de visitas PYME que no se pudieron confirmar en Supabase al
@@ -192,7 +173,6 @@ export function DataProvider({ children }) {
       setClientesCupsTodos(new Set());
       setVisitasDocsFlags({});
       setVisitasPymesDocsFlags({});
-      setContratosGeneradosFlags({});
       setIsLoading(false);
       lastFetchKey.current = null;
       return;
@@ -214,7 +194,6 @@ export function DataProvider({ children }) {
       setDocsFlags(userCache.docsFlags     || {});
       setVisitasDocsFlags(userCache.visitasDocsFlags         || {});
       setVisitasPymesDocsFlags(userCache.visitasPymesDocsFlags || {});
-      setContratosGeneradosFlags(userCache.contratosGeneradosFlags || {});
       setIsLoading(false);
     } else {
       setIsLoading(true);
@@ -346,12 +325,6 @@ export function DataProvider({ children }) {
       // a `clientesQuery` — solo para el indicador verde/rojo de Pendientes.
       const clientesCupsTodosQuery = supabase.from('clientes').select('cups').is('deleted_at', null);
 
-      // Flags ligeros de contratos B2B generados (sin el archivo_base64) — tolerante
-      // a que la tabla aún no exista (antes de ejecutar supabase_contratos_generados.sql).
-      const contratosGeneradosQuery = supabase
-        .from('contratos_generados')
-        .select('cliente_id, estado, generado_en');
-
       const [
         { data: clientesData,     error: clientesErr  },
         { data: actividadesData },
@@ -372,7 +345,6 @@ export function DataProvider({ children }) {
         { data: fotoNegocioData },
         { data: facturaPymeData },
         { data: comparativaPymeData },
-        { data: contratosGeneradosData, error: contratosGeneradosErr },
       ] = await Promise.all([
         clientesQuery,
         supabase.from('actividades').select('*').is('deleted_at', null).order('created_at', { ascending: false }),
@@ -393,7 +365,6 @@ export function DataProvider({ children }) {
         mkFlagFor('visitas_pymes', 'foto_negocio_url'),
         mkFlagFor('visitas_pymes', 'factura_url'),
         mkFlagFor('visitas_pymes', 'comparativa_url'),
-        contratosGeneradosQuery,
       ]);
 
       // ── 3. Evitar race condition: descartar si el usuario cambió ──────────
@@ -458,18 +429,6 @@ export function DataProvider({ children }) {
         };
       });
 
-      // Tolerante a que la tabla aún no exista (antes de ejecutar supabase_contratos_generados.sql).
-      // Un cliente puede tener varias filas (regeneraciones) — nos quedamos con la más reciente.
-      const newContratosGeneradosFlags = {};
-      if (!contratosGeneradosErr) {
-        (contratosGeneradosData || []).forEach(r => {
-          const prev = newContratosGeneradosFlags[r.cliente_id];
-          if (!prev || new Date(r.generado_en) > new Date(prev.generado_en)) {
-            newContratosGeneradosFlags[r.cliente_id] = { estado: r.estado, generado_en: r.generado_en };
-          }
-        });
-      }
-
       // Flags booleanos de archivos de visitas (igual patrón que docsFlags de clientes)
       const anversoSet     = new Set((anversoData     || []).map(r => r.id));
       const reversoSet     = new Set((reversoData     || []).map(r => r.id));
@@ -503,7 +462,6 @@ export function DataProvider({ children }) {
       setDocsFlags(newDocsFlags);
       setVisitasDocsFlags(newVisitasDocsFlags);
       setVisitasPymesDocsFlags(newVisitasPymesDocsFlags);
-      setContratosGeneradosFlags(newContratosGeneradosFlags);
 
       writeCache(currentUser.username, {
         clientes:     newClientes,
@@ -514,7 +472,6 @@ export function DataProvider({ children }) {
         docsFlags:    newDocsFlags,
         visitasDocsFlags:      newVisitasDocsFlags,
         visitasPymesDocsFlags: newVisitasPymesDocsFlags,
-        contratosGeneradosFlags: newContratosGeneradosFlags,
       });
 
       setIsLoading(false);
@@ -1131,33 +1088,6 @@ export function DataProvider({ children }) {
     return { error: null };
   };
 
-  // Guarda un contrato B2B provisional recién generado (ver [[project_contratos_b2b_generados]]).
-  // Inserta en contratos_generados (tabla independiente de `clientes`, ver el
-  // razonamiento en el plan) y actualiza el flag local para que la columna
-  // "Contrato" de Alta B2B pase de botón "Generar" a icono de ojo al instante.
-  const guardarContratoGenerado = async ({ clienteId, datosFormulario, extraccionIaRaw, archivoBase64 }) => {
-    const nuevo = {
-      id:                Date.now(),
-      cliente_id:        clienteId,
-      estado:            'generado',
-      datos_formulario:  datosFormulario,
-      extraccion_ia_raw: extraccionIaRaw || null,
-      archivo_base64:    archivoBase64,
-      generado_por:      currentUser?.username || 'Desconocido',
-      generado_en:       new Date().toISOString(),
-    };
-    const { error } = await supabase.from('contratos_generados').insert([nuevo]);
-    if (error) {
-      console.error('guardarContratoGenerado:', error);
-      return { error };
-    }
-    setContratosGeneradosFlags(prev => ({
-      ...prev,
-      [clienteId]: { estado: nuevo.estado, generado_en: nuevo.generado_en },
-    }));
-    return { error: null };
-  };
-
   const setConsumoAnualEst = (id, valor) => {
     const v = (valor === '' || valor == null) ? null : Number(valor);
     setClientes(prev => prev.map(c => c.id === id ? { ...c, consumo_anual_est: v } : c));
@@ -1471,8 +1401,6 @@ export function DataProvider({ children }) {
       updateCliente,
       updateCompartidoCon,
       setConsumoAnualEst,
-      contratosGeneradosFlags,
-      guardarContratoGenerado,
       firmarContrato,
       formalizarContrato,
       renovarContrato,
