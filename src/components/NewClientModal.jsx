@@ -7,6 +7,24 @@ import { getShareTargets } from './ShareButton';
 import { openPendingTab, openBase64InTab } from '../lib/attachmentTab';
 
 const tarifas  = ['2.0TD', '3.0TD', '3.1A', '6.1TD', '6.1A', '6.2', '6.3', '6.4', 'RL.1', 'RL.2', 'RL.3'];
+
+// Id Producto — ordenadas jerárquicamente por peaje de acceso (2.0 → 3.0 → 6.1)
+const ID_PRODUCTO_LUZ = [
+  'Luz Fija 24H (Canal Directo)',
+  'Luz Fija 24H (Con Prescriptor)',
+  'Tu Otra Casa 50',
+  'Solar Basic',
+  'Solar Plus',
+  'Solar Plus & Batería Virtual',
+  'Indexada 2.0TD',
+  'TEMPO 2.0TD',
+  'Open 3.0TD',
+  'Indexada 3.0TD',
+  'Open 6.1TD',
+  'Indexada 6.1TD',
+];
+const ID_PRODUCTO_GAS = ['Gas RL.1', 'Gas RL.2', 'Gas RL.3', 'Gas RL.4', 'Gas RL.5', 'Gas RL.6'];
+const ID_PRODUCTO_OTRO = '__otro__';
 const estados  = ['Pendiente Firma', 'Tramitado', 'Formalizado'];
 const subtipos = [
   'Cambio de Comercializadora',
@@ -80,6 +98,11 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
   const initialVendidoPorValue = initialData?.vendido_por || '';
   const isVendidoPorKnown = !initialVendidoPorValue || prescriptoresDB.some(p => p.nombre === initialVendidoPorValue);
 
+  const initialIdProductoValue = initialData?.id_producto || '';
+  const isIdProductoKnown = !initialIdProductoValue
+    || ID_PRODUCTO_LUZ.includes(initialIdProductoValue)
+    || ID_PRODUCTO_GAS.includes(initialIdProductoValue);
+
   const [form, setForm] = useState({
     nombre:            initialData?.nombre            || '',
     identificacion:    initialData?.identificacion    || '',
@@ -89,7 +112,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
     linea_negocio:     initialData?.linea_negocio     || '',
     subtipo:           initialData?.subtipo           || '',
     subtipo_otro:      initialData?.subtipo_otro      || '',
-    id_producto:       initialData?.id_producto       || '',
+    id_producto:       isIdProductoKnown ? initialIdProductoValue : ID_PRODUCTO_OTRO,
     creado_por:        isB2B
       ? (isCreadoPorKnown ? initialCreadoPorValue : '__otro__')
       : (initialTipoVenta === 'directo' ? 'Canal Directo' : (isCreadoPorKnown ? initialCreadoPorValue : '__otro__')),
@@ -108,6 +131,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
   const [agenteGestorOtro,  setAgenteGestorOtro]  = useState(isKnownUser     ? '' : initialAgenteGestorValue);
   const [prescriptorOtro,   setPrescriptorOtro]   = useState((isCreadoPorKnown || initialTipoVenta === 'directo') ? '' : initialCreadoPorValue);
   const [vendidoPorOtro,    setVendidoPorOtro]    = useState(isVendidoPorKnown ? '' : initialVendidoPorValue);
+  const [idProductoOtro,    setIdProductoOtro]    = useState(isIdProductoKnown ? '' : initialIdProductoValue);
   const [errors,       setErrors]       = useState({});
   const [saved,        setSaved]        = useState(false);
   const [cupsDbError,  setCupsDbError]  = useState(null);
@@ -378,7 +402,9 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
     else if (form.vendido_por === '__vendido_otro__' && !vendidoPorOtro.trim())
       e.vendido_por_otro = true;
     if (!form.cuenta_bancaria.trim())             e.cuenta_bancaria = true;
-    if (!form.id_producto.trim())                 e.id_producto     = true;
+    if (!form.id_producto)                        e.id_producto       = true;
+    else if (form.id_producto === ID_PRODUCTO_OTRO && !idProductoOtro.trim())
+      e.id_producto_otro = true;
     if (!isB2B && !isEdit && !dniBase64)         e.dni_b2c       = true;
     if (isB2B && !isEdit && !cifAutonomoBase64) e.cif_autonomo  = true;
     if (isB2B && !isEdit && !dniBase64)         e.dni_b2b       = true;
@@ -401,10 +427,12 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
     const efectivePrescriptor  = tipoVenta === 'directo'
       ? 'Canal Directo'
       : (form.creado_por === '__otro__' ? prescriptorOtro.trim() : form.creado_por);
+    const efectiveIdProducto   = form.id_producto === ID_PRODUCTO_OTRO ? idProductoOtro.trim() : form.id_producto;
     const result = await onSave({
       ...form,
       agente_gestor:    efectiveAgenteGestor,
       creado_por:       efectivePrescriptor,
+      id_producto:      efectiveIdProducto,
       vendido_por:      form.vendido_por === '__vendido_otro__' ? vendidoPorOtro.trim() : form.vendido_por.trim(),
       tipo,
       compartido_con:   !isEdit && quiereCompartir ? compartidoCon : [],
@@ -807,14 +835,35 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
             <label className="block text-xs font-medium text-google-gray mb-1.5 flex items-center gap-1.5">
               <Hash size={13} /> Id Producto *
             </label>
-            <input
-              type="text"
-              placeholder="Ej: Tarifa Libre 50 Endesa"
+            <select
               value={form.id_producto}
-              onChange={(e) => set('id_producto', e.target.value)}
+              onChange={(e) => { set('id_producto', e.target.value); setErrors(er => ({ ...er, id_producto_otro: false })); }}
               className={inputClass('id_producto')}
-            />
+            >
+              <option value="">Seleccionar...</option>
+              {(form.linea_negocio === 'Gas'
+                ? ID_PRODUCTO_GAS
+                : form.linea_negocio === 'Electricidad'
+                ? ID_PRODUCTO_LUZ
+                : [...ID_PRODUCTO_LUZ, ...ID_PRODUCTO_GAS]
+              ).map((p) => <option key={p} value={p}>{p}</option>)}
+              <option value={ID_PRODUCTO_OTRO}>Otro</option>
+            </select>
             {errors.id_producto && <p className="text-red-500 text-xs mt-1">Este campo es obligatorio</p>}
+            {form.id_producto === ID_PRODUCTO_OTRO && (
+              <>
+                <input
+                  type="text"
+                  placeholder="Escribe el nombre de la tarifa..."
+                  value={idProductoOtro}
+                  onChange={(e) => { setIdProductoOtro(e.target.value); setErrors(er => ({ ...er, id_producto_otro: false })); }}
+                  className={`input-field mt-2 ${errors.id_producto_otro ? '!border-red-400 focus:!ring-red-300' : ''}`}
+                />
+                <p className="text-xs italic text-amber-600 mt-1">
+                  * Si la tarifa que buscas no está en la lista anterior, por favor notifícalo al administrador para que la añada (es muy raro).
+                </p>
+              </>
+            )}
           </div>
 
           {/* Prescriptor / Tipo de Venta */}
