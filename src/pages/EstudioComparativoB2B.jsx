@@ -321,17 +321,20 @@ export default function EstudioComparativoB2B() {
   // Precio de energía por periodo: en Open, P1-P5 usan el precio de "horas Open" de la
   // modalidad elegida y P6 usa "horas No Open" (validado contra el comparador Excel de
   // referencia: en 3.0TD/6.1TD el periodo P6 —valle, noche/fin de semana— queda fuera de
-  // las franjas Open de todas las modalidades). En Indexada, cada periodo tiene su propia
-  // fórmula A + B×OMIE.
+  // las franjas Open de todas las modalidades). Excepción: la modalidad "Plana" cubre las
+  // 24h del día los 365 días del año (ver `desc` en tarifasB2B.js), así que no existen horas
+  // "No Open" — P6 debe usar el mismo precio que P1-P5, no `horasNoOpen`. En Indexada, cada
+  // periodo tiene su propia fórmula A + B×OMIE.
+  const isPlana = modalidad.label === 'Plana';
   const precioOpenBase   = openData.matrix[potIdx][modalIdx];
-  const precioNoOpenBase = openData.horasNoOpen[potIdx];
+  const precioNoOpenBase = isPlana ? precioOpenBase : openData.horasNoOpen[potIdx];
 
   const dto = n(form.descuento) / 100;
 
   const precios = PERIODS.map(i => {
     const base = isIndexada
       ? indexadaData.energiaA[`p${i}`] + indexadaData.energiaB[`p${i}`] * omie
-      : (i <= 5 ? precioOpenBase : precioNoOpenBase);
+      : (i <= 5 || isPlana ? precioOpenBase : precioNoOpenBase);
     return base * (1 - dto);
   });
 
