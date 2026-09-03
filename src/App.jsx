@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ShieldOff, Database, Loader2, Wrench } from 'lucide-react';
+import { ShieldOff, Database, Loader2 } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import { useData } from './context/DataContext';
 import Sidebar from './components/Sidebar';
@@ -19,33 +19,6 @@ import ControlHorario from './pages/ControlHorario';
 import RegistroLlamadas from './pages/RegistroLlamadas';
 import Tarifas from './pages/Tarifas';
 import Pendientes from './pages/Pendientes';
-
-// CRM en pausa: cambia esta constante a false y vuelve a desplegar para reabrir el acceso.
-const MAINTENANCE_MODE = true;
-
-function MaintenanceScreen() {
-  return (
-    <div className="min-h-screen bg-google-bg flex items-center justify-center p-4 sm:p-6">
-      <div className="bg-white rounded-2xl shadow-google w-full max-w-md p-6 sm:p-8 text-center space-y-4">
-        <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-google overflow-hidden mx-auto">
-          <img
-            src="/logo-avedie-main.png"
-            alt="Grupo Avedie"
-            className="w-12 h-12 object-contain"
-          />
-        </div>
-        <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto">
-          <Wrench size={28} className="text-amber-500" />
-        </div>
-        <h2 className="text-xl font-semibold text-google-dark">CRM en mantenimiento</h2>
-        <p className="text-sm text-google-gray">
-          El acceso está temporalmente cerrado.<br />
-          Contacte con el administrador para más información.
-        </p>
-      </div>
-    </div>
-  );
-}
 
 function LoadingScreen() {
   return (
@@ -119,7 +92,6 @@ export default function App() {
     if (first) setActiveSection(first);
   }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (MAINTENANCE_MODE) return <MaintenanceScreen />;
   if (authLoading) return <LoadingScreen />;
   if (dbError)     return <DBErrorScreen error={dbError} />;
   if (!currentUser) return <LoginPage />;
