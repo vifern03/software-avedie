@@ -51,7 +51,7 @@ function tramoPara(tramos, kw) {
  * con la potencia máxima; si caen en tramos distintos se usa el de PRECIO MÁS ALTO
  * (conservador) y se avisa.
  */
-export function seleccionarTramoOpen(producto, potenciasKw) {
+export function seleccionarTramoOpen(producto, potenciasKw, forzar = false) {
   const pots = potenciasKw.map(Number).filter(x => x > 0);
   const avisos = [];
   const motivos = [];
@@ -60,8 +60,12 @@ export function seleccionarTramoOpen(producto, potenciasKw) {
   const p1 = Number(potenciasKw[0]) || pMax;
 
   if (producto.potenciaMaxima && pMax > producto.potenciaMaxima) {
-    motivos.push(`La potencia contratada máxima (${pMax} kW) supera el límite de la oferta (${producto.potenciaMaxima} kW). No se ajustan potencias para hacerla elegible.`);
-    return { idx: -1, motivos, avisos };
+    if (!forzar) {
+      motivos.push(`La potencia contratada máxima (${pMax} kW) supera el límite de la oferta (${producto.potenciaMaxima} kW).`);
+      return { idx: -1, motivos, avisos, superaLimite: true };
+    }
+    avisos.push(`SIMULACIÓN FUERA DE CONDICIONES: ${pMax} kW supera el límite de ${producto.potenciaMaxima} kW de la oferta. Se calcula con el último tramo; requiere confirmación de Endesa.`);
+    return { idx: producto.tramos.length - 1, motivos, avisos };
   }
   const iMax = tramoPara(producto.tramos, pMax);
   const iP1 = tramoPara(producto.tramos, p1);
@@ -69,11 +73,10 @@ export function seleccionarTramoOpen(producto, potenciasKw) {
     motivos.push(`Ninguna potencia contratada encaja en los tramos de la oferta (máx. ${pMax} kW).`);
     return { idx: -1, motivos, avisos };
   }
-  let idx = iMax;
+  // Tramo según la potencia contratada máxima del suministro.
+  const idx = iMax;
   if (iP1 !== -1 && iP1 !== iMax) {
-    // Precio más alto (índices menores tienen precios ≥)
-    idx = Math.min(iP1, iMax);
-    avisos.push(`Tramo de potencia ambiguo: P1 = ${p1} kW → "${producto.tramos[iP1].label}", máxima = ${pMax} kW → "${producto.tramos[iMax].label}". El documento no concreta qué potencia rige el tramo; se usa el de precio más alto ("${producto.tramos[idx].label}"). Confirmar con Endesa.`);
+    avisos.push(`Tramo de energía según la potencia máxima contratada (${pMax} kW → "${producto.tramos[iMax].label}"); P1 = ${p1} kW.`);
   }
   return { idx, motivos, avisos };
 }
@@ -147,34 +150,29 @@ export function repartirOpen({ modalidad, kwhPeriodo, desgloseP6, curva, periodo
     return { ok: true, kOpen, kNo, metodo: 'curva', avisos };
   }
 
-  if (nec.claseP1P5 === 'parcial') return { ok: false, motivo: 'La modalidad parte las horas P1–P5: se necesita curva horaria.' };
-  let kOpen = 0, kNo = 0;
-  const p1p5 = sum(kwh.slice(0, 5));
-  if (nec.claseP1P5 === 'open') kOpen += p1p5; else kNo += p1p5;
-
-  if (!nec.necesitaDesgloseP6) {
-    if (nec.clasesP6[0] === 'open') kOpen += kwh[5]; else kNo += kwh[5];
-    if (modalidad.id === 'laboral' && periodo?.desde && periodo?.hasta) {
-      const vs = viernesSantoEnRango(periodo.desde, periodo.hasta)
-        .filter(d => rangoFechas(periodo.desde, periodo.hasta).includes(d));
-      if (vs.length) avisos.push(`El periodo incluye Viernes Santo (${vs.join(', ')}): es laborable para el peaje (P1–P5) pero puede ser "festivo nacional" para la modalidad Laboral. Resultado aproximado en ese día.`);
+  if (desgloseP6 && nec.necesitaDesgloseP6) {
+    const partes = FRANJAS_P6.map(f => Number(desgloseP6[f.id]) || 0);
+    const sumaP6 = sum(partes);
+    const tol = Math.max(1, kwh[5] * 0.005);
+    if (Math.abs(sumaP6 - kwh[5]) > tol) {
+      return { ok: false, motivo: `El desglose del P6 suma ${r2(sumaP6)} kWh y el P6 facturado es ${kwh[5]} kWh. Corrige el desglose o déjalo vacío.` };
     }
-    return { ok: true, kOpen, kNo, metodo: 'agregados', avisos };
+    let kOpen = 0, kNo = 0;
+    const p1p5 = sum(kwh.slice(0, 5));
+    if (nec.claseP1P5 === 'open') kOpen += p1p5; else kNo += p1p5;
+    FRANJAS_P6.forEach((f, i) => { if (nec.clasesP6[i] === 'open') kOpen += partes[i]; else kNo += partes[i]; });
+    return { ok: true, kOpen, kNo, metodo: 'desglose_p6', avisos };
   }
 
-  if (!desgloseP6) {
-    return { ok: false, motivo: `La modalidad ${modalidad.label} reparte el P6 entre horas Open y No Open. Con solo los totales P1–P6 no se puede separar: aporta la curva horaria o el desglose del P6 por franjas.` };
+  // Por defecto: reparto por PERIODOS (criterio comercial). Los periodos de
+  // `periodosOpen` van a precio Open y el resto a precio No Open.
+  const per = modalidad.periodosOpen || [1, 2, 3, 4, 5, 6];
+  let kOpen = 0, kNo = 0;
+  kwh.forEach((k, i) => { if (per.includes(i + 1)) kOpen += k; else kNo += k; });
+  if (modalidad.id !== 'plana') {
+    avisos.push(`Modalidad ${modalidad.label}: precio Open aplicado a ${per.map(x => 'P' + x).join(', ')} y precio No Open al resto (reparto por periodos). Para el cálculo hora a hora exacto, carga la curva horaria.`);
   }
-  const partes = FRANJAS_P6.map(f => Number(desgloseP6[f.id]) || 0);
-  const sumaP6 = sum(partes);
-  const tol = Math.max(1, kwh[5] * 0.005);
-  if (Math.abs(sumaP6 - kwh[5]) > tol) {
-    return { ok: false, motivo: `El desglose del P6 suma ${r2(sumaP6)} kWh y el P6 facturado es ${kwh[5]} kWh. Corrige el desglose.` };
-  }
-  FRANJAS_P6.forEach((f, i) => {
-    if (nec.clasesP6[i] === 'open') kOpen += partes[i]; else kNo += partes[i];
-  });
-  return { ok: true, kOpen, kNo, metodo: 'desglose_p6', avisos };
+  return { ok: true, kOpen, kNo, metodo: 'periodos', avisos };
 }
 
 /* ══════════════════════════ Oferta eléctrica ══════════════════════════ */
@@ -250,9 +248,9 @@ export function calcularOfertaLuz(i) {
   let precioInfo = {};
   const totalKwh = sum(kwh);
   if (p.modalidades) {
-    const tr = seleccionarTramoOpen(p, pots);
+    const tr = seleccionarTramoOpen(p, pots, !!i.forzarElegibilidad);
     avisos.push(...tr.avisos);
-    if (tr.idx === -1) { motivos.push(...tr.motivos); return res(ESTADO.NO_ELEGIBLE); }
+    if (tr.idx === -1) { motivos.push(...tr.motivos); return res(ESTADO.NO_ELEGIBLE, { superaLimite: !!tr.superaLimite }); }
     const mIdx = p.modalidades.findIndex(m => m.id === i.modalidadId);
     if (mIdx === -1) { motivos.push('Modalidad Open desconocida.'); return res(ESTADO.DATOS_INSUFICIENTES); }
     const modalidad = p.modalidades[mIdx];

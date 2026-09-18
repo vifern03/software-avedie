@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { Upload, FileText, Printer, Download, X, AlertTriangle, Loader2, Factory, Info, CheckCircle2, Ban } from 'lucide-react';
 import { exportElementToPdf, slugifyFilename } from '../lib/exportPdf';
 import { OPEN_30TD, OPEN_61TD, SIMPLY_30TD, SIMPLY_61TD, INDEXADA_30TD, INDEXADA_61TD } from '../data/tarifasB2B';
-import { calcularOfertaLuz, calcularAhorro, extrapolarAnual, ESTADO, FRANJAS_P6, necesidadesModalidad } from '../lib/energia/motor';
+import { calcularOfertaLuz, calcularAhorro, extrapolarAnual, ESTADO, FRANJAS_P6 } from '../lib/energia/motor';
 import { PROMPT_EXTRACCION_LUZ, validarExtraccion, parsearRespuestaModelo } from '../lib/energia/extraccion';
 import { parsearCurvaCSV } from '../lib/energia/curva';
 import { estadoVigencia, ETIQUETA_ESTADO, fmtFechaES, hoyMadridISO } from '../lib/energia/vigencia';
@@ -11,9 +11,9 @@ import { estadoVigencia, ETIQUETA_ESTADO, fmtFechaES, hoyMadridISO } from '../li
 /* ── Constantes ──────────────────────────────────────────────────────────────── */
 
 const PROXY_URL = '/api/gemini';
-/* Gemini 2.5 Pro tarda 45–110 s en facturas de 3–4 páginas (medido con facturas
-   reales). El proxy tiene maxDuration 300 s; el cliente espera hasta 180 s. */
-const EXTRACTION_TIMEOUT_MS = 180000;
+/* Gemini 2.5 Flash con razonamiento acotado: 12–20 s en facturas reales de 3–4
+   páginas (25/25 campos correctos). Margen de seguridad del cliente: 90 s. */
+const EXTRACTION_TIMEOUT_MS = 90000;
 const PERIODS = [1, 2, 3, 4, 5, 6];
 
 const CATALOGO = {
@@ -31,14 +31,17 @@ const PRODUCTOS = [
 ];
 
 function estimateExtractionSeconds(bytes) {
-  return Math.round(45 + (bytes / (500 * 1024)) * 10);
+  return Math.round(15 + (bytes / (500 * 1024)) * 3);
 }
 
 function n(v, fb = 0) {
   if (v === null || v === undefined) return fb;
-  const s = String(v).trim();
+  const s = String(v).trim().replace(/\s/g, '');
   if (!s) return fb;
-  const x = s.includes(',') ? parseFloat(s.replace(/\./g, '').replace(',', '.')) : parseFloat(s);
+  // "1.200" o "27.263" = miles (formato español); "0.153" o "1,5" = decimales.
+  const t = s.includes(',') ? s.replace(/\./g, '').replace(',', '.')
+    : /^\d{1,3}(\.\d{3})+$/.test(s) ? s.replace(/\./g, '') : s;
+  const x = parseFloat(t);
   return isNaN(x) ? fb : x;
 }
 const eur = (v) => (v == null ? '—' : v.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €');
@@ -86,6 +89,7 @@ export default function EstudioComparativoB2B() {
   const [productoId, setProductoId] = useState('open');
   const [modalidadId, setModalidadId] = useState('plana');
   const [autoconsumo, setAutoconsumo] = useState(false);
+  const [forzar, setForzar] = useState(false);
   const [form, setForm] = useState(INIT);
   const [curvaInfo, setCurvaInfo] = useState(null); // { nombre, curva, errores }
   const [incidencias, setIncidencias] = useState([]);
@@ -124,7 +128,7 @@ export default function EstudioComparativoB2B() {
       const res = await fetch(PROXY_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: PROMPT_EXTRACCION_LUZ, history: [], json: true, file: { mimeType: file.type || 'application/pdf', data: base64 } }),
+        body: JSON.stringify({ text: PROMPT_EXTRACCION_LUZ, history: [], json: true, modelo: 'flash', thinkingBudget: 512, file: { mimeType: file.type || 'application/pdf', data: base64 } }),
         signal: controller.signal,
       });
       const data = await res.json();
@@ -231,13 +235,13 @@ export default function EstudioComparativoB2B() {
     omie: form.omie === '' ? null : n(form.omie),
     tieneAutoconsumo: autoconsumo, excedentesKwh: n(form.excedentesKwh),
     mantenidos: { excesos: n(form.excesos), reactiva: n(form.reactiva), alquiler: n(form.alquiler), bonoSocial: n(form.bonoSocial) },
-    ivaRate: n(form.iva, 0.21), fechaOferta: hoy,
+    ivaRate: n(form.iva, 0.21), fechaOferta: hoy, forzarElegibilidad: forzar,
   };
 
   const resultadosModalidad = useMemo(() => {
     if (!producto.modalidades) return null;
     return producto.modalidades.map(m => ({ modalidad: m, r: calcularOfertaLuz({ ...entrada, producto, modalidadId: m.id }) }));
-  }, [JSON.stringify(entrada), productoId, nivel]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(entrada), productoId, nivel, forzar]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const resultado = producto.modalidades
     ? resultadosModalidad.find(x => x.modalidad.id === modalidadId)?.r
@@ -256,7 +260,6 @@ export default function EstudioComparativoB2B() {
   const isReady = factActual > 0 && entrada.dias > 0 && kwhPeriodo.some(x => x > 0) && potenciasKw.some(x => x > 0);
 
   const modalidadSel = producto.modalidades?.find(m => m.id === modalidadId);
-  const nec = modalidadSel ? necesidadesModalidad(modalidadSel) : null;
   const vig = estadoVigencia(producto.contratacion, hoy);
   const asesorDisplay = form.asesor === '__otro__' ? form.asesorLibre : form.asesor;
   const today = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -383,7 +386,14 @@ export default function EstudioComparativoB2B() {
                     </button>
                   ))}
                 </div>
-                <p className="text-[11px] text-google-gray mt-2">Horas Open: {modalidadSel?.desc}.</p>
+                <p className="text-[11px] text-google-gray mt-2">
+                  {modalidadSel?.label}: precio Open en {modalidadSel?.periodosOpen.map(x => 'P' + x).join(', ')}{modalidadSel?.periodosOpen.length < 6 ? '; resto de periodos a precio No Open' : ''}.
+                </p>
+                {ok && resultado.tramo && (
+                  <p className="text-[11px] text-google-dark mt-1">
+                    Tramo de potencia: <strong>{resultado.tramo}</strong> · Open {resultado.precioOpen.toLocaleString('es-ES', { minimumFractionDigits: 6 })} €/kWh · No Open {resultado.precioNoOpen.toLocaleString('es-ES', { minimumFractionDigits: 6 })} €/kWh
+                  </p>
+                )}
               </div>
             )}
             {productoId === 'indexada' && (
@@ -396,6 +406,12 @@ export default function EstudioComparativoB2B() {
               <label className="flex items-center gap-2 text-xs text-google-dark">
                 <input type="checkbox" checked={autoconsumo} onChange={e => setAutoconsumo(e.target.checked)} id="ecb2b-autoconsumo" />
                 El suministro tiene autoconsumo instalado (requisito de Simply)
+              </label>
+            )}
+            {(resultado?.superaLimite || forzar) && (
+              <label className="flex items-start gap-2 text-[11px] text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">
+                <input type="checkbox" checked={forzar} onChange={e => setForzar(e.target.checked)} id="ecb2b-forzar" className="mt-0.5" />
+                La potencia supera el límite de la oferta. Simular igualmente con el último tramo (el informe lo indicará; requiere confirmación de Endesa).
               </label>
             )}
             {vig !== 'vigente' && (
@@ -444,13 +460,10 @@ export default function EstudioComparativoB2B() {
             <section className="bg-white border border-google-border rounded-xl shadow-sm p-5 space-y-3">
               <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider">4 · Reparto horas Open / No Open</p>
               <p className="text-[11px] text-google-gray leading-snug">
-                P1–P5 son siempre horas laborables de 8 a 24 h. Plana y Laboral se calculan con los totales P1–P6.
-                Día, Fin de Semana y Noche reparten el P6 (noches laborables y todo el fin de semana), así que necesitan
-                la curva horaria o el desglose del P6. No se inventa ningún reparto.
+                Por defecto el reparto es por periodos: Plana, todos a precio Open; Día y Laboral, P1–P5 a precio Open
+                y P6 a No Open; Fin de Semana y Noche, P6 a precio Open y P1–P5 a No Open. Opcional: con la curva
+                horaria o el desglose del P6 se calcula hora a hora según las franjas del PDF.
               </p>
-              {nec?.necesitaDesgloseP6 && !curva && !desgloseP6 && (
-                <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">La modalidad {modalidadSel.label} necesita curva horaria o desglose del P6.</p>
-              )}
               <div>
                 <input ref={curvaRef} id="ecb2b-curva" type="file" accept=".csv,.txt" className="hidden" onChange={e => { handleCurva(e.target.files[0]); e.target.value = ''; }} />
                 <button type="button" onClick={() => curvaRef.current?.click()} className="text-xs font-medium text-google-blue border border-blue-200 bg-blue-50 rounded-lg px-3 py-1.5 hover:bg-blue-100">
@@ -465,7 +478,7 @@ export default function EstudioComparativoB2B() {
                 )}
               </div>
               <div>
-                <p className="text-[10px] font-medium text-google-gray mb-1.5">…o desglose del P6 facturado ({kwhFmt(kwhPeriodo[5])})</p>
+                <p className="text-[10px] font-medium text-google-gray mb-1.5">…o desglose del P6 (opcional, cálculo hora a hora) · P6 facturado: ({kwhFmt(kwhPeriodo[5])})</p>
                 <div className="grid grid-cols-2 gap-2">
                   {FRANJAS_P6.map(f => (
                     <div key={f.id}>
@@ -621,7 +634,7 @@ export default function EstudioComparativoB2B() {
                       ))}
                     </tbody>
                   </table>
-                  <p className="text-[10px] text-google-gray mt-1.5">Las modalidades sin datos suficientes no se comparan ni se recomiendan.</p>
+                  <p className="text-[10px] text-google-gray mt-1.5">Las modalidades no calculables no se comparan ni se recomiendan.</p>
                 </div>
               )}
 

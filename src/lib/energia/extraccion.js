@@ -67,7 +67,10 @@ REGLAS
 7. MAXÍMETROS. "maximetros" = potencia máxima demandada EN ESTE PERIODO de facturación. Los máximos del "año móvil"/"últimos 12 meses" van SOLO en "maximetrosAnoMovil". Copia el valor y la unidad; si la tabla muestra 53.000,00 sin unidad o con W, escribe 53000 y la unidad impresa (o null).
 8. IMPUESTOS. tipoImpuestoElectricoPct y tipoIVAPct son PORCENTAJES impresos (5,11269632 → 5.11269632; 21 → 21). No confundas el importe en € con el tipo.
 9. DESCUENTOS INFORMATIVOS. Notas del tipo "Descuento asociado al ahorro de cargos … -677,38 €" van en descuentosInformativos. No los restes de ningún importe.
-10. Si algo es ambiguo, déjalo en null y explícalo en "notas".`;
+10. DÍAS. diasFacturados es el número de días impreso (p. ej. "31 días" en el término de potencia o "Días facturados: 31"). Si aparece en las líneas de potencia, cópialo.
+11. CONSUMO. consumoFacturadoKwh SIEMPRE se rellena con los kWh de las líneas de energía por periodo (P1..P6), aunque vengan en tablas de "Término Energía" o "Energía activa".
+12. POTENCIA. Incluye en potenciaLineas TODAS las líneas de potencia (peajes, cargos y término de potencia). importes.potencia es la suma de todas ellas.
+13. Sé breve: nada de texto fuera del JSON.`;
 
 /* ══════════════════════════ Normalización ══════════════════════════ */
 
@@ -116,7 +119,15 @@ export function validarExtraccion(ex) {
   // ── Tarifa y periodos
   const tarifa = e.tarifaAcceso || null;
   if (!tarifa) add('error', 'tarifaAcceso', 'No se ha identificado la tarifa de acceso.');
-  const kwh = PER.map((_, i) => num(e.consumoFacturadoKwh?.[i]));
+  let kwh = PER.map((_, i) => num(e.consumoFacturadoKwh?.[i]));
+  // Si el modelo no rellenó el consumo, se toma de las líneas de energía (un único componente por periodo).
+  if (kwh.every(v => v == null) && Array.isArray(e.energiaLineas) && e.energiaLineas.length) {
+    kwh = PER.map(p => {
+      const l = e.energiaLineas.find(x => String(x.periodo).toUpperCase() === p && num(x.kwh) != null);
+      return l ? num(l.kwh) : 0;
+    });
+    inc.push({ nivel: 'info', campo: 'consumoFacturadoKwh', mensaje: 'Consumo por periodo tomado de las líneas de energía de la factura.' });
+  }
   const pot = PER.map((_, i) => num(e.potenciaContratadaKw?.[i]));
   if (kwh.every(v => v == null)) add('error', 'consumoFacturadoKwh', 'No se ha extraído el consumo facturado por periodo.');
   if (pot.every(v => v == null)) add('error', 'potenciaContratadaKw', 'No se han extraído las potencias contratadas.');
@@ -129,7 +140,11 @@ export function validarExtraccion(ex) {
 
   // ── Fechas y días
   const desde = e.periodoConsumo?.desde, hasta = e.periodoConsumo?.hasta;
-  const dias = num(e.diasFacturados);
+  let dias = num(e.diasFacturados);
+  if (dias == null) {
+    const d = (e.potenciaLineas || []).map(l => num(l.dias)).find(v => v != null);
+    if (d != null) { dias = d; add('info', 'diasFacturados', `Días facturados tomados de las líneas de potencia (${d}).`); }
+  }
   let diasCalc = null;
   if (desde && hasta) {
     const incl = diasInclusivos(desde, hasta);
@@ -191,7 +206,11 @@ export function validarExtraccion(ex) {
     }
   }
   let potencia = num(imp.potencia);
-  if (potencia == null && pLin.length) potencia = Math.round(sumaPot * 100) / 100;
+  if (pLin.length) {
+    const sp = Math.round(sumaPot * 100) / 100;
+    if (potencia != null && !cerca(potencia, sp, 0.05)) add('info', 'importes.potencia', `Potencia impresa ${potencia} € ≠ suma de líneas ${sp} €: se usa la suma de líneas (peajes + cargos).`);
+    potencia = sp;
+  }
 
   // ── Maxímetros
   const pMaxRef = Math.max(0, ...pot.filter(x => x != null));

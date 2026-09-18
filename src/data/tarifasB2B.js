@@ -46,6 +46,9 @@ const POTENCIA_61TD = [
  * El motor usa SIEMPRE los precios publicados de la matriz; nunca vuelve a
  * aplicar descuentos.
  *
+ * `periodosOpen` = periodos que se facturan a precio Open (criterio comercial del
+ * responsable, 18/09/2026): Plana todos; Día y Laboral P1–P5; Fin de Semana y
+ * Noche solo P6. El resto de periodos va a precio "Horas No Open".
  * `ventanas` describe las horas Open de cada modalidad tal y como figuran en el
  * PDF (horas locales, [inicio, fin) en horas enteras; "finde" = sábados,
  * domingos y festivos nacionales).
@@ -64,15 +67,15 @@ export const OPEN_30TD = {
   potencias: ['15–30 kW', '30–50 kW', '50–100 kW', '> 100 kW'],
   baseEnergia: [0.228942, 0.228942, 0.228442, 0.228442],
   modalidades: [
-    { id: 'plana',   label: 'Plana',         dto: 15, desc: 'Las 24h del día los 365 días al año',
+    { id: 'plana', periodosOpen: [1, 2, 3, 4, 5, 6],   label: 'Plana',         dto: 15, desc: 'Las 24h del día los 365 días al año',
       ventanas: { laborable: [[0, 24]], finde: [[0, 24]] } },
-    { id: 'dia',     label: 'Día',           dto: 20, desc: 'De 8h a 24h todos los días del año',
+    { id: 'dia', periodosOpen: [1, 2, 3, 4, 5],     label: 'Día',           dto: 20, desc: 'De 8h a 24h todos los días del año',
       ventanas: { laborable: [[8, 24]], finde: [[8, 24]] } },
-    { id: 'laboral', label: 'Laboral',       dto: 25, desc: 'De 8h a 24h de lunes a viernes (excepto festivos nacionales)',
+    { id: 'laboral', periodosOpen: [1, 2, 3, 4, 5], label: 'Laboral',       dto: 25, desc: 'De 8h a 24h de lunes a viernes (excepto festivos nacionales)',
       ventanas: { laborable: [[8, 24]], finde: [] } },
-    { id: 'finde',   label: 'Fin de Semana', dto: 45, desc: 'Las 24h del día de sábados, domingos y festivos nacionales',
+    { id: 'finde', periodosOpen: [6],   label: 'Fin de Semana', dto: 45, desc: 'Las 24h del día de sábados, domingos y festivos nacionales',
       ventanas: { laborable: [], finde: [[0, 24]] } },
-    { id: 'noche',   label: 'Noche',         dto: 55, desc: 'De 0h a 8h todos los días del año',
+    { id: 'noche', periodosOpen: [6],   label: 'Noche',         dto: 55, desc: 'De 0h a 8h todos los días del año',
       ventanas: { laborable: [[0, 8]], finde: [[0, 8]] } },
   ],
   extraAnyo: 18,
@@ -108,15 +111,15 @@ export const OPEN_61TD = {
   potencias: ['< 30 kW', '30–50 kW', '50–100 kW', '100–450 kW'],
   baseEnergia: [0.195395, 0.195395, 0.191895, 0.191895],
   modalidades: [
-    { id: 'plana',   label: 'Plana',         dto: 15, desc: 'Las 24h del día los 365 días al año',
+    { id: 'plana', periodosOpen: [1, 2, 3, 4, 5, 6],   label: 'Plana',         dto: 15, desc: 'Las 24h del día los 365 días al año',
       ventanas: { laborable: [[0, 24]], finde: [[0, 24]] } },
-    { id: 'dia',     label: 'Día',           dto: 20, desc: 'De 8h a 24h (L–V) y de 18h a 24h (S, D y festivos nacionales)',
+    { id: 'dia', periodosOpen: [1, 2, 3, 4, 5],     label: 'Día',           dto: 20, desc: 'De 8h a 24h (L–V) y de 18h a 24h (S, D y festivos nacionales)',
       ventanas: { laborable: [[8, 24]], finde: [[18, 24]] } },
-    { id: 'laboral', label: 'Laboral',       dto: 25, desc: 'De 8h a 24h de lunes a viernes (excepto festivos nacionales)',
+    { id: 'laboral', periodosOpen: [1, 2, 3, 4, 5], label: 'Laboral',       dto: 25, desc: 'De 8h a 24h de lunes a viernes (excepto festivos nacionales)',
       ventanas: { laborable: [[8, 24]], finde: [] } },
-    { id: 'finde',   label: 'Fin de Semana', dto: 45, desc: 'Las 24h del día de sábados, domingos y festivos nacionales',
+    { id: 'finde', periodosOpen: [6],   label: 'Fin de Semana', dto: 45, desc: 'Las 24h del día de sábados, domingos y festivos nacionales',
       ventanas: { laborable: [], finde: [[0, 24]] } },
-    { id: 'noche',   label: 'Noche',         dto: 35, desc: 'De 0h a 8h (L–V) y de 0h a 18h (S, D y festivos nacionales)',
+    { id: 'noche', periodosOpen: [6],   label: 'Noche',         dto: 35, desc: 'De 0h a 8h (L–V) y de 0h a 18h (S, D y festivos nacionales)',
       ventanas: { laborable: [[0, 8]], finde: [[0, 18]] } },
   ],
   extraAnyo: 18,

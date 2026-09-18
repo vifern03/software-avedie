@@ -1,9 +1,11 @@
-const GEMINI_URL =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent";
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models/";
+// Extracción de facturas: por defecto 2.5 Pro. Con modelo:"flash" se usa 2.5 Flash
+// con el razonamiento acotado (thinkingBudget), mucho más rápido (< 30 s).
+const MODELOS = { pro: "gemini-2.5-pro", flash: "gemini-2.5-flash" };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function callGeminiWithRetry(apiKey, body, maxAttempts = 3) {
+async function callGeminiWithRetry(apiKey, body, maxAttempts = 3, url = GEMINI_BASE + MODELOS.pro + ":generateContent") {
   let lastError;
   let isRateLimit = false;
 
@@ -21,7 +23,7 @@ async function callGeminiWithRetry(apiKey, body, maxAttempts = 3) {
     const timeout = setTimeout(() => controller.abort(), 55000);
 
     try {
-      const response = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
+      const response = await fetch(`${url}?key=${apiKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -78,7 +80,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { text, history = [], file, json = false } = req.body;
+    const { text, history = [], file, json = false, modelo = "pro", thinkingBudget } = req.body;
 
     const contents = history.map((msg) => {
       if (msg.parts) return msg;
@@ -105,10 +107,12 @@ export default async function handler(req, res) {
         temperature: 0,
         maxOutputTokens: 32768,
         ...(json ? { responseMimeType: "application/json" } : {}),
+        ...(Number.isInteger(thinkingBudget) ? { thinkingConfig: { thinkingBudget } } : {}),
       },
     };
+    const url = GEMINI_BASE + (MODELOS[modelo] || MODELOS.pro) + ":generateContent";
 
-    const data = await callGeminiWithRetry(apiKey, geminiBody);
+    const data = await callGeminiWithRetry(apiKey, geminiBody, 3, url);
 
     // Gemini 2.5 Pro devuelve partes de "thinking" con { thought: true }.
     // Tomamos la primera parte que NO sea thinking para obtener el texto real.

@@ -37,23 +37,29 @@ de fecha fija no sustituibles (Viernes Santo no cuenta).
 Cada factura se calcula con el calendario de **sus fechas de consumo**, no con el de la
 fecha de emisión ni el mes actual.
 
-## Open: horas Open ≠ periodos
+## Open: reparto por periodos
 
-`energía = kWh horas Open × precio Open + kWh resto × precio No Open`, con los precios de
-la matriz publicada (ya incluyen descuentos; No Open = base × 0,82, no el precio base).
+`energía = kWh a precio Open + kWh a precio No Open`, con los precios de la matriz
+publicada (ya incluyen descuentos; No Open = base × 0,82, no el precio base).
 
-P1–P5 son siempre laborables de 8 a 24 h. Con los totales P1–P6:
+Criterio comercial (responsable, 18/09/2026), por periodos:
 
-- **Plana** y **Laboral**: calculables.
-- **Día, Fin de Semana y Noche**: reparten el P6 (noches laborables y fines de semana). Se
-  necesita la curva horaria (CSV) o el desglose del P6 en 4 franjas. Sin esos datos, la
-  modalidad queda como "Faltan datos": no se calcula ni se recomienda.
+| Modalidad | Precio Open en | Precio No Open en |
+|---|---|---|
+| Plana | P1–P6 | — |
+| Día | P1–P5 | P6 |
+| Laboral | P1–P5 | P6 |
+| Fin de Semana | P6 | P1–P5 |
+| Noche | P6 | P1–P5 |
 
-Con curva, se usa la fracción Open de cada periodo aplicada al kWh **facturado**.
+Opcional: con curva horaria (CSV) o desglose del P6 en 4 franjas se calcula hora a hora con
+las franjas exactas del PDF (p. ej. Noche 3.0TD = 0–8 h todos los días).
 
-Tramo de potencia: el PDF no concreta qué potencia lo rige si varía por periodo. Si P1 y la
-máxima caen en tramos distintos se usa el de precio más alto y se avisa.
-Open 6.1TD: "hasta 450 kW". Un suministro con alguna potencia > 450 kW no es elegible.
+Tramo de energía: según la potencia contratada **máxima** del suministro (el precio de la
+energía depende del tramo). Open 6.1TD: "hasta 450 kW". Por encima no es elegible; el
+comercial puede marcar "Simular igualmente", que usa el último tramo y lo rotula en el informe.
+
+Números: "1.200" se interpreta como mil doscientos (formato español).
 
 ## Qué entra en la comparación
 
@@ -67,6 +73,9 @@ Open 6.1TD: "hasta 450 kW". Un suministro con alguna potencia > 450 kW no es ele
 - La anualización es una extrapolación lineal de un único periodo y se rotula como tal.
 
 ## Extracción con Gemini
+
+Modelo: Gemini 2.5 Flash con `thinkingBudget: 512` y salida JSON (12–20 s por factura en las
+pruebas reales, 25/25 campos correctos en las 3 facturas). Pro sigue disponible con `modelo: "pro"`.
 
 `src/lib/energia/extraccion.js`. Gemini solo transcribe valores y unidades impresos
 (fechas de emisión y de consumo por separado, lecturas y consumo facturado por separado,

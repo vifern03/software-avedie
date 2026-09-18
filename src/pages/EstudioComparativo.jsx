@@ -67,7 +67,13 @@ const PROXY_URL = '/api/gemini';
 /* ── Helpers ─────────────────────────────────────────────────────────────────── */
 
 function n(v, fb = 0) {
-  const x = parseFloat(String(v ?? '').replace(',', '.'));
+  if (v === null || v === undefined) return fb;
+  const s = String(v).trim().replace(/\s/g, '');
+  if (!s) return fb;
+  // "1.200" o "27.263" = miles (formato español); "0.153" o "1,5" = decimales.
+  const t = s.includes(',') ? s.replace(/\./g, '').replace(',', '.')
+    : /^\d{1,3}(\.\d{3})+$/.test(s) ? s.replace(/\./g, '') : s;
+  const x = parseFloat(t);
   return isNaN(x) ? fb : x;
 }
 

@@ -22,53 +22,39 @@ const APOLO = {
 };
 const DESGLOSE_APOLO = { lab0_8: 4000, d0_8: 2000, d8_18: 2500, d18_24: 1428 };
 
-test('Open 3.0TD Plana y Laboral se calculan con agregados P1–P6 (factura B)', () => {
-  const plana = calcularOfertaLuz({ ...APOLO, modalidadId: 'plana' });
+test('Open 3.0TD por periodos (factura B): Plana todos; Día/Laboral P1–P5; Fin de Semana/Noche solo P6', () => {
+  const t = (m) => calcularOfertaLuz({ ...APOLO, modalidadId: m });
+  const plana = t('plana');
   assert.equal(plana.estado, ESTADO.OK);
-  near(plana.total, 4901.64);
-  near(plana.energia / 22254, 0.153391, 1e-9); // precio publicado, sin re-descontar
-  const lab = calcularOfertaLuz({ ...APOLO, modalidadId: 'laboral' });
-  assert.equal(lab.estado, ESTADO.OK);
-  near(lab.total, 4976.36);
-  near(lab.kwhOpen, 12326, 1e-9);
-  near(lab.kwhNoOpen, 9928, 1e-9);
+  near(plana.total, 4892.16);
+  near(plana.energia / 22254, 0.153056, 1e-9); // precio publicado, sin re-descontar
+  near(t('dia').total, 5145.78);
+  near(t('laboral').total, 4966.71);
+  near(t('finde').total, 4563.99);
+  near(t('noche').total, 4275.52);
+  near(t('noche').kwhOpen, 9928, 1e-9);
+  near(t('laboral').kwhOpen, 12326, 1e-9);
+  assert.equal(t('noche').metodoReparto, 'periodos');
 });
 
-test('tramo de potencia ambiguo (P1 49 kW vs máx. 63 kW) → tramo de precio más alto y aviso', () => {
+test('tramo de energía según la potencia contratada máxima (63 kW → 50–100 kW)', () => {
   const r = calcularOfertaLuz({ ...APOLO, modalidadId: 'plana' });
-  assert.equal(r.tramo, '30–50 kW');
-  assert.ok(r.avisos.some(a => a.includes('Tramo de potencia ambiguo')));
+  assert.equal(r.tramo, '50–100 kW');
+  assert.equal(r.precioOpen, 0.153056);
+  const bajo = calcularOfertaLuz({ ...APOLO, modalidadId: 'plana', potenciasKw: [20, 20, 20, 20, 20, 25] });
+  assert.equal(bajo.tramo, '15–30 kW');
+  assert.equal(bajo.precioOpen, 0.153391);
+  const alto = calcularOfertaLuz({ ...APOLO, modalidadId: 'plana', potenciasKw: [500, 500, 500, 500, 500, 1200] });
+  assert.equal(alto.tramo, '> 100 kW');
 });
 
-test('Día, Fin de Semana y Noche sin curva ni desglose → datos insuficientes (no se inventa reparto)', () => {
-  for (const m of ['dia', 'finde', 'noche']) {
-    const r = calcularOfertaLuz({ ...APOLO, modalidadId: m });
-    assert.equal(r.estado, ESTADO.DATOS_INSUFICIENTES, m);
-    assert.equal(r.total, undefined);
-  }
-});
-
-test('Open 3.0TD con desglose del P6: Día, Noche y Fin de Semana', () => {
-  near(calcularOfertaLuz({ ...APOLO, modalidadId: 'dia', desgloseP6: DESGLOSE_APOLO }).total, 4927.06);
-  near(calcularOfertaLuz({ ...APOLO, modalidadId: 'noche', desgloseP6: DESGLOSE_APOLO }).total, 4912.73);
-  near(calcularOfertaLuz({ ...APOLO, modalidadId: 'finde', desgloseP6: DESGLOSE_APOLO }).total, 5096.88);
+test('Open 3.0TD con desglose del P6: cálculo hora a hora (Día)', () => {
+  near(calcularOfertaLuz({ ...APOLO, modalidadId: 'dia', desgloseP6: DESGLOSE_APOLO }).total, 4917.52);
 });
 
 test('desglose del P6 que no cuadra con el P6 facturado → bloqueo', () => {
   const r = calcularOfertaLuz({ ...APOLO, modalidadId: 'dia', desgloseP6: { ...DESGLOSE_APOLO, d8_18: 100 } });
   assert.equal(r.estado, ESTADO.DATOS_INSUFICIENTES);
-});
-
-test('la regla antigua "P1–P5 Open, P6 No Open" solo es válida para Laboral', () => {
-  const n = (p, id) => necesidadesModalidad(p.modalidades.find(m => m.id === id));
-  assert.equal(n(OPEN_30TD, 'laboral').necesitaDesgloseP6, false);
-  assert.equal(n(OPEN_30TD, 'plana').necesitaDesgloseP6, false);
-  for (const id of ['dia', 'finde', 'noche']) {
-    assert.equal(n(OPEN_30TD, id).necesitaDesgloseP6, true, `3.0 ${id}`);
-    assert.equal(n(OPEN_61TD, id).necesitaDesgloseP6, true, `6.1 ${id}`);
-  }
-  assert.equal(n(OPEN_30TD, 'noche').claseP1P5, 'no');
-  assert.equal(n(OPEN_30TD, 'finde').claseP1P5, 'no');
 });
 
 /* Curva sintética: 1 kWh cada hora, semana 14–20/09/2026 (septiembre, B1).
@@ -112,9 +98,21 @@ test('factura A (6.1TD, P6 = 451 kW) → Open 6.1TD no elegible, sin tocar poten
   });
   assert.equal(r.estado, ESTADO.NO_ELEGIBLE);
   assert.ok(r.motivos[0].includes('451'));
+  assert.equal(r.superaLimite, true);
 });
 
-test('Open 6.1TD sintético (280 kW en todos los periodos) — Plana, Día y Noche', () => {
+test('451 kW con simulación forzada: último tramo y aviso explícito', () => {
+  const r = calcularOfertaLuz({
+    producto: OPEN_61TD, modalidadId: 'plana', potenciasKw: [280, 280, 280, 280, 280, 451], dias: 31,
+    periodo: { desde: '2025-11-30', hasta: '2025-12-31' }, kwhPeriodo: [27263, 16448, 0, 0, 0, 31048],
+    ivaRate: 0.21, fechaOferta: HOY, forzarElegibilidad: true,
+  });
+  assert.equal(r.estado, ESTADO.OK);
+  assert.equal(r.tramo, '100–450 kW');
+  assert.ok(r.avisos.some(a => a.includes('FUERA DE CONDICIONES')));
+});
+
+test('Open 6.1TD sintético (280 kW) — Plana y cálculo hora a hora con desglose', () => {
   const base = {
     producto: OPEN_61TD, potenciasKw: [280, 280, 280, 280, 280, 280], dias: 31,
     periodo: { desde: '2025-11-30', hasta: '2025-12-31' }, kwhPeriodo: [27263, 16448, 0, 0, 0, 31048],
@@ -124,6 +122,9 @@ test('Open 6.1TD sintético (280 kW en todos los periodos) — Plana, Día y Noc
   near(calcularOfertaLuz({ ...base, modalidadId: 'plana' }).total, 14404.42);
   near(calcularOfertaLuz({ ...base, modalidadId: 'dia', desgloseP6: d }).total, 14810.04);
   near(calcularOfertaLuz({ ...base, modalidadId: 'noche', desgloseP6: d }).total, 14834.90);
+  // por periodos (sin desglose): Noche = P6 a 0,090191 y P1–P5 a 0,157354
+  const noche = calcularOfertaLuz({ ...base, modalidadId: 'noche' });
+  near(noche.energia, 31048 * 0.090191 + (27263 + 16448) * 0.157354, 1e-6);
 });
 
 test('límites de potencia: 450 kW exactos elegible; 15 kW no entra en Open 3.0TD', () => {
@@ -206,11 +207,11 @@ test('ahorro: fórmula sobre el coste actual, negativo permitido, coste actual c
   assert.equal(extrapolarAnual(10, 0), null);
 });
 
-test('factura C (Plenitude julio 2025) con Open 3.0TD Plana: resultado desfavorable, no se fuerza ahorro', () => {
+test('factura C (Plenitude julio 2025) con Open 3.0TD Plana: ahorro casi nulo, sin forzar', () => {
   const r = calcularOfertaLuz({
     ...APOLO, kwhPeriodo: [6443, 4650, 0, 0, 0, 6964], periodo: { desde: '2025-07-01', hasta: '2025-07-31' },
     mantenidos: { excesos: 43.70, reactiva: 122.97, alquiler: 8.15, bonoSocial: 0 }, modalidadId: 'plana',
   });
-  near(r.total, 4067.59);
-  assert.ok(calcularAhorro(4060.28, r.total).ahorroEur < 0);
+  near(r.total, 4059.89);
+  near(calcularAhorro(4060.28, r.total).ahorroEur, 0.39, 0.01);
 });
