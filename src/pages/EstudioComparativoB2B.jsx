@@ -1,9 +1,11 @@
 import { useState, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Upload, FileText, Printer, Download, X, AlertTriangle, Loader2, Factory, Info, CheckCircle2, Ban } from 'lucide-react';
-import { exportElementToPdf, slugifyFilename } from '../lib/exportPdf';
+import { saveAs } from 'file-saver';
+import { slugifyFilename } from '../lib/exportPdf';
+import { construirInforme, generarPdfInforme, eurES, numES } from '../lib/energia/informe';
 import { OPEN_30TD, OPEN_61TD, SIMPLY_30TD, SIMPLY_61TD, INDEXADA_30TD, INDEXADA_61TD } from '../data/tarifasB2B';
-import { calcularOfertaLuz, calcularAhorro, extrapolarAnual, ESTADO, FRANJAS_P6, tramosPorPotencia } from '../lib/energia/motor';
+import { calcularOfertaLuz, ESTADO, FRANJAS_P6, tramosPorPotencia } from '../lib/energia/motor';
 import { PROMPT_EXTRACCION_LUZ, validarExtraccion, parsearRespuestaModelo } from '../lib/energia/extraccion';
 import { parsearCurvaCSV } from '../lib/energia/curva';
 import { extraerFactura, ExtraccionTimeout, ESPERA_MAX_MS } from '../lib/energia/geminiCliente';
@@ -49,6 +51,31 @@ const kwhFmt = (v) => v.toLocaleString('es-ES', { maximumFractionDigits: 2 }) + 
 function PBadge({ p }) {
   const colors = { P1: 'bg-blue-600', P2: 'bg-blue-500', P3: 'bg-blue-400', P4: 'bg-blue-300', P5: 'bg-blue-200 !text-blue-700', P6: 'bg-blue-100 !text-blue-700' };
   return <span className={`text-[10px] font-bold text-white rounded px-1.5 py-0.5 leading-none ${colors[p] || 'bg-gray-400'}`}>{p}</span>;
+}
+
+function SeccionInforme({ titulo, filas, subtotal }) {
+  return (
+    <div className="px-6 pt-5 pb-4">
+      <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-3">{titulo}</p>
+      <div className="space-y-1.5">
+        {filas.map((f, k) => (
+          <div key={k} className="flex justify-between items-baseline text-sm gap-4">
+            <span className="text-google-gray">
+              <span className="text-google-dark">{f.concepto}</span>
+              {f.detalle && <span className="ml-2 text-[12px]">{f.detalle}</span>}
+            </span>
+            <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap">{eurES(f.importe)}</span>
+          </div>
+        ))}
+        {subtotal && (
+          <div className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-2 mt-1">
+            <span className="text-xs font-semibold text-google-dark">{subtotal[0]}</span>
+            <span className="text-sm font-bold text-google-dark tabular-nums">{eurES(subtotal[1])}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 const ESTADO_UI = {
@@ -148,7 +175,7 @@ export default function EstudioComparativoB2B() {
         next.alquiler = String(d.importes.alquiler ?? 0);
         next.bonoSocial = String(d.importes.bonoSocial ?? 0);
         next.facturaActual = d.importes.total != null ? String(d.importes.total) : '';
-        next.otrosNoComparables = d.importes.otrosServicios ? String(Math.round(d.importes.otrosServicios * (1 + ivaRate) * 100) / 100) : '0';
+        next.otrosNoComparables = '0'; // se compara la factura completa; solo el comercial puede excluir algo expresamente
         next.iva = String(ivaRate);
         next.excedentesKwh = String(d.excedentesKwh ?? 0);
         FRANJAS_P6.forEach(fr => { next[`p6_${fr.id}`] = ''; });
@@ -189,12 +216,13 @@ export default function EstudioComparativoB2B() {
   }
 
   async function handleDownloadPdf() {
+    if (!informe) return;
     setIsExportingPdf(true);
     setPdfError('');
     try {
-      const cliente = form.cliente.trim() || 'informe';
+      const blob = await generarPdfInforme(informe);
       const fechaCorta = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }).replace(/\//g, '-');
-      await exportElementToPdf('ecb2b-informe', `Comparativa_${slugifyFilename(cliente)}_${fechaCorta}.pdf`);
+      saveAs(blob, `Comparativa_${slugifyFilename(form.cliente.trim() || 'informe')}_${fechaCorta}.pdf`);
     } catch {
       setPdfError('No se pudo generar el PDF. Prueba de nuevo o usa "Imprimir informe".');
     } finally {
@@ -236,10 +264,7 @@ export default function EstudioComparativoB2B() {
 
   const factActual = n(form.facturaActual);
   const otros = n(form.otrosNoComparables);
-  const costeActual = factActual - otros;
   const ok = resultado?.estado === ESTADO.OK;
-  const ahorro = ok ? calcularAhorro(costeActual, resultado.total) : { ahorroEur: null, ahorroPct: null };
-  const extrap = ok ? extrapolarAnual(ahorro.ahorroEur, entrada.dias) : null;
   const isReady = factActual > 0 && entrada.dias > 0 && kwhPeriodo.some(x => x > 0) && potenciasKw.some(x => x > 0);
 
   const modalidadSel = producto.modalidades?.find(m => m.id === modalidadId);
@@ -248,6 +273,22 @@ export default function EstudioComparativoB2B() {
   const today = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
   const tituloOferta = producto.modalidades ? `${producto.nombre} — ${modalidadSel?.label}` : producto.nombre;
   const incidenciasVisibles = incidencias.filter(i => i.nivel !== 'info');
+
+  // Limitaciones materiales que deben constar brevemente en el informe.
+  const limitaciones = [];
+  if (ok) {
+    if (vig !== 'vigente') limitaciones.push(`${ETIQUETA_ESTADO[vig]}: ${producto.contratacion?.incidencia || `ventana de contratación ${producto.validez}`}.`);
+    const nota450 = resultado.avisos.find(a => a.startsWith('Simulación con precios del tramo'));
+    if (nota450) limitaciones.push(nota450);
+    const manual = resultado.avisos.find(a => a.includes('elegido manualmente'));
+    if (manual) limitaciones.push(manual);
+    if (producto.energiaA) limitaciones.push('Precio de energía indexado calculado con el valor OMIE introducido.');
+  }
+  const informe = ok && isReady ? construirInforme({
+    resultado, oferta: tituloOferta, cliente: form.cliente, cups: form.cups, asesor: asesorDisplay,
+    fechaInforme: today, periodo, dias: entrada.dias, fechaEmision: form.fechaEmision,
+    facturaOriginal: factActual, otrosExcluidos: otros, limitaciones,
+  }) : null;
   const incidenciasInfo = incidencias.filter(i => i.nivel === 'info');
 
   /* ════════════ RENDER ════════════ */
@@ -266,7 +307,7 @@ export default function EstudioComparativoB2B() {
         {/* ── COLUMNA IZQUIERDA ── */}
         <div className="space-y-4 print:hidden">
 
-          {isReady && (
+          {informe && (
             <div className="flex gap-3 justify-end">
               <button onClick={handleDownloadPdf} disabled={isExportingPdf}
                 className="flex items-center gap-2 bg-white border border-google-border text-google-dark text-sm font-medium px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-60 disabled:cursor-wait">
@@ -556,113 +597,121 @@ export default function EstudioComparativoB2B() {
               <p className="text-xs text-google-gray max-w-xs">Necesita días facturados, consumo, potencias contratadas y total de la factura actual.</p>
             </div>
           ) : (
-            <div id="ecb2b-informe" className="bg-white border border-google-border rounded-xl shadow-sm overflow-hidden print:border-0 print:shadow-none print:rounded-none">
-
-              <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-8 pt-7 pb-6 text-white">
-                <div className="flex items-start justify-between gap-4 mb-4">
-                  <div className="min-w-0">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-300 mb-1.5">GRUPO AVEDIE · COMPARATIVA ENERGÉTICA B2B</p>
-                    <h3 className="text-xl font-bold leading-tight">{form.cliente || 'Sin nombre'}</h3>
-                    {form.cups && <p className="text-xs text-gray-300 font-mono mt-1">{form.cups}</p>}
-                  </div>
-                  <div className="bg-white rounded-xl px-4 py-3 flex-shrink-0"><img src="/endesa-logo.png" alt="Endesa" className="h-14 w-auto object-contain" /></div>
-                </div>
-                <div className="flex flex-wrap gap-2 text-[11px]">
-                  <span className="bg-white/20 px-3 py-1.5 rounded-full font-semibold">{tituloOferta}</span>
-                  {ok && resultado.tramo && <span className="bg-white/20 px-3 py-1.5 rounded-full">Tramo {resultado.tramo}</span>}
-                  {periodo && <span className="bg-white/20 px-3 py-1.5 rounded-full">Consumo {fmtFechaES(periodo.desde)} – {fmtFechaES(periodo.hasta)}</span>}
-                  <span className="bg-white/20 px-3 py-1.5 rounded-full">{entrada.dias} días</span>
-                  {form.fechaEmision && <span className="bg-white/20 px-3 py-1.5 rounded-full">Factura emitida {fmtFechaES(form.fechaEmision)}</span>}
-                </div>
-                <p className="text-xs text-gray-300 mt-3">{today}{asesorDisplay ? ` · ${asesorDisplay}` : ''} · Oferta contratable {producto.validez}</p>
-              </div>
-
-              {!ok ? (
-                <div className="mx-6 my-6 rounded-xl border border-amber-300 bg-amber-50 px-5 py-4">
-                  <p className="text-sm font-bold text-amber-900 flex items-center gap-2"><Ban size={16} /> {ESTADO_UI[resultado.estado].label}: no se muestra coste ni ahorro</p>
+            <div className="space-y-4">
+              {!ok || !informe ? (
+                <div className="bg-white border border-amber-300 rounded-xl shadow-sm px-5 py-4">
+                  <p className="text-sm font-bold text-amber-900 flex items-center gap-2"><Ban size={16} /> {ESTADO_UI[resultado.estado].label}: no se puede emitir el informe</p>
                   <ul className="mt-2 space-y-1 text-[12px] text-amber-900 list-disc pl-5">
                     {resultado.motivos.map((m, k) => <li key={k}>{m}</li>)}
                   </ul>
                 </div>
               ) : (
-                <>
-                  <div className="px-6 pt-5 pb-3">
-                    <table className="w-full text-sm">
-                      <tbody>
-                        {resultado.lineas.map((l, k) => (
-                          <tr key={k} className="border-b border-gray-50 align-top">
-                            <td className="py-1.5 pr-3 text-google-dark">
-                              {l.concepto}{l.origen === 'factura_actual' && <span className="text-google-gray"> †</span>}
-                              <div className="text-[11px] text-google-gray">{l.detalle}</div>
-                            </td>
-                            <td className={`py-1.5 text-right tabular-nums font-semibold whitespace-nowrap ${l.importe < 0 ? 'text-green-700' : 'text-google-dark'}`}>{eur(l.importe)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  <div className="px-6 py-3 flex justify-between items-center border-t-2 border-gray-200">
-                    <span className="font-bold text-google-dark">TOTAL SIMULADO CON ENDESA</span>
-                    <span className="text-2xl font-bold text-google-blue tabular-nums">{eur(resultado.total)}</span>
+                <div id="ecb2b-informe" className="bg-white border border-google-border rounded-xl shadow-sm overflow-hidden print:border-0 print:shadow-none print:rounded-none">
+                  {/* Cabecera (estilo del informe original) */}
+                  <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-8 pt-8 pb-7 text-white relative">
+                    <div className="flex items-start justify-between gap-4 mb-4">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-300 mb-1.5">GRUPO AVEDIE · COMPARATIVA DE SUMINISTRO ELÉCTRICO</p>
+                        <h3 className="text-xl font-bold leading-tight">{informe.cliente}</h3>
+                        {informe.cups && <p className="text-xs text-gray-300 font-mono mt-1">{informe.cups}</p>}
+                      </div>
+                      <div className="flex-shrink-0">
+                        <div className="bg-white rounded-xl px-4 py-3">
+                          <img src="/endesa-logo.png" alt="Endesa" className="h-14 w-auto object-contain" />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2.5 pr-40">
+                      <span className="inline-flex items-center bg-white/20 text-white text-[11px] font-semibold leading-none px-3 py-1.5 rounded-full">{informe.oferta}</span>
+                      {informe.tramo && <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">Tramo {informe.tramo}</span>}
+                      {informe.consumo && <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">Consumo {informe.consumo}</span>}
+                      <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">{informe.dias} días</span>
+                    </div>
+                    <div className="absolute bottom-6 right-8 text-right text-xs">
+                      <p className="font-semibold text-white">{informe.fechaInforme}</p>
+                      {informe.asesor && <p className="text-gray-300 mt-0.5">{informe.asesor}</p>}
+                    </div>
                   </div>
 
-                  <div className="mx-4 mb-4 rounded-xl border border-gray-200 overflow-hidden">
-                    <div className="grid grid-cols-2 gap-3 p-4 bg-gray-50">
-                      <div className="bg-white rounded-xl p-3 text-center border border-gray-200">
-                        <p className="text-[10px] text-google-gray mb-1">Factura actual comparable</p>
-                        <p className="text-xl font-bold text-google-dark tabular-nums">{eur(costeActual)}</p>
-                        {otros > 0 && <p className="text-[9px] text-google-gray mt-0.5">Total {eur(factActual)} − {eur(otros)} no energéticos</p>}
-                      </div>
-                      <div className="bg-white rounded-xl p-3 text-center border border-blue-200">
-                        <p className="text-[10px] text-google-blue font-medium mb-1">Con Endesa (simulado)</p>
-                        <p className="text-xl font-bold text-google-blue tabular-nums">{eur(resultado.total)}</p>
-                      </div>
-                    </div>
-                    <div className={`px-5 py-4 text-center ${ahorro.ahorroEur >= 0 ? 'bg-green-600' : 'bg-red-600'}`}>
-                      <p className="text-[10px] font-bold text-white/80 uppercase tracking-widest mb-1">
-                        {ahorro.ahorroEur >= 0 ? 'Ahorro en este periodo facturado' : 'Sobrecoste en este periodo facturado'}
-                      </p>
-                      <p className="text-3xl font-bold text-white tabular-nums">{eur(Math.abs(ahorro.ahorroEur))}</p>
-                      {ahorro.ahorroPct != null && <p className="text-sm text-white/90 mt-1">{Math.abs(ahorro.ahorroPct).toLocaleString('es-ES', { maximumFractionDigits: 1 })} % {ahorro.ahorroEur >= 0 ? 'menos' : 'más'} que la factura actual</p>}
-                    </div>
-                    {extrap != null && (
-                      <p className="text-[11px] text-google-gray px-4 py-2.5 bg-white">
-                        Extrapolación lineal a 365 días: {eur(extrap)}. <strong>No es un ahorro anual garantizado</strong>: se basa en un único periodo de {entrada.dias} días; para un estudio anual se necesitan 12 facturas o la curva anual.
-                      </p>
-                    )}
+                  <SeccionInforme titulo="Término de Potencia" filas={informe.potencia} subtotal={['Subtotal Potencia', informe.subtotalPotencia]} />
+                  <div className="border-t border-gray-100 mx-6" />
+                  <SeccionInforme titulo="Término de Energía" filas={[
+                    ...informe.energia,
+                    ...(informe.excedentes ? [{ concepto: 'Compensación de excedentes de autoconsumo', detalle: '', importe: -informe.excedentes }] : []),
+                  ]} subtotal={['Subtotal Energía', informe.subtotalEnergia - (informe.excedentes || 0)]} />
+                  {informe.adicionales.length > 0 && (
+                    <>
+                      <div className="border-t border-gray-100 mx-6" />
+                      <SeccionInforme titulo="Otros conceptos de la factura" filas={informe.adicionales} />
+                    </>
+                  )}
+                  <div className="border-t border-gray-100 mx-6" />
+                  <SeccionInforme titulo="Impuestos y alquiler" filas={informe.impuestos} />
+
+                  <div className="border-t-2 border-gray-200 mx-6" />
+                  <div className="px-6 py-4 flex justify-between items-center">
+                    <span className="font-bold text-google-dark text-base">TOTAL SIMULADO CON ENDESA</span>
+                    <span className="text-2xl font-bold text-google-blue tabular-nums">{eurES(informe.totalOferta)}</span>
                   </div>
-                </>
+
+                  {/* Conclusiones (estilo original) */}
+                  <div className="mx-4 mb-4 rounded-xl overflow-hidden border border-green-200">
+                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 px-5 pt-4 pb-4">
+                      <p className="text-[10px] font-bold text-green-700 uppercase tracking-wider mb-4">Conclusiones del Estudio</p>
+                      <div className="grid grid-cols-2 gap-3 mb-4">
+                        <div className="bg-white rounded-xl p-3 text-center border border-green-100">
+                          <p className="text-[10px] text-google-gray mb-1">Factura original</p>
+                          <p className="text-xl font-bold text-google-dark tabular-nums">{eurES(informe.facturaOriginal)}</p>
+                        </div>
+                        <div className="bg-white rounded-xl p-3 text-center border border-blue-200">
+                          <p className="text-[10px] text-google-blue font-medium mb-1">Con Endesa (simulado)</p>
+                          <p className="text-xl font-bold text-google-blue tabular-nums">{eurES(informe.totalOferta)}</p>
+                        </div>
+                      </div>
+                      {informe.otrosExcluidos > 0 && (
+                        <p className="text-[11px] text-google-gray mb-3">Comparación sobre {eurES(informe.comparable)}: se excluyen {eurES(informe.otrosExcluidos)} de servicios ajenos al suministro.</p>
+                      )}
+                      <div className={`rounded-xl px-5 py-4 text-center ${informe.ahorroEur >= 0 ? 'bg-green-500' : 'bg-red-500'}`}>
+                        <p className="text-[10px] font-bold text-white/80 uppercase tracking-widest mb-1">
+                          {informe.ahorroEur >= 0 ? 'Ahorro en este período facturado' : 'Sobrecoste en este período facturado'}
+                        </p>
+                        <p className="text-4xl font-bold text-white tabular-nums">{eurES(Math.abs(informe.ahorroEur))}</p>
+                        {informe.ahorroPct != null && (
+                          <p className="text-sm font-medium text-white/90 mt-2">
+                            {numES(Math.abs(informe.ahorroPct), 2)} % {informe.ahorroEur >= 0 ? 'menos' : 'más'} que la factura original
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="px-6 pb-5 space-y-1">
+                    {informe.notas.map((n, k) => <p key={k} className="text-[11px] text-google-gray">{n}</p>)}
+                  </div>
+                </div>
               )}
 
-              {resultadosModalidad && (
-                <div className="px-6 pb-4">
-                  <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-2">Modalidades Open con estos datos</p>
-                  <table className="w-full text-xs">
+              {/* ── Panel interno del comercial (no se imprime ni se exporta) ── */}
+              <div className="bg-white border border-dashed border-google-border rounded-xl p-5 print:hidden" id="ecb2b-interno">
+                <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-2">Detalles internos · no se incluyen en el PDF</p>
+                {resultadosModalidad && (
+                  <table className="w-full text-xs mb-3">
                     <tbody>
                       {resultadosModalidad.map(({ modalidad, r }) => (
                         <tr key={modalidad.id} className={`border-b border-gray-50 ${modalidad.id === modalidadId ? 'bg-blue-50/60' : ''}`}>
                           <td className="py-1.5 pr-2 font-medium text-google-dark whitespace-nowrap">{modalidad.label}</td>
                           <td className="py-1.5 pr-2"><span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${ESTADO_UI[r.estado].cls}`}>{ESTADO_UI[r.estado].label}</span></td>
-                          <td className="py-1.5 text-right tabular-nums">{r.estado === ESTADO.OK ? eur(r.total) : <span className="text-google-gray">no comparable</span>}</td>
-                          <td className="py-1.5 pl-2 text-right">{mejor?.modalidad.id === modalidad.id && <span className="text-[10px] text-green-700 font-semibold inline-flex items-center gap-1"><CheckCircle2 size={11} />menor coste calculable</span>}</td>
+                          <td className="py-1.5 text-right tabular-nums">{r.estado === ESTADO.OK ? eurES(r.total) : <span className="text-google-gray">no comparable</span>}</td>
+                          <td className="py-1.5 pl-2 text-right">{mejor?.modalidad.id === modalidad.id && <span className="text-[10px] text-green-700 font-semibold inline-flex items-center gap-1"><CheckCircle2 size={11} />menor coste</span>}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  <p className="text-[10px] text-google-gray mt-1.5">Las modalidades no calculables no se comparan ni se recomiendan.</p>
-                </div>
-              )}
-
-              <div className="px-6 pb-6">
-                <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-2">Supuestos y avisos</p>
+                )}
                 <ul className="space-y-1 text-[11px] text-google-dark list-disc pl-5">
-                  <li>Simulación: oferta contratable {producto.validez} aplicada al consumo facturado{periodo ? ` del ${fmtFechaES(periodo.desde)} al ${fmtFechaES(periodo.hasta)}` : ''}. No es el precio que se habría contratado entonces ni garantiza el ahorro futuro.</li>
-                  <li>Precios Endesa sin impuestos que ya incluyen peajes, cargos y los descuentos publicados; no se vuelven a descontar.</li>
-                  <li>† Conceptos mantenidos de la factura actual (no dependen de la comercializadora; no recalculados).</li>
-                  {vig !== 'vigente' && <li className="text-amber-800">{ETIQUETA_ESTADO[vig]}{producto.contratacion?.incidencia ? `: ${producto.contratacion.incidencia}` : ''}</li>}
                   {(resultado?.avisos || []).map((a, k) => <li key={`a${k}`} className="text-amber-800">{a}</li>)}
                   {incidenciasVisibles.map((i, k) => <li key={`i${k}`} className="text-amber-800">Factura: {i.mensaje}</li>)}
-                  {form.notas && <li>Nota: {form.notas}</li>}
+                  {vig !== 'vigente' && <li className="text-amber-800">{ETIQUETA_ESTADO[vig]}{producto.contratacion?.incidencia ? `: ${producto.contratacion.incidencia}` : ''}</li>}
                 </ul>
               </div>
             </div>

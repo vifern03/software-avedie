@@ -205,11 +205,12 @@ export function repartirOpen({ modalidad, kwhPeriodo, desgloseP6, curva, periodo
   // `periodosOpen` van a precio Open y el resto a precio No Open.
   const per = modalidad.periodosOpen || [1, 2, 3, 4, 5, 6];
   let kOpen = 0, kNo = 0;
+  const porPeriodo = kwh.map((k, i) => ({ periodo: i + 1, kwh: k, open: per.includes(i + 1) }));
   kwh.forEach((k, i) => { if (per.includes(i + 1)) kOpen += k; else kNo += k; });
   if (modalidad.id !== 'plana') {
     avisos.push(`Modalidad ${modalidad.label}: precio Open aplicado a ${per.map(x => 'P' + x).join(', ')} y precio No Open al resto (reparto por periodos). Para el cálculo hora a hora exacto, carga la curva horaria.`);
   }
-  return { ok: true, kOpen, kNo, metodo: 'periodos', avisos };
+  return { ok: true, kOpen, kNo, metodo: 'periodos', avisos, porPeriodo };
 }
 
 /* ══════════════════════════ Oferta eléctrica ══════════════════════════ */
@@ -274,16 +275,19 @@ export function calcularOfertaLuz(i) {
   const terminos = p.id === 'tempo' ? p.potencia : p.potenciaTerminos;
   const lineas = [];
   let potencia = 0;
+  const detallePotencia = [];
   terminos.forEach((t, idx) => {
     const kw = pots[idx] || 0;
     const imp = kw * dias * (t.anyo / 365);
     potencia += imp;
+    if (kw > 0) detallePotencia.push({ periodo: t.p, kw, dias, precioDia: t.anyo / 365, importe: imp });
     if (kw > 0) lineas.push({ concepto: `Potencia ${t.p}`, detalle: `${kw} kW × ${dias} d × ${es6(t.anyo / 365)} €/kW·día`, importe: imp, origen: 'oferta' });
   });
 
   // ── Energía
   let energia = 0;
   let precioInfo = {};
+  const detalleEnergia = []; // { etiqueta, kwh, precio, importe }
   const totalKwh = sum(kwh);
   if (p.modalidades) {
     const tr = seleccionarTramoOpen(p, pots, i.tramoIdx);
@@ -302,6 +306,17 @@ export function calcularOfertaLuz(i) {
     avisos.push(...rep.avisos);
     const eOpen = rep.kOpen * pOpen, eNo = rep.kNo * pNo;
     energia = eOpen + eNo;
+    if (rep.porPeriodo) {
+      // Desglose por periodo: cada periodo a su precio (Open o No Open según la modalidad)
+      rep.porPeriodo.filter(x => x.kwh > 0).forEach(x => {
+        const pr = x.open ? pOpen : pNo;
+        const et = modalidad.id === 'plana' ? `P${x.periodo}` : `P${x.periodo} (${x.open ? 'horas Open' : 'horas No Open'})`;
+        detalleEnergia.push({ etiqueta: et, kwh: x.kwh, precio: pr, importe: x.kwh * pr });
+      });
+    } else {
+      detalleEnergia.push({ etiqueta: 'Horas Open', kwh: rep.kOpen, precio: pOpen, importe: eOpen });
+      if (rep.kNo > 0) detalleEnergia.push({ etiqueta: 'Horas No Open', kwh: rep.kNo, precio: pNo, importe: eNo });
+    }
     lineas.push({ concepto: `Energía horas Open (${modalidad.label})`, detalle: `${esN(rep.kOpen)} kWh × ${es6(pOpen)} €/kWh`, importe: eOpen, origen: 'oferta' });
     if (rep.kNo > 0 || modalidad.id !== 'plana') {
       lineas.push({ concepto: 'Energía horas No Open', detalle: `${esN(rep.kNo)} kWh × ${es6(pNo)} €/kWh`, importe: eNo, origen: 'oferta' });
@@ -310,6 +325,7 @@ export function calcularOfertaLuz(i) {
   } else if (p.energiaUnica != null || p.id === 'tempo') {
     const precio = p.energiaUnica ?? p.energia.promo;
     energia = totalKwh * precio;
+    detalleEnergia.push({ etiqueta: 'Precio único 24 h', kwh: totalKwh, precio, importe: energia });
     lineas.push({ concepto: 'Energía (precio único 24 h)', detalle: `${esN(totalKwh)} kWh × ${es6(precio)} €/kWh`, importe: energia, origen: 'oferta' });
     precioInfo = { precioUnico: precio };
     if (p.id === 'tempo') avisos.push(`Precio de energía del primer año (incluye ${p.descuento}% de descuento). A partir del segundo año aplica el precio base ${p.energia.base.toFixed(6)} €/kWh.`);
@@ -318,6 +334,7 @@ export function calcularOfertaLuz(i) {
       if (!kwh[idx]) return;
       const imp = kwh[idx] * pr;
       energia += imp;
+      detalleEnergia.push({ etiqueta: `P${idx + 1}`, kwh: kwh[idx], precio: pr, importe: imp });
       lineas.push({ concepto: `Energía P${idx + 1}`, detalle: `${kwh[idx]} kWh × ${es6(pr)} €/kWh`, importe: imp, origen: 'oferta' });
     });
   } else if (p.energiaA) {
@@ -328,6 +345,7 @@ export function calcularOfertaLuz(i) {
       const pr = p.energiaA[k] + p.energiaB[k] * omie;
       const imp = kwh[idx] * pr;
       energia += imp;
+      detalleEnergia.push({ etiqueta: k.toUpperCase(), kwh: kwh[idx], precio: pr, importe: imp });
       lineas.push({ concepto: `Energía ${k.toUpperCase()} (A + B × OMIE)`, detalle: `${kwh[idx]} kWh × ${es6(pr)} €/kWh`, importe: imp, origen: 'oferta' });
     });
     avisos.push('Indexada: el precio depende del OMIE real de cada hora/mes; el valor introducido es una hipótesis.');
@@ -359,7 +377,11 @@ export function calcularOfertaLuz(i) {
   lineas.push({ concepto: `IVA ${(ivaRate * 100).toFixed(0)} %`, detalle: `s/ ${esN(baseIVA)} €`, importe: iva, origen: 'oferta' });
   const total = baseIVA + iva;
 
-  return res(ESTADO.OK, { lineas, potencia, energia, excedentes, baseIE, ie, baseIVA, iva, total, ...precioInfo });
+  return res(ESTADO.OK, {
+    lineas, potencia, energia, excedentes, baseIE, ie, baseIVA, iva, total, ...precioInfo,
+    detallePotencia, detalleEnergia, ieRate, ivaRate,
+    adicionales: { excesos, reactiva, bonoSocial: bono, alquiler },
+  });
 }
 
 /* ══════════════════════════ Gas ══════════════════════════ */
