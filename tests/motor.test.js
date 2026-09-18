@@ -37,10 +37,22 @@ test('Open 3.0TD por periodos (factura B): Plana todos; Día/Laboral P1–P5; Fi
   assert.equal(t('noche').metodoReparto, 'periodos');
 });
 
-test('tramo comercial: sin selección no se calcula; nunca se elige solo', () => {
-  const r = calcularOfertaLuz({ ...APOLO, modalidadId: 'plana', tramoIdx: null });
-  assert.equal(r.estado, ESTADO.DATOS_INSUFICIENTES);
-  assert.equal(r.requiereTramo, true);
+test('Pc = máx(P1–P6): [49, 63, …] → 63 kW → 50 < Pc ≤ 100 kW, sin bloqueo y con potencias reales', () => {
+  const pots = [49, 63, 63, 63, 63, 63];
+  const r = calcularOfertaLuz({ ...APOLO, potenciasKw: pots, modalidadId: 'plana', tramoIdx: null });
+  assert.equal(r.estado, ESTADO.OK);
+  assert.equal(r.tramo, '50 < Pc ≤ 100 kW');
+  assert.equal(r.precioOpen, 0.153056);
+  near(r.total, 4892.16);
+  // término de potencia con los kW reales (P1 = 49 kW)
+  assert.ok(r.lineas.find(l => l.concepto === 'Potencia P1').detalle.startsWith('49 kW'));
+  near(r.potencia, 253.93);
+  assert.deepEqual(pots, [49, 63, 63, 63, 63, 63]);
+  assert.ok(r.avisos.some(x => x.includes('Pc = máx(P1–P6) = 63 kW')));
+  const l = calcularOfertaLuz({ ...APOLO, modalidadId: 'laboral', tramoIdx: null });
+  assert.equal(l.precioOpen, 0.130212);
+  assert.equal(l.precioNoOpen, 0.187322);
+  near(l.total, 4966.71);
 });
 
 test('cambiar el tramo cambia precios y totales sin arrastrar valores y sin tocar las potencias', () => {
@@ -72,14 +84,11 @@ test('tramos con el mismo precio siguen siendo opciones distintas', () => {
   assert.equal(OPEN_61TD.tramos.length, 4);
 });
 
-test('discrepancias entre el tramo elegido y las potencias P1–P6 se señalan', () => {
+test('un tramo distinto elegido a mano queda indicado en el informe', () => {
   const r1 = calcularOfertaLuz({ ...APOLO, modalidadId: 'plana', tramoIdx: 1 });
-  assert.ok(r1.avisos.some(a => a.includes('P2 = 63 kW')));
+  assert.ok(r1.avisos.some(a => a.includes('elegido manualmente') && a.includes('Pc = 63 kW')));
   const r2 = calcularOfertaLuz({ ...APOLO, modalidadId: 'plana', tramoIdx: 2 });
-  assert.ok(r2.avisos.some(a => a.includes('P1 = 49 kW')));
-  const r0 = calcularOfertaLuz({ ...APOLO, modalidadId: 'plana', tramoIdx: 0 });
-  assert.ok(r0.avisos.some(a => a.startsWith('DISCREPANCIA')));
-  assert.ok(r2.avisos.some(a => a.includes('no está documentada')));
+  assert.ok(!r2.avisos.some(a => a.includes('elegido manualmente')));
 });
 
 test('intervalos exactos del PDF (límite inferior exclusivo, superior inclusivo)', () => {
@@ -192,16 +201,16 @@ test('3) más de 451 kW: se compara con el precio que corresponde por potencia (
   assert.equal(r.tramo, '100 < Pc ≤ 450 kW');
   assert.equal(r.precioOpen, 0.128570);
   assert.ok(r.avisos.some(a => a.includes('suministro de 1200 kW')));
-  const bajo = calcularOfertaLuz({ ...FACTURA_A, potenciasKw: [40, 40, 40, 40, 40, 500], modalidadId: 'plana' });
-  assert.equal(bajo.estado, ESTADO.DATOS_INSUFICIENTES); // tramos distintos → selección manual
-  assert.equal(bajo.requiereTramo, true);
+  const mixto = calcularOfertaLuz({ ...FACTURA_A, potenciasKw: [40, 40, 40, 40, 40, 500], modalidadId: 'plana' });
+  assert.equal(mixto.estado, ESTADO.OK); // Pc = 500 → tramo 100 < Pc ≤ 450 (simulación)
+  assert.equal(mixto.tramo, '100 < Pc ≤ 450 kW');
 });
 
-test('tramo automático solo si todas las potencias caen en el mismo tramo', () => {
+test('tramo automático también con potencias iguales', () => {
   const r = calcularOfertaLuz({ ...FACTURA_A, potenciasKw: [280, 280, 280, 280, 280, 280], modalidadId: 'plana' });
   assert.equal(r.tramo, '100 < Pc ≤ 450 kW');
-  const x = calcularOfertaLuz({ ...APOLO, modalidadId: 'plana', tramoIdx: null });
-  assert.equal(x.estado, ESTADO.DATOS_INSUFICIENTES);
+  const b = calcularOfertaLuz({ ...APOLO, potenciasKw: [20, 20, 20, 20, 20, 30], modalidadId: 'plana', tramoIdx: null });
+  assert.equal(b.tramo, '15 < Pc ≤ 30 kW'); // 30 kW → límite superior inclusivo
 });
 
 test('factura A: el resto de ofertas 6.1TD se evalúan por separado', () => {

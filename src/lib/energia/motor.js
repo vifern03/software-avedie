@@ -81,31 +81,25 @@ export function seleccionarTramoOpen(producto, potenciasKw, tramoIdx) {
     return { idx: -1, motivos, avisos, fueraDeAmbito: true };
   }
 
-  // Tramo de cada potencia (las que superan el límite pertenecen al tramo "Pc > 100 kW").
+  // Regla del responsable (18/09/2026): Pc = máx(P1–P6). Esa única Pc fija el tramo y
+  // sus precios de energía para TODA la oferta. Las potencias por periodo no se tocan:
+  // el término de potencia se cobra con los kW contratados en cada periodo.
+  const pc = Math.max(...conValor.map(x => x.kw));
   const tramoDe = (kw) => {
     const i = tramoPara(producto.tramos, kw);
     return i >= 0 ? i : (exc && kw > producto.potenciaMaxima ? exc.tramoIdx : -1);
   };
-  const idxs = [...new Set(conValor.map(x => tramoDe(x.kw)))];
-
-  let idx = tramoIdx;
-  if (idx == null || idx === '' || !producto.tramos[idx]) {
-    if (idxs.length === 1 && idxs[0] >= 0) {
-      idx = idxs[0]; // todas las potencias en el mismo tramo: no hay ambigüedad
-    } else {
-      motivos.push('Las potencias P1–P6 caen en tramos distintos y el documento de la oferta no define cuál determina el precio: selecciona el tramo comercial.');
-      return { idx: -1, motivos, avisos, requiereTramo: true };
-    }
-  } else if (idxs.length > 1) {
-    avisos.push(`Tramo comercial "${producto.tramos[idx].label}" seleccionado manualmente: las potencias caen en tramos distintos y la regla no está documentada; confirmar con Endesa.`);
+  const auto = tramoDe(pc);
+  let idx = auto;
+  if (tramoIdx != null && tramoIdx !== '' && producto.tramos[tramoIdx] && tramoIdx !== auto) {
+    idx = tramoIdx;
+    avisos.push(`Tramo "${producto.tramos[idx].label}" elegido manualmente en lugar del que corresponde a Pc = ${esN(pc)} kW ("${auto >= 0 ? producto.tramos[auto].label : '—'}").`);
   }
-  const t = producto.tramos[idx];
-  const noDentro = conValor.filter(x => tramoDe(x.kw) !== idx);
-  if (noDentro.length === conValor.length) {
-    avisos.push(`DISCREPANCIA: ninguna potencia contratada está en el tramo "${t.label}" (${conValor.map(x => `${x.p} ${esN(x.kw)} kW`).join(', ')}).`);
-  } else if (noDentro.length) {
-    avisos.push(`Discrepancia: ${noDentro.map(x => `${x.p} = ${esN(x.kw)} kW`).join(', ')} fuera del tramo "${t.label}".`);
+  if (idx < 0) {
+    motivos.push(`La potencia Pc = ${esN(pc)} kW no encaja en ningún tramo de ${producto.nombre}.`);
+    return { idx: -1, motivos, avisos, fueraDeAmbito: true };
   }
+  avisos.push(`Tramo "${producto.tramos[idx].label}" según Pc = máx(P1–P6) = ${esN(pc)} kW. El término de potencia usa los kW contratados en cada periodo.`);
   return { idx, motivos, avisos, simulacion, fueraDeAmbito: !!simulacion };
 }
 

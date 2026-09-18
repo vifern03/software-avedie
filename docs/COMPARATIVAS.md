@@ -61,10 +61,12 @@ intervalos y **no documentan qué potencia P1–P6 lo determina** cuando son dis
 - Open 3.0TD: 15 < Pc ≤ 30 · 30 < Pc ≤ 50 · 50 < Pc ≤ 100 · Pc > 100 kW
 - Open 6.1TD: Pc ≤ 30 · 30 < Pc ≤ 50 · 50 < Pc ≤ 100 · 100 < Pc ≤ 450 kW
 
-Si todas las potencias P1–P6 caen en el mismo tramo, ese tramo se aplica automáticamente
-(no hay ambigüedad). Si caen en tramos distintos, el tramo se **selecciona manualmente**
-(los 4 se ofrecen aunque compartan precio) y el informe señala las potencias fuera del tramo.
-Elegir un tramo no modifica las potencias P1–P6 ni los maxímetros.
+Regla del responsable (18/09/2026): **Pc = máx(P1–P6)**. Esa única Pc selecciona
+automáticamente el tramo y sus precios de energía para toda la oferta (p. ej. [49, 63, 63, 63,
+63, 63] kW → Pc = 63 kW → 50 < Pc ≤ 100 kW). Potencias distintas por periodo no bloquean la
+comparativa. El término de potencia se cobra con los kW contratados en cada periodo (P1 sigue
+con 49 kW). El tramo se recalcula al cargar la factura y al editar potencias; si el comercial
+elige otro tramo a mano, el informe lo indica.
 
 Por encima del límite documental de Open 6.1TD (450 kW), por instrucción del responsable
 (18/09/2026): **se simula** con los precios del tramo que corresponde por potencia

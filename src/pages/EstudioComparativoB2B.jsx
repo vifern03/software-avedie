@@ -97,7 +97,11 @@ export default function EstudioComparativoB2B() {
   const curvaRef = useRef(null);
   const countdownRef = useRef(null);
 
-  const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+  const set = k => e => {
+    setForm(f => ({ ...f, [k]: e.target.value }));
+    // Al editar una potencia, el tramo vuelve a calcularse automáticamente (Pc = máx P1–P6).
+    if (k.startsWith('kwPotP')) setTramoSel({ '30': null, '61': null });
+  };
 
   /* ════════════ EXTRACCIÓN IA ════════════ */
 
@@ -151,6 +155,7 @@ export default function EstudioComparativoB2B() {
         return next;
       });
       if ((d.excedentesKwh || 0) > 0) setAutoconsumo(true);
+      setTramoSel({ '30': null, '61': null }); // tramo automático por Pc = máx(P1–P6)
       setCurvaInfo(null);
       setExtractionDone(true);
     } catch (err) {
@@ -404,8 +409,7 @@ export default function EstudioComparativoB2B() {
                   ))}
                 </div>
                 <p className="text-[10px] text-google-gray mt-1.5 leading-snug">
-                  Si todas las potencias están en el mismo tramo se aplica automáticamente. Si caen en tramos distintos,
-                  selecciónalo: el documento no indica qué potencia (P1–P6) lo determina. Elegir un tramo no modifica las potencias.
+                  Se aplica automáticamente el tramo de Pc = máx(P1–P6). El término de potencia usa los kW de cada periodo.
                 </p>
                 {potenciasKw.some(x => x > 0) && (
                   <p className="text-[10px] text-google-dark mt-1" id="ecb2b-tramos-potencia">
