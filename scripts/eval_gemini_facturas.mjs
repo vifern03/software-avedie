@@ -82,7 +82,7 @@ for (const c of CASOS) {
   const ref = JSON.parse(readFileSync(new URL(`../tests/fixtures/${c.ref}.json`, import.meta.url), 'utf8'));
   const data = readFileSync(ruta).toString('base64');
   const t0 = Date.now();
-  const r = await llamarHandler({ text: PROMPT_EXTRACCION_LUZ, history: [], json: true, modelo: process.env.EVAL_MODELO || 'pro', thinkingBudget: process.env.EVAL_THINK ? Number(process.env.EVAL_THINK) : undefined, file: { mimeType: 'application/pdf', data } });
+  const r = await llamarHandler({ text: PROMPT_EXTRACCION_LUZ, history: [], json: true, modelo: process.env.EVAL_MODELO || 'pro', thinkingBudget: Number(process.env.EVAL_THINK || 128), presupuestoMs: 40000, file: { mimeType: 'application/pdf', data } });
   const ms = Date.now() - t0;
   if (r.statusCode !== 200) {
     console.log(`[${nombreCorto}] FALLO de la integración (${r.statusCode}) en ${ms} ms: ${r.body?.error}`);

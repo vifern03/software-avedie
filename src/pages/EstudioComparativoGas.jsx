@@ -18,7 +18,7 @@ const GAS_ALL = [...GAS, ...GAS_EMPRESA];
 
 /* Timeout de seguridad: si Gemini no responde en este tiempo, se aborta la petición
    y se muestra un error en vez de dejar la carga colgada indefinidamente. */
-const EXTRACTION_TIMEOUT_MS = 25000;
+const EXTRACTION_TIMEOUT_MS = 45000; // espera máxima; el servidor recibe 40 s de presupuesto
 
 /* Estimación de tiempo de extracción proporcional al peso del archivo (no inventada):
    tiempo base de 4s (latencia fija de red + arranque del modelo) + 1.5s por cada
@@ -241,6 +241,7 @@ export default function EstudioComparativoGas() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          json: true, modelo: 'pro', thinkingBudget: 128, presupuestoMs: 40000,
           text: GAS_EXTRACTION_PROMPT,
           history: [
             { role: 'user',  parts: [{ text: 'Actúa como experto en el mercado gasista español. Extrae datos estructurados de facturas de gas natural y devuelve JSON válido, aplicando correctamente las reglas de IVA y término fijo del sector del gas en España.' }] },
@@ -295,7 +296,7 @@ export default function EstudioComparativoGas() {
     } catch (err) {
       console.error('[EC-GAS] Extracción IA:', err);
       if (err.name === 'AbortError') {
-        setExtractionError(`La extracción ha tardado demasiado (más de ${Math.round(EXTRACTION_TIMEOUT_MS / 1000)}s). Revisa el documento o introduce los datos manualmente.`);
+        setExtractionError(`No se obtuvo un resultado válido en ${Math.round(EXTRACTION_TIMEOUT_MS / 1000)} s. Vuelve a subir la factura para reintentar o introduce los datos manualmente.`);
       } else {
         setExtractionError('Error al extraer los datos. Revisa el documento o introduce los datos manualmente.');
       }

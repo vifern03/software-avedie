@@ -55,9 +55,20 @@ Criterio comercial (responsable, 18/09/2026), por periodos:
 Opcional: con curva horaria (CSV) o desglose del P6 en 4 franjas se calcula hora a hora con
 las franjas exactas del PDF (p. ej. Noche 3.0TD = 0–8 h todos los días).
 
-Tramo de energía: según la potencia contratada **máxima** del suministro (el precio de la
-energía depende del tramo). Open 6.1TD: "hasta 450 kW". Por encima no es elegible; el
-comercial puede marcar "Simular igualmente", que usa el último tramo y lo rotula en el informe.
+Tramo comercial de potencia: los PDF solo dicen "Potencia contratada (Pc)" con estos
+intervalos y **no documentan qué potencia P1–P6 lo determina** cuando son distintas:
+
+- Open 3.0TD: 15 < Pc ≤ 30 · 30 < Pc ≤ 50 · 50 < Pc ≤ 100 · Pc > 100 kW
+- Open 6.1TD: Pc ≤ 30 · 30 < Pc ≤ 50 · 50 < Pc ≤ 100 · 100 < Pc ≤ 450 kW
+
+Por eso el tramo se **selecciona manualmente** (los 4 se ofrecen aunque compartan precio).
+Elegirlo no modifica las potencias P1–P6 ni los maxímetros. La pantalla indica a qué tramo
+corresponde cada potencia y el informe señala las potencias que quedan fuera del tramo elegido.
+Sin tramo seleccionado, Open no se calcula.
+
+Fuera de ámbito (p. ej. P6 = 451 kW frente a Open 6.1TD "hasta 450 kW"): la oferta no es
+elegible con ningún tramo, se explica el motivo y se puede seguir con otro producto. No se
+reducen potencias ni se asigna ningún tramo automáticamente.
 
 Números: "1.200" se interpreta como mil doscientos (formato español).
 
@@ -74,8 +85,20 @@ Números: "1.200" se interpreta como mil doscientos (formato español).
 
 ## Extracción con Gemini
 
-Modelo: Gemini 2.5 Flash con `thinkingBudget: 512` y salida JSON (12–20 s por factura en las
-pruebas reales, 25/25 campos correctos en las 3 facturas). Pro sigue disponible con `modelo: "pro"`.
+Modelo: `gemini-2.5-pro` (estable; https://ai.google.dev/gemini-api/docs/models, consultado
+18/09/2026) con `thinkingBudget: 128` y salida JSON. Medido con la integración real: 17–22 s
+por factura, 25/25 campos correctos en las 3 facturas, en dos tandas.
+
+Tiempos: el servidor tiene un presupuesto de 40 s para los reintentos y el navegador corta a
+los 45 s ofreciendo reintentar o introducir los datos a mano (un corte no cuenta como
+extracción). Una sola llamada por factura: cambiar tramo, modalidad, potencia o exportar no
+llama a la IA. Caché en memoria de la pestaña (no en disco: contiene datos personales) con
+clave SHA-256 del documento + `EXTRACTOR_VERSION` (`src/lib/energia/geminiCliente.js`).
+Las tarifas no se envían a la IA: están estructuradas en `src/data/`.
+
+No implementado: extracción local de texto del PDF antes de la IA (necesitaría una
+dependencia nueva, pdf.js). Con Pro acotado ya se cumple el objetivo de tiempo sin
+renunciar a la lectura visual de tablas.
 
 `src/lib/energia/extraccion.js`. Gemini solo transcribe valores y unidades impresos
 (fechas de emisión y de consumo por separado, lecturas y consumo facturado por separado,

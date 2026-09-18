@@ -58,13 +58,15 @@ export const OPEN_30TD = {
   nombre: 'Open 3.0TD',
   nivel: '30',
   fuente: DOC_OPEN_30,
+  // Intervalos del PDF ("Potencia contratada (Pc)"): 15 < Pc ≤ 30; 30 < Pc ≤ 50; 50 < Pc ≤ 100; Pc > 100.
+  // Los dos primeros y los dos últimos comparten precio, pero se conservan como opciones distintas.
   tramos: [
-    { label: '15–30 kW',  min: 15,  max: 30 },
-    { label: '30–50 kW',  min: 30,  max: 50 },
-    { label: '50–100 kW', min: 50,  max: 100 },
-    { label: '> 100 kW',  min: 100, max: Infinity },
+    { label: '15 < Pc ≤ 30 kW',  min: 15,  max: 30 },
+    { label: '30 < Pc ≤ 50 kW',  min: 30,  max: 50 },
+    { label: '50 < Pc ≤ 100 kW', min: 50,  max: 100 },
+    { label: 'Pc > 100 kW',      min: 100, max: Infinity },
   ],
-  potencias: ['15–30 kW', '30–50 kW', '50–100 kW', '> 100 kW'],
+  potencias: ['15 < Pc ≤ 30 kW', '30 < Pc ≤ 50 kW', '50 < Pc ≤ 100 kW', 'Pc > 100 kW'],
   baseEnergia: [0.228942, 0.228942, 0.228442, 0.228442],
   modalidades: [
     { id: 'plana', periodosOpen: [1, 2, 3, 4, 5, 6],   label: 'Plana',         dto: 15, desc: 'Las 24h del día los 365 días al año',
@@ -101,14 +103,15 @@ export const OPEN_61TD = {
   nombre: 'Open 6.1TD',
   nivel: '61',
   fuente: DOC_OPEN_61,
+  // Intervalos del PDF: Pc ≤ 30; 30 < Pc ≤ 50; 50 < Pc ≤ 100; 100 < Pc ≤ 450 ("6.1TD hasta 450kW").
   tramos: [
-    { label: '≤ 30 kW',    min: 0,   max: 30 },
-    { label: '30–50 kW',   min: 30,  max: 50 },
-    { label: '50–100 kW',  min: 50,  max: 100 },
-    { label: '100–450 kW', min: 100, max: 450 },
+    { label: 'Pc ≤ 30 kW',        min: 0,   max: 30, minIncl: true },
+    { label: '30 < Pc ≤ 50 kW',   min: 30,  max: 50 },
+    { label: '50 < Pc ≤ 100 kW',  min: 50,  max: 100 },
+    { label: '100 < Pc ≤ 450 kW', min: 100, max: 450 },
   ],
   potenciaMaxima: 450, // "Tarifa de acceso: 6.1TD hasta 450kW"
-  potencias: ['< 30 kW', '30–50 kW', '50–100 kW', '100–450 kW'],
+  potencias: ['Pc ≤ 30 kW', '30 < Pc ≤ 50 kW', '50 < Pc ≤ 100 kW', '100 < Pc ≤ 450 kW'],
   baseEnergia: [0.195395, 0.195395, 0.191895, 0.191895],
   modalidades: [
     { id: 'plana', periodosOpen: [1, 2, 3, 4, 5, 6],   label: 'Plana',         dto: 15, desc: 'Las 24h del día los 365 días al año',

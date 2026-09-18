@@ -3,17 +3,16 @@ import { useAuth } from '../context/AuthContext';
 import { Upload, FileText, Printer, Download, X, AlertTriangle, Loader2, Factory, Info, CheckCircle2, Ban } from 'lucide-react';
 import { exportElementToPdf, slugifyFilename } from '../lib/exportPdf';
 import { OPEN_30TD, OPEN_61TD, SIMPLY_30TD, SIMPLY_61TD, INDEXADA_30TD, INDEXADA_61TD } from '../data/tarifasB2B';
-import { calcularOfertaLuz, calcularAhorro, extrapolarAnual, ESTADO, FRANJAS_P6 } from '../lib/energia/motor';
+import { calcularOfertaLuz, calcularAhorro, extrapolarAnual, ESTADO, FRANJAS_P6, tramosPorPotencia } from '../lib/energia/motor';
 import { PROMPT_EXTRACCION_LUZ, validarExtraccion, parsearRespuestaModelo } from '../lib/energia/extraccion';
 import { parsearCurvaCSV } from '../lib/energia/curva';
+import { extraerFactura, ExtraccionTimeout, ESPERA_MAX_MS } from '../lib/energia/geminiCliente';
 import { estadoVigencia, ETIQUETA_ESTADO, fmtFechaES, hoyMadridISO } from '../lib/energia/vigencia';
 
 /* ── Constantes ──────────────────────────────────────────────────────────────── */
 
-const PROXY_URL = '/api/gemini';
-/* Gemini 2.5 Flash con razonamiento acotado: 12–20 s en facturas reales de 3–4
-   páginas (25/25 campos correctos). Margen de seguridad del cliente: 90 s. */
-const EXTRACTION_TIMEOUT_MS = 90000;
+/* Gemini 2.5 Pro con thinkingBudget 128: 17–22 s en facturas reales de 3–4 páginas
+   (25/25 campos correctos). Espera máxima 45 s (ver geminiCliente.js). */
 const PERIODS = [1, 2, 3, 4, 5, 6];
 
 const CATALOGO = {
@@ -31,7 +30,7 @@ const PRODUCTOS = [
 ];
 
 function estimateExtractionSeconds(bytes) {
-  return Math.round(15 + (bytes / (500 * 1024)) * 3);
+  return Math.min(40, Math.round(20 + (bytes / (500 * 1024)) * 2));
 }
 
 function n(v, fb = 0) {
@@ -46,15 +45,6 @@ function n(v, fb = 0) {
 }
 const eur = (v) => (v == null ? '—' : v.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €');
 const kwhFmt = (v) => v.toLocaleString('es-ES', { maximumFractionDigits: 2 }) + ' kWh';
-
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result.split(',')[1]);
-    reader.onerror = reject;
-  });
-}
 
 function PBadge({ p }) {
   const colors = { P1: 'bg-blue-600', P2: 'bg-blue-500', P3: 'bg-blue-400', P4: 'bg-blue-300', P5: 'bg-blue-200 !text-blue-700', P6: 'bg-blue-100 !text-blue-700' };
@@ -89,7 +79,8 @@ export default function EstudioComparativoB2B() {
   const [productoId, setProductoId] = useState('open');
   const [modalidadId, setModalidadId] = useState('plana');
   const [autoconsumo, setAutoconsumo] = useState(false);
-  const [forzar, setForzar] = useState(false);
+  // Tramo comercial elegido por el comercial, por nivel. Independiente de las potencias P1–P6.
+  const [tramoSel, setTramoSel] = useState({ '30': null, '61': null });
   const [form, setForm] = useState(INIT);
   const [curvaInfo, setCurvaInfo] = useState(null); // { nombre, curva, errores }
   const [incidencias, setIncidencias] = useState([]);
@@ -120,20 +111,8 @@ export default function EstudioComparativoB2B() {
     setIncidencias([]);
     clearInterval(countdownRef.current);
     countdownRef.current = setInterval(() => setRemainingSeconds(s => Math.max(0, s - 1)), 1000);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), EXTRACTION_TIMEOUT_MS);
-
     try {
-      const base64 = await fileToBase64(file);
-      const res = await fetch(PROXY_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: PROMPT_EXTRACCION_LUZ, history: [], json: true, modelo: 'flash', thinkingBudget: 512, file: { mimeType: file.type || 'application/pdf', data: base64 } }),
-        signal: controller.signal,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      const ex = parsearRespuestaModelo(data.response);
+      const { datos: ex } = await extraerFactura(file, { prompt: PROMPT_EXTRACCION_LUZ, parse: parsearRespuestaModelo });
       const v = validarExtraccion(ex);
       const d = v.datos;
       setIncidencias(v.incidencias);
@@ -175,15 +154,14 @@ export default function EstudioComparativoB2B() {
       setCurvaInfo(null);
       setExtractionDone(true);
     } catch (err) {
-      if (err.name === 'AbortError') {
-        setExtractionError(`La extracción ha superado ${Math.round(EXTRACTION_TIMEOUT_MS / 1000)} s. Introduce los datos manualmente o inténtalo de nuevo.`);
+      if (err instanceof ExtraccionTimeout) {
+        setExtractionError(`No se obtuvo un resultado válido en ${ESPERA_MAX_MS / 1000} s. Pulsa "Reintentar" o introduce los datos manualmente.`);
       } else {
         setExtractionError(err.message?.startsWith('La respuesta') || err.message?.startsWith('El servicio')
           ? err.message
           : 'No se han podido extraer los datos. Revisa el documento o introdúcelos manualmente.');
       }
     } finally {
-      clearTimeout(timeoutId);
       clearInterval(countdownRef.current);
       setIsExtracting(false);
     }
@@ -235,13 +213,13 @@ export default function EstudioComparativoB2B() {
     omie: form.omie === '' ? null : n(form.omie),
     tieneAutoconsumo: autoconsumo, excedentesKwh: n(form.excedentesKwh),
     mantenidos: { excesos: n(form.excesos), reactiva: n(form.reactiva), alquiler: n(form.alquiler), bonoSocial: n(form.bonoSocial) },
-    ivaRate: n(form.iva, 0.21), fechaOferta: hoy, forzarElegibilidad: forzar,
+    ivaRate: n(form.iva, 0.21), fechaOferta: hoy, 
   };
 
   const resultadosModalidad = useMemo(() => {
     if (!producto.modalidades) return null;
-    return producto.modalidades.map(m => ({ modalidad: m, r: calcularOfertaLuz({ ...entrada, producto, modalidadId: m.id }) }));
-  }, [JSON.stringify(entrada), productoId, nivel, forzar]); // eslint-disable-line react-hooks/exhaustive-deps
+    return producto.modalidades.map(m => ({ modalidad: m, r: calcularOfertaLuz({ ...entrada, producto, modalidadId: m.id, tramoIdx: tramoSel[nivel] }) }));
+  }, [JSON.stringify(entrada), productoId, nivel, tramoSel[nivel]]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const resultado = producto.modalidades
     ? resultadosModalidad.find(x => x.modalidad.id === modalidadId)?.r
@@ -337,7 +315,12 @@ export default function EstudioComparativoB2B() {
                 <strong>Revisión obligatoria:</strong> la IA solo transcribe; los importes se validan y calculan con código. Revisa cada campo antes de presentar el estudio.
               </p>
             )}
-            {extractionError && !isExtracting && <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-3">{extractionError}</p>}
+            {extractionError && !isExtracting && (
+              <div className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-3 flex items-center justify-between gap-3">
+                <span>{extractionError}</span>
+                {dropped && <button type="button" id="ecb2b-reintentar" onClick={() => extractFromInvoice(dropped)} className="flex-shrink-0 px-2.5 py-1 rounded-md border border-red-300 bg-white font-semibold hover:bg-red-100">Reintentar</button>}
+              </div>
+            )}
             {incidenciasVisibles.length > 0 && (
               <ul className="mt-3 space-y-1.5">
                 {incidenciasVisibles.map((i, k) => (
@@ -408,11 +391,33 @@ export default function EstudioComparativoB2B() {
                 El suministro tiene autoconsumo instalado (requisito de Simply)
               </label>
             )}
-            {(resultado?.superaLimite || forzar) && (
-              <label className="flex items-start gap-2 text-[11px] text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">
-                <input type="checkbox" checked={forzar} onChange={e => setForzar(e.target.checked)} id="ecb2b-forzar" className="mt-0.5" />
-                La potencia supera el límite de la oferta. Simular igualmente con el último tramo (el informe lo indicará; requiere confirmación de Endesa).
-              </label>
+            {producto.tramos && (
+              <div>
+                <p className="text-[10px] font-medium text-google-gray mb-1.5">Tramo comercial de potencia (Pc) *</p>
+                <div className="flex flex-wrap gap-2">
+                  {producto.tramos.map((t, i) => (
+                    <button key={t.label} type="button" id={`ecb2b-tramo${i}`}
+                      onClick={() => setTramoSel(ts => ({ ...ts, [nivel]: i }))}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${tramoSel[nivel] === i ? 'bg-google-blue text-white border-google-blue' : 'bg-gray-50 text-google-gray border-google-border hover:border-google-blue'}`}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-google-gray mt-1.5 leading-snug">
+                  El documento de la oferta no indica qué potencia (P1–P6) determina el tramo: selecciónalo manualmente.
+                  Elegir un tramo no modifica las potencias contratadas.
+                </p>
+                {potenciasKw.some(x => x > 0) && (
+                  <p className="text-[10px] text-google-dark mt-1" id="ecb2b-tramos-potencia">
+                    Según cada potencia: {tramosPorPotencia(producto, potenciasKw).map(x => `${x.p} ${x.kw} kW → ${x.label}`).join(' · ')}
+                  </p>
+                )}
+              </div>
+            )}
+            {resultado?.fueraDeAmbito && (
+              <p className="text-[11px] text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2" id="ecb2b-fuera-ambito">
+                <strong>Fuera del ámbito de esta oferta.</strong> {resultado.motivos[0]} Puedes seguir comparando con otro producto o tarifa de acceso.
+              </p>
             )}
             {vig !== 'vigente' && (
               <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">
@@ -555,6 +560,7 @@ export default function EstudioComparativoB2B() {
                 </div>
                 <div className="flex flex-wrap gap-2 text-[11px]">
                   <span className="bg-white/20 px-3 py-1.5 rounded-full font-semibold">{tituloOferta}</span>
+                  {ok && resultado.tramo && <span className="bg-white/20 px-3 py-1.5 rounded-full">Tramo {resultado.tramo}</span>}
                   {periodo && <span className="bg-white/20 px-3 py-1.5 rounded-full">Consumo {fmtFechaES(periodo.desde)} – {fmtFechaES(periodo.hasta)}</span>}
                   <span className="bg-white/20 px-3 py-1.5 rounded-full">{entrada.dias} días</span>
                   {form.fechaEmision && <span className="bg-white/20 px-3 py-1.5 rounded-full">Factura emitida {fmtFechaES(form.fechaEmision)}</span>}

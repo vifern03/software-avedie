@@ -332,12 +332,16 @@ export default function EstudioComparativo() {
       setRemainingSeconds(s => Math.max(0, s - 1));
     }, 1000);
 
+    let timeoutId;
     try {
       const base64 = await fileToBase64(file);
+      const controller = new AbortController();
+      timeoutId = setTimeout(() => controller.abort(), 45000); // espera máxima 45 s
       const res = await fetch(PROXY_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          json: true, modelo: 'pro', thinkingBudget: 128, presupuestoMs: 40000,
           text: EXTRACTION_PROMPT,
           history: [
             { role: 'user',  parts: [{ text: 'Actúa como experto en el mercado eléctrico español. Extrae datos estructurados de facturas eléctricas y devuelve JSON válido. Aplica correctamente las reglas de IVA españolas del sector eléctrico.' }] },
@@ -345,6 +349,7 @@ export default function EstudioComparativo() {
           ],
           file: { mimeType: file.type || 'application/octet-stream', data: base64 },
         }),
+        signal: controller.signal,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
@@ -386,9 +391,11 @@ export default function EstudioComparativo() {
       }));
       setExtractionDone(true);
     } catch (err) {
-      console.error('[EC-LUZ] Extracción IA:', err);
-      setExtractionError(err.message || 'No se pudo extraer la información automáticamente. Introduce los datos manualmente o inténtalo de nuevo.');
+      setExtractionError(err.name === 'AbortError'
+        ? 'No se obtuvo un resultado válido en 45 s. Vuelve a subir la factura para reintentar o introduce los datos manualmente.'
+        : (err.message || 'No se pudo extraer la información automáticamente. Introduce los datos manualmente o inténtalo de nuevo.'));
     } finally {
+      clearTimeout(timeoutId);
       clearInterval(countdownRef.current);
       setIsExtracting(false);
     }

@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { calcularOfertaLuz, calcularOfertaGas, calcularAhorro, extrapolarAnual, ESTADO, necesidadesModalidad } from '../src/lib/energia/motor.js';
+import { calcularOfertaLuz, calcularOfertaGas, calcularAhorro, extrapolarAnual, ESTADO, necesidadesModalidad, tramoPara } from '../src/lib/energia/motor.js';
 import { OPEN_30TD, OPEN_61TD, SIMPLY_30TD, SIMPLY_61TD, TEMPO_2_0TD, INDEXADA_30TD } from '../src/data/tarifasB2B.js';
 import { GAS, GAS_EMPRESA } from '../src/data/tarifasGas.js';
 import { LUZ, LUZ_SOLAR } from '../src/data/tarifasB2C.js';
@@ -18,7 +18,7 @@ const APOLO = {
   periodo: { desde: '2026-07-01', hasta: '2026-07-31' },
   kwhPeriodo: [7170, 5156, 0, 0, 0, 9928],
   mantenidos: { excesos: 53.33, reactiva: 124.56, alquiler: 8.15, bonoSocial: 0.77 },
-  ivaRate: 0.21, fechaOferta: HOY,
+  ivaRate: 0.21, fechaOferta: HOY, tramoIdx: 2, // 50 < Pc ≤ 100 kW, elegido manualmente
 };
 const DESGLOSE_APOLO = { lab0_8: 4000, d0_8: 2000, d8_18: 2500, d18_24: 1428 };
 
@@ -37,15 +37,67 @@ test('Open 3.0TD por periodos (factura B): Plana todos; Día/Laboral P1–P5; Fi
   assert.equal(t('noche').metodoReparto, 'periodos');
 });
 
-test('tramo de energía según la potencia contratada máxima (63 kW → 50–100 kW)', () => {
-  const r = calcularOfertaLuz({ ...APOLO, modalidadId: 'plana' });
-  assert.equal(r.tramo, '50–100 kW');
-  assert.equal(r.precioOpen, 0.153056);
-  const bajo = calcularOfertaLuz({ ...APOLO, modalidadId: 'plana', potenciasKw: [20, 20, 20, 20, 20, 25] });
-  assert.equal(bajo.tramo, '15–30 kW');
-  assert.equal(bajo.precioOpen, 0.153391);
-  const alto = calcularOfertaLuz({ ...APOLO, modalidadId: 'plana', potenciasKw: [500, 500, 500, 500, 500, 1200] });
-  assert.equal(alto.tramo, '> 100 kW');
+test('tramo comercial: sin selección no se calcula; nunca se elige solo', () => {
+  const r = calcularOfertaLuz({ ...APOLO, modalidadId: 'plana', tramoIdx: null });
+  assert.equal(r.estado, ESTADO.DATOS_INSUFICIENTES);
+  assert.equal(r.requiereTramo, true);
+});
+
+test('cambiar el tramo cambia precios y totales sin arrastrar valores y sin tocar las potencias', () => {
+  const pots = [49, 63, 63, 63, 63, 63];
+  const copia = [...pots];
+  const t1 = calcularOfertaLuz({ ...APOLO, potenciasKw: pots, modalidadId: 'plana', tramoIdx: 1 });
+  const t2 = calcularOfertaLuz({ ...APOLO, potenciasKw: pots, modalidadId: 'plana', tramoIdx: 2 });
+  const t1b = calcularOfertaLuz({ ...APOLO, potenciasKw: pots, modalidadId: 'plana', tramoIdx: 1 });
+  assert.equal(t1.tramo, '30 < Pc ≤ 50 kW');
+  assert.equal(t1.precioOpen, 0.153391);
+  near(t1.total, 4901.64);
+  assert.equal(t2.tramo, '50 < Pc ≤ 100 kW');
+  assert.equal(t2.precioOpen, 0.153056);
+  near(t2.total, 4892.16);
+  assert.equal(t1b.total, t1.total);
+  assert.deepEqual(pots, copia);
+  // Laboral: No Open también cambia con el tramo
+  assert.equal(calcularOfertaLuz({ ...APOLO, modalidadId: 'laboral', tramoIdx: 1 }).precioNoOpen, 0.187732);
+  assert.equal(calcularOfertaLuz({ ...APOLO, modalidadId: 'laboral', tramoIdx: 3 }).precioNoOpen, 0.187322);
+});
+
+test('tramos con el mismo precio siguen siendo opciones distintas', () => {
+  const a = calcularOfertaLuz({ ...APOLO, modalidadId: 'plana', tramoIdx: 0 });
+  const b = calcularOfertaLuz({ ...APOLO, modalidadId: 'plana', tramoIdx: 1 });
+  assert.equal(a.tramo, '15 < Pc ≤ 30 kW');
+  assert.equal(b.tramo, '30 < Pc ≤ 50 kW');
+  assert.equal(a.precioOpen, b.precioOpen);
+  assert.equal(OPEN_30TD.tramos.length, 4);
+  assert.equal(OPEN_61TD.tramos.length, 4);
+});
+
+test('discrepancias entre el tramo elegido y las potencias P1–P6 se señalan', () => {
+  const r1 = calcularOfertaLuz({ ...APOLO, modalidadId: 'plana', tramoIdx: 1 });
+  assert.ok(r1.avisos.some(a => a.includes('P2 = 63 kW')));
+  const r2 = calcularOfertaLuz({ ...APOLO, modalidadId: 'plana', tramoIdx: 2 });
+  assert.ok(r2.avisos.some(a => a.includes('P1 = 49 kW')));
+  const r0 = calcularOfertaLuz({ ...APOLO, modalidadId: 'plana', tramoIdx: 0 });
+  assert.ok(r0.avisos.some(a => a.startsWith('DISCREPANCIA')));
+  assert.ok(r2.avisos.some(a => a.includes('no está documentada')));
+});
+
+test('intervalos exactos del PDF (límite inferior exclusivo, superior inclusivo)', () => {
+  const t30 = OPEN_30TD.tramos, t61 = OPEN_61TD.tramos;
+  assert.equal(tramoPara(t30, 15), -1);
+  assert.equal(tramoPara(t30, 15.01), 0);
+  assert.equal(tramoPara(t30, 30), 0);
+  assert.equal(tramoPara(t30, 30.01), 1);
+  assert.equal(tramoPara(t30, 50), 1);
+  assert.equal(tramoPara(t30, 100), 2);
+  assert.equal(tramoPara(t30, 100.01), 3);
+  assert.equal(tramoPara(t30, 5000), 3);
+  assert.equal(tramoPara(t61, 10), 0);
+  assert.equal(tramoPara(t61, 30), 0);
+  assert.equal(tramoPara(t61, 30.5), 1);
+  assert.equal(tramoPara(t61, 100), 2);
+  assert.equal(tramoPara(t61, 450), 3);
+  assert.equal(tramoPara(t61, 450.01), -1);
 });
 
 test('Open 3.0TD con desglose del P6: cálculo hora a hora (Día)', () => {
@@ -65,6 +117,7 @@ function curvaSemana() {
   return c;
 }
 const SEPT = {
+  tramoIdx: 2,
   potenciasKw: [60, 60, 60, 60, 60, 60], dias: 7, periodo: { desde: '2026-09-14', hasta: '2026-09-20' },
   kwhPeriodo: [0, 0, 45, 35, 0, 88], ivaRate: 0.21, fechaOferta: HOY,
 };
@@ -90,33 +143,37 @@ test('curva distinta del facturado: se reparte el FACTURADO con las fracciones d
   assert.ok(r.avisos.some(a => a.includes('se respeta el consumo facturado')));
 });
 
-test('factura A (6.1TD, P6 = 451 kW) → Open 6.1TD no elegible, sin tocar potencias', () => {
-  const r = calcularOfertaLuz({
-    producto: OPEN_61TD, modalidadId: 'plana', potenciasKw: [280, 280, 280, 280, 280, 451], dias: 31,
-    periodo: { desde: '2025-11-30', hasta: '2025-12-31' }, kwhPeriodo: [27263, 16448, 0, 0, 0, 31048],
-    ivaRate: 0.21, fechaOferta: HOY,
-  });
-  assert.equal(r.estado, ESTADO.NO_ELEGIBLE);
-  assert.ok(r.motivos[0].includes('451'));
-  assert.equal(r.superaLimite, true);
+const FACTURA_A = {
+  producto: OPEN_61TD, potenciasKw: [280, 280, 280, 280, 280, 451], dias: 31,
+  periodo: { desde: '2025-11-30', hasta: '2025-12-31' }, kwhPeriodo: [27263, 16448, 0, 0, 0, 31048],
+  mantenidos: { bonoSocial: 0.40, alquiler: 65.23 }, ivaRate: 0.21, fechaOferta: HOY,
+};
+
+test('factura A (P6 = 451 kW) frente a Open 6.1TD hasta 450 kW: fuera de ámbito con cualquier tramo', () => {
+  const pots = [...FACTURA_A.potenciasKw];
+  for (const tramoIdx of [null, 0, 1, 2, 3]) {
+    for (const m of ['plana', 'dia', 'laboral', 'finde', 'noche']) {
+      const r = calcularOfertaLuz({ ...FACTURA_A, modalidadId: m, tramoIdx });
+      assert.equal(r.estado, ESTADO.NO_ELEGIBLE, `${m} tramo ${tramoIdx}`);
+      assert.equal(r.fueraDeAmbito, true);
+      assert.equal(r.total, undefined);
+      assert.equal(r.tramo, undefined);
+      assert.ok(r.motivos[0].includes('P6 = 451 kW'));
+    }
+  }
+  assert.deepEqual(FACTURA_A.potenciasKw, pots); // no se reducen potencias
 });
 
-test('451 kW con simulación forzada: último tramo y aviso explícito', () => {
-  const r = calcularOfertaLuz({
-    producto: OPEN_61TD, modalidadId: 'plana', potenciasKw: [280, 280, 280, 280, 280, 451], dias: 31,
-    periodo: { desde: '2025-11-30', hasta: '2025-12-31' }, kwhPeriodo: [27263, 16448, 0, 0, 0, 31048],
-    ivaRate: 0.21, fechaOferta: HOY, forzarElegibilidad: true,
-  });
-  assert.equal(r.estado, ESTADO.OK);
-  assert.equal(r.tramo, '100–450 kW');
-  assert.ok(r.avisos.some(a => a.includes('FUERA DE CONDICIONES')));
+test('factura A: el resto de ofertas 6.1TD se evalúan por separado', () => {
+  const simply = calcularOfertaLuz({ ...FACTURA_A, producto: SIMPLY_61TD });
+  assert.equal(simply.estado, ESTADO.NO_DISPONIBLE); // ventana pendiente de confirmación
 });
 
 test('Open 6.1TD sintético (280 kW) — Plana y cálculo hora a hora con desglose', () => {
   const base = {
     producto: OPEN_61TD, potenciasKw: [280, 280, 280, 280, 280, 280], dias: 31,
     periodo: { desde: '2025-11-30', hasta: '2025-12-31' }, kwhPeriodo: [27263, 16448, 0, 0, 0, 31048],
-    mantenidos: { bonoSocial: 0.40, alquiler: 65.23 }, ivaRate: 0.21, fechaOferta: HOY,
+    mantenidos: { bonoSocial: 0.40, alquiler: 65.23 }, ivaRate: 0.21, fechaOferta: HOY, tramoIdx: 3,
   };
   const d = { lab0_8: 10000, d0_8: 8000, d8_18: 9000, d18_24: 4048 };
   near(calcularOfertaLuz({ ...base, modalidadId: 'plana' }).total, 14404.42);
@@ -128,8 +185,8 @@ test('Open 6.1TD sintético (280 kW) — Plana y cálculo hora a hora con desglo
 });
 
 test('límites de potencia: 450 kW exactos elegible; 15 kW no entra en Open 3.0TD', () => {
-  const b = { producto: OPEN_61TD, modalidadId: 'plana', dias: 30, kwhPeriodo: [1, 0, 0, 0, 0, 1], fechaOferta: HOY };
-  assert.equal(calcularOfertaLuz({ ...b, potenciasKw: [450, 450, 450, 450, 450, 450] }).tramo, '100–450 kW');
+  const b = { producto: OPEN_61TD, modalidadId: 'plana', dias: 30, kwhPeriodo: [1, 0, 0, 0, 0, 1], fechaOferta: HOY, tramoIdx: 3 };
+  assert.equal(calcularOfertaLuz({ ...b, potenciasKw: [450, 450, 450, 450, 450, 450] }).tramo, '100 < Pc ≤ 450 kW');
   const c = calcularOfertaLuz({ ...b, producto: OPEN_30TD, potenciasKw: [15, 15, 15, 15, 15, 15] });
   assert.equal(c.estado, ESTADO.NO_ELEGIBLE);
 });

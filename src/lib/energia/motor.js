@@ -39,46 +39,64 @@ const sum = (arr) => arr.reduce((a, b) => a + (Number(b) || 0), 0);
 
 /* ══════════════════════════ Elegibilidad / tramos ══════════════════════════ */
 
-function tramoPara(tramos, kw) {
-  // Límite inferior exclusivo y superior inclusivo ("15 kW < Pc ≤ 30 kW").
-  // El primer tramo de 6.1TD ("Pc ≤ 30 kW") no tiene mínimo.
-  return tramos.findIndex((t, i) => (i === 0 && t.min === 0 ? kw >= 0 : kw > t.min) && kw <= t.max);
+/** Índice del tramo que contiene `kw` según los intervalos del PDF (o -1). */
+export function tramoPara(tramos, kw) {
+  return tramos.findIndex(t => (t.minIncl ? kw >= t.min : kw > t.min) && kw <= t.max);
 }
 
 /**
- * Tramo de potencia de una oferta Open. El PDF solo dice "Potencia contratada (Pc)";
- * con potencias distintas por periodo no especifica cuál usar. Se evalúa con P1 y
- * con la potencia máxima; si caen en tramos distintos se usa el de PRECIO MÁS ALTO
- * (conservador) y se avisa.
+ * Tramo comercial de una oferta Open.
+ *
+ * Los PDF (17/09/2026) solo dicen "Potencia contratada (Pc)" con los intervalos
+ * del tramo; NO documentan qué potencia P1–P6 lo determina cuando son distintas.
+ * Por eso el tramo lo SELECCIONA el comercial (`tramoIdx`) y el motor:
+ *   - nunca lo elige automáticamente ni modifica potencias;
+ *   - comprueba el ámbito de la oferta (Open 6.1: hasta 450 kW; Open 3.0: Pc > 15 kW);
+ *   - señala qué potencias P1–P6 caen fuera del tramo elegido.
  */
-export function seleccionarTramoOpen(producto, potenciasKw, forzar = false) {
-  const pots = potenciasKw.map(Number).filter(x => x > 0);
+export function seleccionarTramoOpen(producto, potenciasKw, tramoIdx) {
   const avisos = [];
   const motivos = [];
-  if (pots.length === 0) return { idx: -1, motivos: ['Faltan las potencias contratadas.'], avisos };
-  const pMax = Math.max(...pots);
-  const p1 = Number(potenciasKw[0]) || pMax;
+  const pots = potenciasKw.map(Number);
+  const conValor = pots.map((kw, i) => ({ p: `P${i + 1}`, kw })).filter(x => x.kw > 0);
+  if (!conValor.length) return { idx: -1, motivos: ['Faltan las potencias contratadas P1–P6.'], avisos };
 
-  if (producto.potenciaMaxima && pMax > producto.potenciaMaxima) {
-    if (!forzar) {
-      motivos.push(`La potencia contratada máxima (${pMax} kW) supera el límite de la oferta (${producto.potenciaMaxima} kW).`);
-      return { idx: -1, motivos, avisos, superaLimite: true };
-    }
-    avisos.push(`SIMULACIÓN FUERA DE CONDICIONES: ${pMax} kW supera el límite de ${producto.potenciaMaxima} kW de la oferta. Se calcula con el último tramo; requiere confirmación de Endesa.`);
-    return { idx: producto.tramos.length - 1, motivos, avisos };
+  // Ámbito documentado de la oferta
+  const fuera = producto.potenciaMaxima ? conValor.filter(x => x.kw > producto.potenciaMaxima) : [];
+  if (fuera.length) {
+    motivos.push(`${producto.nombre} solo admite suministros hasta ${producto.potenciaMaxima} kW ("Tarifa de acceso: 6.1TD hasta 450kW"). Este suministro tiene ${fuera.map(x => `${x.p} = ${x.kw} kW`).join(', ')}. No se modifica ninguna potencia ni se asigna otro tramo: compara con otra oferta.`);
+    return { idx: -1, motivos, avisos, fueraDeAmbito: true };
   }
-  const iMax = tramoPara(producto.tramos, pMax);
-  const iP1 = tramoPara(producto.tramos, p1);
-  if (iMax === -1) {
-    motivos.push(`Ninguna potencia contratada encaja en los tramos de la oferta (máx. ${pMax} kW).`);
-    return { idx: -1, motivos, avisos };
+  const minimo = producto.tramos[0].minIncl ? null : producto.tramos[0].min;
+  if (minimo != null && conValor.every(x => x.kw <= minimo)) {
+    motivos.push(`${producto.nombre} es para potencias contratadas superiores a ${minimo} kW; todas las potencias de este suministro son ≤ ${minimo} kW.`);
+    return { idx: -1, motivos, avisos, fueraDeAmbito: true };
   }
-  // Tramo según la potencia contratada máxima del suministro.
-  const idx = iMax;
-  if (iP1 !== -1 && iP1 !== iMax) {
-    avisos.push(`Tramo de energía según la potencia máxima contratada (${pMax} kW → "${producto.tramos[iMax].label}"); P1 = ${p1} kW.`);
+
+  if (tramoIdx == null || tramoIdx === '' || !producto.tramos[tramoIdx]) {
+    motivos.push('Selecciona el tramo comercial de potencia. El documento de la oferta no define qué potencia (P1–P6) determina el tramo cuando son distintas.');
+    return { idx: -1, motivos, avisos, requiereTramo: true };
   }
-  return { idx, motivos, avisos };
+  const t = producto.tramos[tramoIdx];
+  const dentro = conValor.filter(x => tramoPara([t], x.kw) === 0);
+  const noDentro = conValor.filter(x => tramoPara([t], x.kw) !== 0);
+  avisos.push(`Tramo comercial "${t.label}" seleccionado manualmente: la regla que determina el tramo no está documentada en la oferta; confirmar con Endesa.`);
+  if (!dentro.length) {
+    avisos.push(`DISCREPANCIA: ninguna potencia contratada está en el tramo "${t.label}" (${conValor.map(x => `${x.p} ${x.kw} kW`).join(', ')}).`);
+  } else if (noDentro.length) {
+    avisos.push(`Discrepancia: ${noDentro.map(x => `${x.p} = ${x.kw} kW`).join(', ')} fuera del tramo "${t.label}".`);
+  }
+  return { idx: tramoIdx, motivos, avisos };
+}
+
+/** Tramos que corresponden a cada potencia P1–P6 (solo informativo, nunca se aplica solo). */
+export function tramosPorPotencia(producto, potenciasKw) {
+  return potenciasKw.map((kw, i) => {
+    const v = Number(kw);
+    if (!(v > 0)) return null;
+    const idx = tramoPara(producto.tramos, v);
+    return { p: `P${i + 1}`, kw: v, idx, label: idx >= 0 ? producto.tramos[idx].label : 'fuera de los tramos' };
+  }).filter(Boolean);
 }
 
 /* ══════════════════════════ Energía Open ══════════════════════════ */
@@ -181,6 +199,7 @@ export function repartirOpen({ modalidad, kwhPeriodo, desgloseP6, curva, periodo
  * @param {object} i
  *  producto          catálogo (OPEN_30TD, OPEN_61TD, SIMPLY_30TD, SIMPLY_61TD, TEMPO_2_0TD, INDEXADA_*)
  *  modalidadId       (Open) 'plana'|'dia'|'laboral'|'finde'|'noche'
+ *  tramoIdx          (Open) índice del tramo comercial elegido por el comercial
  *  potenciasKw       [P1..P6] (2.0TD: [P1, P2])
  *  dias              días facturados (de la factura)
  *  periodo           { desde, hasta } fechas del consumo (para calendario)
@@ -248,9 +267,12 @@ export function calcularOfertaLuz(i) {
   let precioInfo = {};
   const totalKwh = sum(kwh);
   if (p.modalidades) {
-    const tr = seleccionarTramoOpen(p, pots, !!i.forzarElegibilidad);
+    const tr = seleccionarTramoOpen(p, pots, i.tramoIdx);
     avisos.push(...tr.avisos);
-    if (tr.idx === -1) { motivos.push(...tr.motivos); return res(ESTADO.NO_ELEGIBLE, { superaLimite: !!tr.superaLimite }); }
+    if (tr.idx === -1) {
+      motivos.push(...tr.motivos);
+      return res(tr.requiereTramo ? ESTADO.DATOS_INSUFICIENTES : ESTADO.NO_ELEGIBLE, { fueraDeAmbito: !!tr.fueraDeAmbito, requiereTramo: !!tr.requiereTramo });
+    }
     const mIdx = p.modalidades.findIndex(m => m.id === i.modalidadId);
     if (mIdx === -1) { motivos.push('Modalidad Open desconocida.'); return res(ESTADO.DATOS_INSUFICIENTES); }
     const modalidad = p.modalidades[mIdx];
