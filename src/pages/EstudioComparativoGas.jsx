@@ -3,6 +3,9 @@ import { useAuth } from '../context/AuthContext';
 import { GAS, GAS_EMPRESA } from '../data/tarifasGas';
 import { Calculator, Upload, FileText, Printer, Download, X, AlertTriangle, Loader2 } from 'lucide-react';
 import { exportElementToPdf, slugifyFilename } from '../lib/exportPdf';
+import { calcularOfertaGas, calcularAhorro, extrapolarAnual, ESTADO } from '../lib/energia/motor';
+import { estadoVigencia, ETIQUETA_ESTADO } from '../lib/energia/vigencia';
+import { IEH_GAS_EUR_KWH } from '../data/tarifasGas';
 
 /* ── Constantes ──────────────────────────────────────────────────────────────── */
 
@@ -74,7 +77,7 @@ El JSON debe tener exactamente estos campos, en este orden (usa null para string
 
 ════════ REGLAS OBLIGATORIAS ════════
 
-REGLA 1 — IVA GAS (2025-2026): El suministro de gas natural en España peninsular tributa al tipo reducido del 10% (medida temporal prorrogada). Devuelve 0.10 para facturas de gas peninsulares de 2024-2026. Solo devuelve 0.07 en Canarias (IGIC) o 0.21 si la factura es anterior a 2021 o lo indica explícitamente.
+REGLA 1 — IVA GAS: lee SIEMPRE el porcentaje impreso en la línea de IVA/IGIC de la factura (p. ej. 21 → 0.21, 10 → 0.10, IGIC 3 → 0.03). No asumas un tipo fijo.
 
 REGLA 2 — TÉRMINO FIJO vs. VARIABLE: El término fijo (también llamado término de capacidad, de conducción o cuota fija, según el tramo) es el importe cobrado por tener el servicio activo, independiente del consumo. Extrae el importe EN EUROS del período facturado (no el precio unitario €/día o €/mes).
 
@@ -93,7 +96,7 @@ REGLA 5 — CUPS DE GAS: El CUPS de gas empieza por "ES022" (no "ES002" que es e
 
 REGLA 6 — IMPORTE TOTAL: El importe final a pagar incluyendo todos los conceptos e impuestos.
 
-REGLA 7 — IMPUESTO HIDROCARBUROS: El ISH suele estar incluido en el precio del término variable. No lo confundas con el IVA.`;
+REGLA 7 — IMPUESTO DE HIDROCARBUROS: aparece como línea propia (€/kWh). No lo confundas con el IVA ni lo sumes al término variable.`;
 
 /* ── Toggle mini ─────────────────────────────────────────────────────────────── */
 
@@ -119,8 +122,9 @@ const INIT = {
   alquilerContador: '0',
   facturaActual: '',
   asesor: '', asesorLibre: '',
-  iva: '0.10',
+  iva: '0.21',
   descuento: '0',
+  consumoAnual: '',
   notas: '',
 };
 
@@ -158,32 +162,38 @@ export default function EstudioComparativoGas() {
 
   const kwhGas     = n(form.kwhGas);
   const dias       = n(form.dias);
-  const dto        = n(form.descuento) / 100;
-  const ivaRate    = n(form.iva, 0.10);
+  const ivaRate    = n(form.iva, 0.21);
   const tfFactura  = n(form.terminoFijoFactura);
   const alqCont    = n(form.alquilerContador);
   const factActual = n(form.facturaActual);
 
-  const basePrice  = mant ? tarifa.conMant.promo : tarifa.sinMant.promo;
-  const precioVar  = basePrice * (1 - dto);
-  const subtotVar  = kwhGas * precioVar;
-
-  /* Término fijo Endesa: terFijo está en €/mes → convertir al período facturado */
-  const tfEndesa   = incluyeTF ? (tarifa.terFijo / DIAS_MES) * dias : 0;
-
-  const baseIVA    = subtotVar + tfEndesa + alqCont;
+  /* Cálculo en el motor determinista (src/lib/energia/motor.js): término fijo
+     prorrateado por días, variable al precio publicado (sin volver a descontar),
+     impuesto de hidrocarburos 0,00234 €/kWh e IVA. */
+  const vigenciaGas = estadoVigencia(tarifa.contratacion);
+  const rGas = calcularOfertaGas({
+    producto: tarifa, kwh: kwhGas, dias, mantenimiento: mant, alquiler: alqCont, ivaRate,
+    consumoAnualKwh: n(form.consumoAnual), ignorarVigencia: true,
+  });
+  const gasOk      = rGas.estado === ESTADO.OK;
+  const precioVar  = gasOk ? rGas.precio : 0;
+  const subtotVar  = gasOk ? rGas.variable : 0;
+  const ieh        = gasOk ? rGas.ieh : 0;
+  const tfEndesaBruto = gasOk ? rGas.fijo : 0;
+  /* Si el comercial excluye el término fijo, se excluye en LOS DOS lados y se
+     indica en el informe. */
+  const tfEndesa   = incluyeTF ? tfEndesaBruto : 0;
+  const baseIVA    = subtotVar + ieh + tfEndesa + alqCont;
   const ivaImp     = baseIVA * ivaRate;
   const total      = baseIVA + ivaImp;
+  const factBase   = incluyeTF ? factActual : Math.max(0, factActual - tfFactura * (1 + ivaRate));
 
-  /* Base de comparación: cuando TF no está incluido, se resta silenciosamente el
-     TF que el cliente paga en su factura actual — sin texto explicativo en el informe */
-  const factBase   = incluyeTF ? factActual : Math.max(0, factActual - tfFactura);
+  const { ahorroEur: dif, ahorroPct } = calcularAhorro(factBase, total);
+  const ahorroPercent = ahorroPct == null ? 0 : ahorroPct / 100;
+  const ahorroAnual   = extrapolarAnual(dif, dias) ?? 0;
+  const dto = 0;
 
-  const dif             = factBase - total;
-  const ahorroPercent   = total > 0 ? (factBase / total - 1) : 0;
-  const ahorroAnual     = dias  > 0 ? (dif / dias) * 365 : 0;
-
-  const isReady = kwhGas > 0 && dias > 0 && factActual > 0;
+  const isReady = kwhGas > 0 && dias > 0 && factActual > 0 && gasOk;
 
   /* ════════════ PRINT TITLE ════════════ */
 
@@ -589,7 +599,7 @@ export default function EstudioComparativoGas() {
                 <div>
                   <label className="text-[10px] font-medium text-google-gray mb-1 block">IVA / IGIC</label>
                   <div className="flex rounded-lg overflow-hidden border border-google-border">
-                    {[['0.21', 'IVA 21%'], ['0.10', 'IVA 10%'], ['0.07', 'IGIC 7%']].map(([v, l]) => (
+                    {[['0.21', 'IVA 21%'], ['0.10', 'IVA 10%'], ['0.03', 'IGIC 3%']].map(([v, l]) => (
                       <button key={v} type="button" onClick={() => setForm(f => ({ ...f, iva: v }))}
                         className={`flex-1 py-2 text-xs font-medium transition-colors ${form.iva === v ? 'bg-orange-500 text-white' : 'bg-white text-google-gray hover:bg-orange-50'}`}>
                         {l}
@@ -600,8 +610,9 @@ export default function EstudioComparativoGas() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-medium text-google-gray mb-1 block">Dto. adicional sobre energía (%)</label>
-                  <input type="text" inputMode="decimal" value={form.descuento} onChange={set('descuento')} placeholder="0" className="input-field text-sm" />
+                  <label className="text-[10px] font-medium text-google-gray mb-1 block">Consumo anual (kWh) — verifica el tramo RL</label>
+                  <input type="text" inputMode="decimal" value={form.consumoAnual} onChange={set('consumoAnual')} placeholder="opcional" className="input-field text-sm" />
+                  {rGas.estado === ESTADO.NO_ELEGIBLE && <p className="text-[10px] text-red-600 mt-1">{rGas.motivos[0]}</p>}
                 </div>
                 <div>
                   <label className="text-[10px] font-medium text-google-gray mb-1 block">Notas</label>
@@ -651,7 +662,6 @@ export default function EstudioComparativoGas() {
                   <span className="inline-flex items-center bg-white/20 text-white text-[11px] font-semibold leading-none px-3 py-1.5 rounded-full">{tarifa.title}</span>
                   {mant && tarifa.hasMant && <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">Con Mantenimiento −3%</span>}
                   <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">{dias} días</span>
-                  {n(form.descuento) > 0 && <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">Dto. adicional {form.descuento}%</span>}
                 </div>
                 <div className="absolute bottom-6 right-8 text-right text-xs">
                   <p className="font-semibold text-white">{today}</p>
@@ -665,7 +675,7 @@ export default function EstudioComparativoGas() {
                   <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-3">Término Fijo</p>
                   <div className="flex justify-between items-baseline text-sm">
                     <span className="text-google-gray">
-                      {tarifa.terFijo.toFixed(3)} €/mes × {dias} días ÷ {DIAS_MES.toFixed(0)} días/mes
+                      {tarifa.terFijo.toFixed(3)} €/mes × 12/365 × {dias} días
                     </span>
                     <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(tfEndesa)}</span>
                   </div>
@@ -696,15 +706,19 @@ export default function EstudioComparativoGas() {
 
               {/* ── Impuestos ── */}
               <div className="px-6 py-4 space-y-2">
+                <div className="flex justify-between items-baseline text-sm">
+                  <span className="text-google-gray">Impuesto de hidrocarburos ({kwhGas} kWh × {IEH_GAS_EUR_KWH} €/kWh)</span>
+                  <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(ieh)}</span>
+                </div>
                 {alqCont > 0 && (
                   <div className="flex justify-between items-baseline text-sm">
-                    <span className="text-google-gray">Alquiler de Contador</span>
+                    <span className="text-google-gray">Alquiler de Contador (mantenido de la factura actual)</span>
                     <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(alqCont)}</span>
                   </div>
                 )}
                 <div className="flex justify-between items-baseline text-sm">
                   <span className="text-google-gray">
-                    {n(form.iva) === 0.07 ? 'IGIC' : 'IVA'} ({pct(ivaRate, 0)}) sobre {eur(baseIVA)}
+                    {n(form.iva) === 0.03 ? 'IGIC' : 'IVA'} ({pct(ivaRate, 0)}) sobre {eur(baseIVA)}
                   </span>
                   <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(ivaImp)}</span>
                 </div>
@@ -714,8 +728,21 @@ export default function EstudioComparativoGas() {
 
               {/* ── Total ── */}
               <div className="px-6 py-4 flex justify-between items-center">
-                <span className="font-bold text-google-dark text-base">TOTAL ESTIMADO CON ENDESA</span>
+                <span className="font-bold text-google-dark text-base">TOTAL SIMULADO CON ENDESA</span>
                 <span className="text-2xl font-bold text-orange-500 tabular-nums">{eur(total)}</span>
+              </div>
+              <div className="mx-6 mb-3 space-y-1 text-[11px]">
+                {vigenciaGas !== 'vigente' && (
+                  <p className="text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">
+                    {ETIQUETA_ESTADO[vigenciaGas]} ({tarifa.validez}). Simulación con precios no contratables hoy.
+                  </p>
+                )}
+                {tarifa.contratacion?.extensionInterna && vigenciaGas === 'vigente' && (
+                  <p className="text-google-gray">Vigencia {tarifa.validez}: ampliada por instrucción interna; precios B2C sin cambios.</p>
+                )}
+                {!incluyeTF && <p className="text-google-gray">Comparación sin término fijo: se excluye en la oferta y en la factura actual ({eur(tfFactura)} + IVA).</p>}
+                {rGas.avisos.map((a, k) => <p key={k} className="text-amber-800">{a}</p>)}
+                <p className="text-google-gray">Simulación con el consumo de la factura aportada; no garantiza el ahorro futuro.</p>
               </div>
 
               {/* ── Conclusiones ── */}
@@ -734,22 +761,23 @@ export default function EstudioComparativoGas() {
                     </div>
                   </div>
 
-                  <div className={`rounded-xl px-5 py-4 text-center mb-4 ${ahorroAnual >= 0 ? 'bg-green-500' : 'bg-red-500'}`}>
+                  <div className={`rounded-xl px-5 py-4 text-center mb-4 ${dif >= 0 ? 'bg-green-500' : 'bg-red-500'}`}>
                     <p className="text-[10px] font-bold text-white/80 uppercase tracking-widest mb-1">
-                      {ahorroAnual >= 0 ? 'Ahorro anual estimado' : 'Incremento anual estimado'}
+                      {dif >= 0 ? 'Ahorro en este periodo facturado' : 'Sobrecoste en este periodo facturado'}
                     </p>
-                    <p className="text-4xl font-bold text-white tabular-nums">{eur(Math.abs(ahorroAnual))}</p>
+                    <p className="text-4xl font-bold text-white tabular-nums">{eur(Math.abs(dif))}</p>
                     <p className="text-sm font-medium text-white/90 mt-3 leading-snug">
                       {dif >= 0
-                        ? <>Un <span className="text-3xl font-extrabold text-white align-middle">{pct(ahorroPercent)}</span> más barato que el precio actual</>
-                        : <>Un <span className="text-3xl font-extrabold text-white align-middle">{pct(Math.abs(ahorroPercent))}</span> más caro que el precio actual</>
+                        ? <>Un <span className="text-3xl font-extrabold text-white align-middle">{pct(ahorroPercent)}</span> menos que la factura actual</>
+                        : <>Un <span className="text-3xl font-extrabold text-white align-middle">{pct(Math.abs(ahorroPercent))}</span> más que la factura actual</>
                       }
                     </p>
                   </div>
 
                   <div className="bg-white rounded-lg p-3 text-center">
-                    <p className="text-[10px] text-google-gray mb-0.5">Ahorro en factura</p>
-                    <p className={`text-base font-bold tabular-nums ${dif >= 0 ? 'text-green-600' : 'text-red-600'}`}>{eur(Math.abs(dif))}</p>
+                    <p className="text-[10px] text-google-gray mb-0.5">Extrapolación lineal a 365 días (no es un ahorro garantizado)</p>
+                    <p className={`text-base font-bold tabular-nums ${ahorroAnual >= 0 ? 'text-green-600' : 'text-red-600'}`}>{ahorroAnual >= 0 ? '' : '−'}{eur(Math.abs(ahorroAnual))}</p>
+                    <p className="text-[9px] text-google-gray mt-0.5">Basada en un único periodo de {dias} días; para un estudio anual se necesitan 12 facturas.</p>
                   </div>
 
                   {form.notas && (

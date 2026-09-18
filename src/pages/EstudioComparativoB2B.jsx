@@ -1,189 +1,105 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Printer, Download, Factory, Upload, FileText, X, AlertTriangle, Loader2 } from 'lucide-react';
-import { OPEN_30TD, OPEN_61TD, INDEXADA_30TD, INDEXADA_61TD } from '../data/tarifasB2B';
+import { Upload, FileText, Printer, Download, X, AlertTriangle, Loader2, Factory, Info, CheckCircle2, Ban } from 'lucide-react';
 import { exportElementToPdf, slugifyFilename } from '../lib/exportPdf';
+import { OPEN_30TD, OPEN_61TD, SIMPLY_30TD, SIMPLY_61TD, INDEXADA_30TD, INDEXADA_61TD } from '../data/tarifasB2B';
+import { calcularOfertaLuz, calcularAhorro, extrapolarAnual, ESTADO, FRANJAS_P6, necesidadesModalidad } from '../lib/energia/motor';
+import { PROMPT_EXTRACCION_LUZ, validarExtraccion, parsearRespuestaModelo } from '../lib/energia/extraccion';
+import { parsearCurvaCSV } from '../lib/energia/curva';
+import { estadoVigencia, ETIQUETA_ESTADO, fmtFechaES, hoyMadridISO } from '../lib/energia/vigencia';
 
 /* ── Constantes ──────────────────────────────────────────────────────────────── */
 
-/* Impuesto Especial sobre la Electricidad — tipo vigente 5,113% (idéntico a Comparativas 2.0) */
-const IE_RATE = 0.05113;
-
 const PROXY_URL = '/api/gemini';
-
-/* Timeout de seguridad: si Gemini no responde en este tiempo, se aborta la petición
-   y se muestra un error en vez de dejar la carga colgada indefinidamente. */
-const EXTRACTION_TIMEOUT_MS = 25000;
-
-/* Estimación de tiempo de extracción proporcional al peso del archivo (no inventada):
-   tiempo base de 4s (latencia fija de red + arranque del modelo) + 1.5s por cada
-   500KB de archivo (el tiempo que tarda Gemini en "leer" más páginas/resolución). */
-function estimateExtractionSeconds(fileSizeBytes) {
-  const BASE_SECONDS = 4;
-  const SECONDS_PER_500KB = 1.5;
-  const chunks = fileSizeBytes / (500 * 1024);
-  return Math.round(BASE_SECONDS + chunks * SECONDS_PER_500KB);
-}
-
-const NIVELES = [
-  { id: '30', label: '3.0TD', sub: 'Negocios 15–100+ kW' },
-  { id: '61', label: '6.1TD', sub: 'Alta Tensión hasta 450 kW' },
-];
-
-const TIPOS = [
-  { id: 'open',     label: 'Fija / Open' },
-  { id: 'indexada', label: 'Indexada a OMIE' },
-];
-
+/* Gemini 2.5 Pro tarda 45–110 s en facturas de 3–4 páginas (medido con facturas
+   reales). El proxy tiene maxDuration 300 s; el cliente espera hasta 180 s. */
+const EXTRACTION_TIMEOUT_MS = 180000;
 const PERIODS = [1, 2, 3, 4, 5, 6];
 
-/* ── Helpers ─────────────────────────────────────────────────────────────────── */
+const CATALOGO = {
+  '30': { open: OPEN_30TD, simply: SIMPLY_30TD, indexada: INDEXADA_30TD },
+  '61': { open: OPEN_61TD, simply: SIMPLY_61TD, indexada: INDEXADA_61TD },
+};
+const NIVELES = [
+  { id: '30', label: '3.0TD', sub: 'Baja tensión > 15 kW' },
+  { id: '61', label: '6.1TD', sub: 'Alta tensión (Open hasta 450 kW)' },
+];
+const PRODUCTOS = [
+  { id: 'open', label: 'Open' },
+  { id: 'simply', label: 'Simply (autoconsumo)' },
+  { id: 'indexada', label: 'Indexada OMIE' },
+];
+
+function estimateExtractionSeconds(bytes) {
+  return Math.round(45 + (bytes / (500 * 1024)) * 10);
+}
 
 function n(v, fb = 0) {
-  const x = parseFloat(String(v ?? '').replace(',', '.'));
+  if (v === null || v === undefined) return fb;
+  const s = String(v).trim();
+  if (!s) return fb;
+  const x = s.includes(',') ? parseFloat(s.replace(/\./g, '').replace(',', '.')) : parseFloat(s);
   return isNaN(x) ? fb : x;
 }
-
-function eur(v) {
-  return v.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
-}
-
-function pct(v, d = 1) {
-  return (v * 100).toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d }) + '%';
-}
-
-function tarifaOpen(nivel) { return nivel === '30' ? OPEN_30TD : OPEN_61TD; }
-function tarifaIndexada(nivel) { return nivel === '30' ? INDEXADA_30TD : INDEXADA_61TD; }
+const eur = (v) => (v == null ? '—' : v.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €');
+const kwhFmt = (v) => v.toLocaleString('es-ES', { maximumFractionDigits: 2 }) + ' kWh';
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
-    reader.onload  = () => resolve(reader.result.split(',')[1]);
+    reader.onload = () => resolve(reader.result.split(',')[1]);
     reader.onerror = reject;
   });
 }
 
-/* ── Prompt extracción IA ────────────────────────────────────────────────────── */
-
-const B2B_EXTRACTION_PROMPT = `Analiza esta factura eléctrica española de un suministro 3.0TD o 6.1TD (tarifa de acceso con 6 periodos P1-P6, típica de negocios/industria) y extrae los siguientes datos.
-Devuelve EXCLUSIVAMENTE un objeto JSON válido, sin texto adicional, sin markdown, sin bloques de código.
-El JSON debe tener exactamente estos campos (usa null para strings no encontrados y 0 para números no encontrados):
-
-{
-  "nombreCliente": "razón social o nombre completo del titular",
-  "cups": "código CUPS limpio: extrae SOLO los 20-22 caracteres alfanuméricos que empiezan por ES (elimina espacios, saltos de línea y guiones)",
-  "peajeAcceso": "3.0TD" o "6.1TD" — lee el campo "Peaje de acceso a la red (ATR)" o "Tarifa de acceso"/"Tarifa" de la factura,
-  "diasFacturacion": número entero de días del período de facturación,
-  "kwhP1": kWh de energía activa CONSUMIDA DE LA RED en el periodo P1 de este período de facturación (0 si no aparece o es 0),
-  "kwhP2": ídem periodo P2,
-  "kwhP3": ídem periodo P3,
-  "kwhP4": ídem periodo P4,
-  "kwhP5": ídem periodo P5,
-  "kwhP6": ídem periodo P6,
-  "kwPotContratadaP1": kW de potencia contratada en el periodo P1. Muy frecuentemente la factura muestra una única lista de 6 números separados por "/" (ej. "Potencia contratada (kW): 35 / 51 / 51 / 51 / 51 / 51") — en ese caso el primer número es P1, el segundo P2, y así sucesivamente hasta P6,
-  "kwPotContratadaP2": ídem periodo P2,
-  "kwPotContratadaP3": ídem periodo P3,
-  "kwPotContratadaP4": ídem periodo P4,
-  "kwPotContratadaP5": ídem periodo P5,
-  "kwPotContratadaP6": ídem periodo P6,
-  "kwPotMaximaP1": kW de "Maxímetro" o "Potencia Máxima Demandada" EN ESTE PERIODO DE FACTURACIÓN (tabla de consumos/lecturas del periodo), para P1. IMPORTANTE: no uses la frase "Sus potencias máximas demandadas en el último año han sido..." — eso es un dato ANUAL distinto y NO debe usarse aquí. Usa 0 si no aparece el maxímetro de este periodo,
-  "kwPotMaximaP2": ídem periodo P2,
-  "kwPotMaximaP3": ídem periodo P3,
-  "kwPotMaximaP4": ídem periodo P4,
-  "kwPotMaximaP5": ídem periodo P5,
-  "kwPotMaximaP6": ídem periodo P6,
-  "importeTotalFactura": importe TOTAL A PAGAR de la factura en euros (el importe final con todos los impuestos y conceptos incluidos, tal cual figura en "TOTAL IMPORTE FACTURA"),
-  "costeBonoSocial": importe del bono social en euros (0 si no aparece),
-  "costeAlquilerContador": coste del alquiler del equipo de medida en euros (0 si no aparece),
-  "tipoIVA": tipo de IVA en formato decimal. Localiza la línea con formato "IVA X % s/YY,YY €  ZZ,ZZ €": X es el PORCENTAJE, conviértelo a decimal (21→0.21, 10→0.10, 7→0.07). ZZ,ZZ es el importe en euros — NUNCA lo uses como tipo.
-}
-
-════════ REGLAS OBLIGATORIAS — MERCADO ELÉCTRICO ESPAÑOL (3.0TD / 6.1TD) ════════
-
-REGLA 1 — IVA ELÉCTRICO: lee SIEMPRE el porcentaje impreso en la línea de IVA de la factura y conviértelo a decimal (21% general, 10% en periodos con reducción temporal activa, 7% IGIC en Canarias). No asumas un valor fijo.
-
-REGLA 2 — CUPS: los caracteres del CUPS pueden tener "O" (letra) en vez de "0" (cero) por OCR. Las posiciones 3-6 son SIEMPRE dígitos numéricos (ej. "ES0021", no "ESOO21").
-
-REGLA 3 — CONSUMO POR PERIODO: rellena kwhP1-kwhP6 con el consumo de energía activa de la red de cada periodo tal cual aparece en el desglose "Energía consumida" o "Consumos". Es habitual que P1, P2 y/o P3 sean 0 kWh (suministros industriales que solo consumen en periodos valle/nocturnos) — en ese caso pon 0, no null.
-
-REGLA 4 — POTENCIA CONTRATADA: normalmente aparece como una única línea con 6 valores (uno por periodo, en orden P1→P6), o bien desglosada en la tabla de "Potencia facturada". Usa siempre el valor específico de cada periodo, nunca un valor único repetido si la factura da 6 valores distintos.
-
-REGLA 5 — POTENCIA MÁXIMA DEMANDADA (maxímetro): es un dato informativo de la tabla de lecturas de ESTE periodo de facturación (columna "Maxímetro" o "Consumo/Potencia" en la fila "Maxímetro P1".."P6"). Distíntalo claramente del dato anual "Sus potencias máximas demandadas en el último año..." que NO debe usarse para estos campos.
-
-REGLA 6 — IMPORTE TOTAL: usa el importe TOTAL FINAL a pagar (el que incluye energía, potencia, impuestos y cualquier cargo adicional como energía reactiva o regularizaciones — no los desglose, solo el total final de la factura).
-
-REGLA 7 — PEAJE DE ACCESO: identifica si la factura es 3.0TD o 6.1TD a partir del campo "Peaje de acceso a la red (ATR)" o equivalente. Si no aparece explícitamente, infiere por la potencia contratada (por encima de ~450 kW o mención expresa de Alta Tensión → 6.1TD; si no, 3.0TD).`;
-
-/* ── Mini componentes ────────────────────────────────────────────────────────── */
-
-function MiniToggle({ on, onToggle }) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${on ? 'bg-google-blue' : 'bg-gray-300'}`}
-    >
-      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${on ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
-    </button>
-  );
-}
-
 function PBadge({ p }) {
-  const colors = {
-    P1: 'bg-blue-600', P2: 'bg-blue-500', P3: 'bg-blue-400',
-    P4: 'bg-blue-300', P5: 'bg-blue-200 !text-blue-700', P6: 'bg-blue-100 !text-blue-700',
-  };
-  return (
-    <span className={`text-[10px] font-bold text-white rounded px-1.5 py-0.5 leading-none ${colors[p] || 'bg-gray-400'}`}>
-      {p}
-    </span>
-  );
+  const colors = { P1: 'bg-blue-600', P2: 'bg-blue-500', P3: 'bg-blue-400', P4: 'bg-blue-300', P5: 'bg-blue-200 !text-blue-700', P6: 'bg-blue-100 !text-blue-700' };
+  return <span className={`text-[10px] font-bold text-white rounded px-1.5 py-0.5 leading-none ${colors[p] || 'bg-gray-400'}`}>{p}</span>;
 }
 
-/* ── Estado inicial ──────────────────────────────────────────────────────────── */
+const ESTADO_UI = {
+  [ESTADO.OK]: { label: 'Calculada', cls: 'bg-green-100 text-green-700' },
+  [ESTADO.DATOS_INSUFICIENTES]: { label: 'Faltan datos', cls: 'bg-amber-100 text-amber-800' },
+  [ESTADO.NO_ELEGIBLE]: { label: 'No elegible', cls: 'bg-red-100 text-red-700' },
+  [ESTADO.NO_DISPONIBLE]: { label: 'No disponible', cls: 'bg-gray-200 text-gray-700' },
+};
 
 const INIT = Object.assign(
   {
-    dias: '',
-    cliente: '', cups: '',
-    bonoSocial: '0', alquilerContador: '0',
-    compensacionExcedentes: '0',
-    facturaActual: '',
-    dtoCupones: '0',
-    asesor: '', asesorLibre: '',
-    iva: '0.21',
-    descuento: '0',
-    notas: '',
-    // Precio medio de OMIE de referencia: 0,014915 €/kWh. Editable por el asesor.
-    omie: '0.014915',
+    cliente: '', cups: '', asesor: '', asesorLibre: '', notas: '',
+    fechaEmision: '', desde: '', hasta: '', dias: '',
+    excesos: '0', reactiva: '0', alquiler: '0', bonoSocial: '0',
+    facturaActual: '', otrosNoComparables: '0', iva: '0.21',
+    excedentesKwh: '0', omie: '',
   },
-  ...PERIODS.map(i => ({ [`kwhP${i}`]: '0', [`kwPotP${i}`]: '', [`kwMaxP${i}`]: '0' })),
+  ...PERIODS.map(i => ({ [`kwhP${i}`]: '', [`kwPotP${i}`]: '', [`kwMaxP${i}`]: '' })),
+  ...FRANJAS_P6.map(f => ({ [`p6_${f.id}`]: '' })),
 );
 
-/* ══════════════════════════════════════════════════════════════════════════════
-   COMPONENTE
-   ══════════════════════════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════════════════════════ */
 
 export default function EstudioComparativoB2B() {
   const { users } = useAuth();
 
-  const [nivel, setNivel]     = useState('30');
-  const [tipo, setTipo]       = useState('open');
-  const [potIdx, setPotIdx]   = useState(0);
-  const [modalIdx, setModalIdx] = useState(0);
-  const [compExcActiva, setCompExcActiva] = useState(true);
-  const [form, setForm]       = useState(INIT);
-  const [dragging, setDragging]             = useState(false);
-  const [dropped, setDropped]               = useState(null);
-  const [isExtracting, setIsExtracting]     = useState(false);
+  const [nivel, setNivel] = useState('30');
+  const [productoId, setProductoId] = useState('open');
+  const [modalidadId, setModalidadId] = useState('plana');
+  const [autoconsumo, setAutoconsumo] = useState(false);
+  const [form, setForm] = useState(INIT);
+  const [curvaInfo, setCurvaInfo] = useState(null); // { nombre, curva, errores }
+  const [incidencias, setIncidencias] = useState([]);
+  const [dragging, setDragging] = useState(false);
+  const [dropped, setDropped] = useState(null);
+  const [isExtracting, setIsExtracting] = useState(false);
   const [extractionDone, setExtractionDone] = useState(false);
   const [extractionError, setExtractionError] = useState('');
   const [estimatedSeconds, setEstimatedSeconds] = useState(0);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
-  const [pdfError, setPdfError]             = useState('');
+  const [pdfError, setPdfError] = useState('');
   const fileRef = useRef(null);
+  const curvaRef = useRef(null);
   const countdownRef = useRef(null);
 
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
@@ -197,12 +113,9 @@ export default function EstudioComparativoB2B() {
     setIsExtracting(true);
     setExtractionDone(false);
     setExtractionError('');
-
+    setIncidencias([]);
     clearInterval(countdownRef.current);
-    countdownRef.current = setInterval(() => {
-      setRemainingSeconds(s => Math.max(0, s - 1));
-    }, 1000);
-
+    countdownRef.current = setInterval(() => setRemainingSeconds(s => Math.max(0, s - 1)), 1000);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), EXTRACTION_TIMEOUT_MS);
 
@@ -211,68 +124,81 @@ export default function EstudioComparativoB2B() {
       const res = await fetch(PROXY_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: B2B_EXTRACTION_PROMPT,
-          history: [
-            { role: 'user',  parts: [{ text: 'Actúa como experto en el mercado eléctrico español para suministros de negocio/industria 3.0TD y 6.1TD (6 periodos P1-P6). Extrae datos estructurados de facturas eléctricas y devuelve JSON válido.' }] },
-            { role: 'model', parts: [{ text: 'Entendido. Soy experto en facturas eléctricas 3.0TD/6.1TD españolas. Extraeré el consumo, la potencia contratada y la potencia máxima demandada (maxímetro de este periodo, no el dato anual) para cada uno de los 6 periodos P1-P6, identificaré el peaje de acceso (3.0TD/6.1TD) y el tipo de IVA leyendo el porcentaje impreso en la factura. Devolveré exclusivamente el objeto JSON solicitado.' }] },
-          ],
-          file: { mimeType: file.type || 'application/octet-stream', data: base64 },
-        }),
+        body: JSON.stringify({ text: PROMPT_EXTRACCION_LUZ, history: [], json: true, file: { mimeType: file.type || 'application/pdf', data: base64 } }),
         signal: controller.signal,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      const ex = parsearRespuestaModelo(data.response);
+      const v = validarExtraccion(ex);
+      const d = v.datos;
+      setIncidencias(v.incidencias);
 
-      let raw = data.response.trim();
-      const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-      if (fenced) raw = fenced[1].trim();
-      else { const m = raw.match(/\{[\s\S]*\}/); if (m) raw = m[0]; }
-
-      const ex = JSON.parse(raw);
-
-      if (ex.peajeAcceso) {
-        const pa = ex.peajeAcceso.toString().toLowerCase().replace(/\s/g, '');
-        if      (pa.includes('6.1') || pa.includes('61td')) setNivel('61');
-        else if (pa.includes('3.0') || pa.includes('30td')) setNivel('30');
+      if (d.tarifaAcceso === '2.0TD') {
+        setExtractionError('La factura es 2.0TD: usa la pestaña "Comparativas 2.0". No se han volcado datos.');
+        return;
       }
+      if (d.tarifaAcceso === '6.1TD') setNivel('61');
+      else if (d.tarifaAcceso === '3.0TD') setNivel('30');
 
-      let ivaValue = form.iva;
-      if (ex.tipoIVA != null) {
-        const v = parseFloat(ex.tipoIVA);
-        if      (Math.abs(v - 0.10) < 0.005) ivaValue = '0.10';
-        else if (Math.abs(v - 0.07) < 0.005) ivaValue = '0.07';
-        else                                  ivaValue = '0.21';
-      }
-
+      const ivaPct = d.importes.ivaPct;
+      const ivaRate = ivaPct != null ? ivaPct / 100 : n(form.iva, 0.21);
       setForm(f => {
-        const next = { ...f, iva: ivaValue };
-        PERIODS.forEach(i => {
-          if (ex[`kwhP${i}`] != null)            next[`kwhP${i}`]  = String(ex[`kwhP${i}`]);
-          if (ex[`kwPotContratadaP${i}`] != null) next[`kwPotP${i}`] = String(ex[`kwPotContratadaP${i}`]);
-          if (ex[`kwPotMaximaP${i}`] != null)     next[`kwMaxP${i}`] = String(ex[`kwPotMaximaP${i}`]);
+        const next = { ...f };
+        PERIODS.forEach((p, i) => {
+          next[`kwhP${p}`] = d.kwhPeriodo[i] != null ? String(d.kwhPeriodo[i]) : '0';
+          next[`kwPotP${p}`] = d.potenciasKw[i] != null ? String(d.potenciasKw[i]) : '';
+          next[`kwMaxP${p}`] = d.maximetrosKw[i] != null ? String(d.maximetrosKw[i]) : '';
         });
-        next.cliente          = ex.nombreCliente          || f.cliente;
-        next.cups             = ex.cups                   || f.cups;
-        next.dias             = ex.diasFacturacion  != null ? String(ex.diasFacturacion)      : f.dias;
-        next.facturaActual    = ex.importeTotalFactura != null ? String(ex.importeTotalFactura) : f.facturaActual;
-        next.bonoSocial       = ex.costeBonoSocial  != null ? String(ex.costeBonoSocial)      : f.bonoSocial;
-        next.alquilerContador = ex.costeAlquilerContador != null ? String(ex.costeAlquilerContador) : f.alquilerContador;
+        next.cliente = d.titular || f.cliente;
+        next.cups = d.cups || f.cups;
+        next.fechaEmision = d.fechaEmision || '';
+        next.desde = d.periodo.desde || '';
+        next.hasta = d.periodo.hasta || '';
+        next.dias = d.dias != null ? String(d.dias) : '';
+        next.excesos = String(d.importes.excesos ?? 0);
+        next.reactiva = String(d.importes.reactiva ?? 0);
+        next.alquiler = String(d.importes.alquiler ?? 0);
+        next.bonoSocial = String(d.importes.bonoSocial ?? 0);
+        next.facturaActual = d.importes.total != null ? String(d.importes.total) : '';
+        next.otrosNoComparables = d.importes.otrosServicios ? String(Math.round(d.importes.otrosServicios * (1 + ivaRate) * 100) / 100) : '0';
+        next.iva = String(ivaRate);
+        next.excedentesKwh = String(d.excedentesKwh ?? 0);
+        FRANJAS_P6.forEach(fr => { next[`p6_${fr.id}`] = ''; });
         return next;
       });
+      if ((d.excedentesKwh || 0) > 0) setAutoconsumo(true);
+      setCurvaInfo(null);
       setExtractionDone(true);
     } catch (err) {
-      console.error('[EC-B2B] Extracción IA:', err);
       if (err.name === 'AbortError') {
-        setExtractionError(`La extracción ha tardado demasiado (más de ${Math.round(EXTRACTION_TIMEOUT_MS / 1000)}s). Revisa el documento o introduce los datos manualmente.`);
+        setExtractionError(`La extracción ha superado ${Math.round(EXTRACTION_TIMEOUT_MS / 1000)} s. Introduce los datos manualmente o inténtalo de nuevo.`);
       } else {
-        setExtractionError('Error al extraer los datos. Revisa el documento o introduce los datos manualmente.');
+        setExtractionError(err.message?.startsWith('La respuesta') || err.message?.startsWith('El servicio')
+          ? err.message
+          : 'No se han podido extraer los datos. Revisa el documento o introdúcelos manualmente.');
       }
     } finally {
       clearTimeout(timeoutId);
       clearInterval(countdownRef.current);
       setIsExtracting(false);
     }
+  }
+
+  function handleFileUpload(file) {
+    if (!file) return;
+    setDropped(file);
+    extractFromInvoice(file);
+  }
+  const onDragOver = useCallback(e => { e.preventDefault(); setDragging(true); }, []);
+  const onDragLeave = useCallback(() => setDragging(false), []);
+  const onDrop = e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFileUpload(f); };
+
+  async function handleCurva(file) {
+    if (!file) return;
+    const texto = await file.text();
+    const r = parsearCurvaCSV(texto, { desde: form.desde || undefined, hasta: form.hasta || undefined });
+    setCurvaInfo({ nombre: file.name, ...r });
   }
 
   async function handleDownloadPdf() {
@@ -282,113 +208,66 @@ export default function EstudioComparativoB2B() {
       const cliente = form.cliente.trim() || 'informe';
       const fechaCorta = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }).replace(/\//g, '-');
       await exportElementToPdf('ecb2b-informe', `Comparativa_${slugifyFilename(cliente)}_${fechaCorta}.pdf`);
-    } catch (err) {
-      console.error('[EC-B2B] Descarga PDF:', err);
-      setPdfError('No se pudo generar el PDF. Prueba de nuevo o usa "Imprimir informe" como alternativa.');
+    } catch {
+      setPdfError('No se pudo generar el PDF. Prueba de nuevo o usa "Imprimir informe".');
     } finally {
       setIsExportingPdf(false);
     }
   }
 
-  function handleFileUpload(file) {
-    if (!file) return;
-    setDropped(file);
-    setExtractionDone(false);
-    setExtractionError('');
-    extractFromInvoice(file);
-  }
+  /* ════════════ CÁLCULO (motor determinista) ════════════ */
 
-  const onDragOver  = useCallback(e => { e.preventDefault(); setDragging(true); }, []);
-  const onDragLeave = useCallback(() => setDragging(false), []);
-  const onDrop = e => {
-    e.preventDefault(); setDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) handleFileUpload(file);
+  const producto = CATALOGO[nivel][productoId];
+  const hoy = hoyMadridISO();
+  const kwhPeriodo = PERIODS.map(i => n(form[`kwhP${i}`]));
+  const potenciasKw = PERIODS.map(i => n(form[`kwPotP${i}`]));
+  const desgloseLleno = FRANJAS_P6.every(f => form[`p6_${f.id}`] !== '');
+  const desgloseP6 = desgloseLleno ? Object.fromEntries(FRANJAS_P6.map(f => [f.id, n(form[`p6_${f.id}`])])) : undefined;
+  const curva = curvaInfo?.curva?.length && !curvaInfo.errores.length ? curvaInfo.curva : undefined;
+  const periodo = form.desde && form.hasta ? { desde: form.desde, hasta: form.hasta } : undefined;
+
+  const entrada = {
+    potenciasKw, dias: n(form.dias), periodo, kwhPeriodo, desgloseP6, curva,
+    omie: form.omie === '' ? null : n(form.omie),
+    tieneAutoconsumo: autoconsumo, excedentesKwh: n(form.excedentesKwh),
+    mantenidos: { excesos: n(form.excesos), reactiva: n(form.reactiva), alquiler: n(form.alquiler), bonoSocial: n(form.bonoSocial) },
+    ivaRate: n(form.iva, 0.21), fechaOferta: hoy,
   };
 
-  /* ════════════ CÁLCULOS ════════════ */
+  const resultadosModalidad = useMemo(() => {
+    if (!producto.modalidades) return null;
+    return producto.modalidades.map(m => ({ modalidad: m, r: calcularOfertaLuz({ ...entrada, producto, modalidadId: m.id }) }));
+  }, [JSON.stringify(entrada), productoId, nivel]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const asesorDisplay = form.asesor === '__otro__' ? (form.asesorLibre || '') : form.asesor;
-  const isIndexada = tipo === 'indexada';
+  const resultado = producto.modalidades
+    ? resultadosModalidad.find(x => x.modalidad.id === modalidadId)?.r
+    : calcularOfertaLuz({ ...entrada, producto });
 
-  const openData     = tarifaOpen(nivel);
-  const indexadaData = tarifaIndexada(nivel);
-  const potenciaTerminos = openData.potenciaTerminos; // idénticos en Open e Indexada (mismo peaje)
+  const mejor = resultadosModalidad
+    ? resultadosModalidad.filter(x => x.r.estado === ESTADO.OK).sort((a, b) => a.r.total - b.r.total)[0]
+    : null;
 
-  const omie = n(form.omie);
-  const modalidad = openData.modalidades[modalIdx];
-
-  // Precio de energía por periodo: en Open, P1-P5 usan el precio de "horas Open" de la
-  // modalidad elegida y P6 usa "horas No Open" (validado contra el comparador Excel de
-  // referencia: en 3.0TD/6.1TD el periodo P6 —valle, noche/fin de semana— queda fuera de
-  // las franjas Open de todas las modalidades). Excepción: la modalidad "Plana" cubre las
-  // 24h del día los 365 días del año (ver `desc` en tarifasB2B.js), así que no existen horas
-  // "No Open" — P6 debe usar el mismo precio que P1-P5, no `horasNoOpen`. En Indexada, cada
-  // periodo tiene su propia fórmula A + B×OMIE.
-  const isPlana = modalidad.label === 'Plana';
-  const precioOpenBase   = openData.matrix[potIdx][modalIdx];
-  const precioNoOpenBase = isPlana ? precioOpenBase : openData.horasNoOpen[potIdx];
-
-  const dto = n(form.descuento) / 100;
-
-  const precios = PERIODS.map(i => {
-    const base = isIndexada
-      ? indexadaData.energiaA[`p${i}`] + indexadaData.energiaB[`p${i}`] * omie
-      : (i <= 5 || isPlana ? precioOpenBase : precioNoOpenBase);
-    return base * (1 - dto);
-  });
-
-  const kwh   = PERIODS.map(i => n(form[`kwhP${i}`]));
-  const kwPot = PERIODS.map(i => n(form[`kwPotP${i}`]));
-  const kwMax = PERIODS.map(i => n(form[`kwMaxP${i}`]));
-
-  const dias     = n(form.dias);
-  const bono     = n(form.bonoSocial);
-  const alqCont  = n(form.alquilerContador);
   const factActual = n(form.facturaActual);
-  const dtoCup   = n(form.dtoCupones);
-  const factBase = factActual; // el cupón/dto de fidelización nunca se aplica: se compara siempre el bruto de la factura
-  const ivaRate  = n(form.iva, 0.21);
+  const otros = n(form.otrosNoComparables);
+  const costeActual = factActual - otros;
+  const ok = resultado?.estado === ESTADO.OK;
+  const ahorro = ok ? calcularAhorro(costeActual, resultado.total) : { ahorroEur: null, ahorroPct: null };
+  const extrap = ok ? extrapolarAnual(ahorro.ahorroEur, entrada.dias) : null;
+  const isReady = factActual > 0 && entrada.dias > 0 && kwhPeriodo.some(x => x > 0) && potenciasKw.some(x => x > 0);
 
-  const potDiaTerminos = potenciaTerminos.map(t => t.anyo / 365);
-  const imtPot = PERIODS.map((_, idx) => kwPot[idx] * dias * potDiaTerminos[idx]);
-  const subtotPot = imtPot.reduce((a, b) => a + b, 0);
+  const modalidadSel = producto.modalidades?.find(m => m.id === modalidadId);
+  const nec = modalidadSel ? necesidadesModalidad(modalidadSel) : null;
+  const vig = estadoVigencia(producto.contratacion, hoy);
+  const asesorDisplay = form.asesor === '__otro__' ? form.asesorLibre : form.asesor;
+  const today = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
+  const tituloOferta = producto.modalidades ? `${producto.nombre} — ${modalidadSel?.label}` : producto.nombre;
+  const incidenciasVisibles = incidencias.filter(i => i.nivel !== 'info');
+  const incidenciasInfo = incidencias.filter(i => i.nivel === 'info');
 
-  const imtEn = PERIODS.map((_, idx) => kwh[idx] * precios[idx]);
-  const subtotEn = imtEn.reduce((a, b) => a + b, 0);
-
-  const totalKwh = kwh.reduce((a, b) => a + b, 0);
-
-  // Excedentes: campo manual (no existe hoy ninguna tarifa solar B2B en el catálogo 3.0/6.1).
-  const excedentes = compExcActiva ? n(form.compensacionExcedentes) : 0;
-
-  const baseIE  = subtotPot + subtotEn - excedentes + bono;
-  const impElec = baseIE * IE_RATE;
-  const baseIVA = baseIE + impElec + alqCont;
-  const ivaImp  = baseIVA * ivaRate;
-  const total   = baseIVA + ivaImp;
-
-  const dif           = factBase - total;
-  const ahorroPercent = total > 0 ? (factBase / total - 1) : 0;
-  const ahorroAnual   = dias > 0 ? (dif / dias) * 365 : 0;
-  const isReady = kwPot[0] > 0 && dias > 0 && factActual > 0 && totalKwh > 0;
-
-  const today      = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long',    year: 'numeric' });
-
-  const tarifaLabel = isIndexada
-    ? `Indexada a OMIE ${nivel === '30' ? '3.0TD' : '6.1TD'}`
-    : `Open ${nivel === '30' ? '3.0TD' : '6.1TD'} — ${modalidad.label} (${openData.potencias[potIdx]})`;
-
-  /* ══════════════════════════════════════════════════════════════════════════════
-     RENDER
-     ══════════════════════════════════════════════════════════════════════════════ */
+  /* ════════════ RENDER ════════════ */
 
   return (
     <>
-      {/* CSS impresión — se oculta todo el CRM (sidebar, IA, tabs, formulario) por
-          print:hidden en cada componente; aquí solo forzamos el tamaño de página y
-          que los fondos de color se impriman tal cual (Chrome/Safari los omiten
-          por defecto en impresión para ahorrar tinta). */}
       <style>{`
         @media print {
           @page { margin: 12mm; size: A4 portrait; }
@@ -396,494 +275,368 @@ export default function EstudioComparativoB2B() {
         }
       `}</style>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[460px_1fr] gap-6 items-start print:block">
+      <div className="grid grid-cols-1 xl:grid-cols-[480px_1fr] gap-6 items-start print:block">
 
         {/* ── COLUMNA IZQUIERDA ── */}
         <div className="space-y-4 print:hidden">
 
-          <p className="text-xs text-gray-400 leading-relaxed">
-            * Puede introducir los valores numéricos usando comas (,) para los decimales.
-          </p>
-
           {isReady && (
             <div className="flex gap-3 justify-end">
-              <button
-                onClick={handleDownloadPdf}
-                disabled={isExportingPdf}
-                className="flex items-center gap-2 bg-white border border-google-border text-google-dark text-sm font-medium px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-60 disabled:cursor-wait"
-              >
+              <button onClick={handleDownloadPdf} disabled={isExportingPdf}
+                className="flex items-center gap-2 bg-white border border-google-border text-google-dark text-sm font-medium px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-60 disabled:cursor-wait">
                 {isExportingPdf ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
                 {isExportingPdf ? 'Generando PDF…' : 'Descargar'}
               </button>
-              <button
-                onClick={() => window.print()}
-                className="flex items-center gap-2 bg-google-dark text-white text-sm font-medium px-4 py-2 rounded-xl hover:bg-gray-800 transition-colors"
-              >
-                <Printer size={15} />
-                Imprimir informe
+              <button onClick={() => window.print()}
+                className="flex items-center gap-2 bg-google-dark text-white text-sm font-medium px-4 py-2 rounded-xl hover:bg-gray-800 transition-colors">
+                <Printer size={15} /> Imprimir informe
               </button>
             </div>
           )}
+          {pdfError && <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{pdfError}</p>}
 
-          {pdfError && (
-            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
-              <AlertTriangle size={13} className="text-red-500 flex-shrink-0 mt-0.5" />
-              <p className="text-[11px] text-red-700 leading-relaxed">{pdfError}</p>
-            </div>
-          )}
-
-          {/* 1 · Tarifa */}
-          <div className="bg-white border border-google-border rounded-xl shadow-sm p-5">
-            <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-3">
-              1 · Tarifa Endesa a comparar <span className="text-red-400">*</span>
-            </p>
-
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <div>
-                <label className="text-[10px] font-medium text-google-gray mb-1.5 block">Nivel de tensión</label>
-                <div className="flex rounded-lg overflow-hidden border border-google-border">
-                  {NIVELES.map(nv => (
-                    <button key={nv.id} type="button" onClick={() => setNivel(nv.id)}
-                      className={`flex-1 py-2 text-xs font-medium transition-colors ${nivel === nv.id ? 'bg-gray-800 text-white' : 'bg-white text-google-gray hover:bg-gray-50'}`}>
-                      {nv.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-[10px] text-gray-400 mt-1">{NIVELES.find(nv => nv.id === nivel).sub}</p>
-              </div>
-              <div>
-                <label className="text-[10px] font-medium text-google-gray mb-1.5 block">Modalidad de precio</label>
-                <div className="flex rounded-lg overflow-hidden border border-google-border">
-                  {TIPOS.map(tp => (
-                    <button key={tp.id} type="button" onClick={() => setTipo(tp.id)}
-                      className={`flex-1 py-2 text-[11px] font-medium transition-colors ${tipo === tp.id ? 'bg-google-blue text-white' : 'bg-white text-google-gray hover:bg-blue-50'}`}>
-                      {tp.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {isIndexada ? (
-              <div className="pt-3 border-t border-gray-100">
-                <label className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-1.5 block">
-                  Precio medio OMIE del mes (€/kWh) <span className="text-red-400">*</span>
-                </label>
-                <input
-                  type="text" inputMode="decimal"
-                  value={form.omie}
-                  onChange={set('omie')}
-                  placeholder="Ej. 0,065"
-                  className="input-field text-sm w-40"
-                />
-                <p className="text-[10px] text-google-gray mt-1.5 leading-snug">
-                  Precio final de energía por periodo = A + (B × OMIE). Se recalcula automáticamente en todo el informe al modificar este valor.
-                </p>
-                <p className="text-[10px] text-cyan-600 mt-1">
-                  Precargado con el valor actual de referencia. Puedes modificarlo con el valor del mes que corresponda.
-                </p>
-              </div>
-            ) : (
-              <div className="pt-3 border-t border-gray-100 space-y-3">
-                <div>
-                  <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-2">Potencia contratada (bracket tarifario)</p>
-                  <div className="flex flex-wrap gap-2">
-                    {openData.potencias.map((p, i) => (
-                      <button key={i} type="button" onClick={() => setPotIdx(i)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${potIdx === i ? 'bg-google-blue text-white border-google-blue' : 'bg-gray-50 text-google-gray border-google-border hover:border-google-blue hover:text-google-blue'}`}>
-                        {p}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-2">Modalidad Open</p>
-                  <div className="flex flex-wrap gap-2">
-                    {openData.modalidades.map((m, i) => (
-                      <button key={i} type="button" onClick={() => setModalIdx(i)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${modalIdx === i ? 'bg-google-blue text-white border-google-blue' : 'bg-gray-50 text-google-gray border-google-border hover:border-google-blue hover:text-google-blue'}`}>
-                        {m.label} <span className="opacity-75">({m.dto}%)</span>
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-[11px] text-google-gray mt-2 leading-snug">
-                    Precio en horas Open (P1-P5): <span className="font-mono font-semibold text-google-dark">{precioOpenBase.toFixed(6)} €/kWh</span> · Horas No Open (P6): <span className="font-mono font-semibold text-google-dark">{precioNoOpenBase.toFixed(6)} €/kWh</span>
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between pt-3 mt-3 border-t border-gray-100">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-google-gray">Comp. excedentes</span>
-                <MiniToggle on={compExcActiva} onToggle={() => setCompExcActiva(v => !v)} />
-              </div>
-              <span className="text-[10px] text-gray-400">Válida: {(isIndexada ? indexadaData : openData).validez}</span>
-            </div>
-          </div>
-
-          {/* 2 · Factura */}
-          <div className="bg-white border border-google-border rounded-xl shadow-sm p-5">
+          {/* 1 · Factura */}
+          <section className="bg-white border border-google-border rounded-xl shadow-sm p-5">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider">2 · Factura del cliente</p>
-              <span className="flex items-center gap-1 text-[10px] font-semibold text-google-blue bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5">
-                <Loader2 size={9} />
-                IA · Extracción automática
-              </span>
-            </div>
-            <div className="flex items-start gap-2 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2.5 mb-3">
-              <AlertTriangle size={14} className="text-amber-500 flex-shrink-0 mt-0.5" />
-              <p className="text-[11px] text-amber-800 leading-snug font-medium">⚠️ Los datos volcados deberán ser revisados minuciosamente para evitar fallos en el estudio.</p>
+              <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider">1 · Factura del cliente</p>
+              <span className="text-[10px] font-semibold text-google-blue bg-blue-50 border border-blue-200 rounded-full px-2 py-0.5">Extracción IA + validación</span>
             </div>
             <div
-              className={`border-2 border-dashed rounded-xl p-5 text-center transition-colors ${
-                isExtracting ? 'border-blue-300 bg-blue-50 cursor-wait'
-                : dragging    ? 'border-google-blue bg-blue-50 cursor-copy'
-                : 'border-gray-200 bg-gray-50 hover:border-blue-300 cursor-pointer'
-              }`}
-              onDragOver={!isExtracting ? onDragOver  : undefined}
+              className={`border-2 border-dashed rounded-xl p-5 text-center transition-colors ${isExtracting ? 'border-blue-300 bg-blue-50 cursor-wait' : dragging ? 'border-google-blue bg-blue-50 cursor-copy' : 'border-gray-200 bg-gray-50 hover:border-blue-300 cursor-pointer'}`}
+              onDragOver={!isExtracting ? onDragOver : undefined}
               onDragLeave={!isExtracting ? onDragLeave : undefined}
               onDrop={!isExtracting ? onDrop : undefined}
               onClick={() => { if (!isExtracting) fileRef.current?.click(); }}
             >
-              <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={e => { if (e.target.files[0]) handleFileUpload(e.target.files[0]); e.target.value = ''; }} />
+              <input ref={fileRef} id="ecb2b-factura" type="file" accept=".pdf,.jpg,.jpeg,.png" className="hidden" onChange={e => { if (e.target.files[0]) handleFileUpload(e.target.files[0]); e.target.value = ''; }} />
               {isExtracting ? (
-                <div className="flex flex-col items-center gap-2.5 py-1 w-full">
-                  <Loader2 size={28} className="text-google-blue animate-spin" />
-                  <div className="w-full max-w-[240px]">
-                    <p className="text-xs font-semibold text-google-blue text-center">Analizando documento con IA...</p>
-                    <p className="text-[11px] text-blue-400 mt-0.5 text-center">
-                      {remainingSeconds > 0 ? `Tiempo estimado: ${remainingSeconds}s` : 'Casi listo…'}
-                    </p>
-                    <div className="mt-2.5 h-1.5 w-full bg-blue-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-google-blue rounded-full transition-all duration-500 ease-linear"
-                        style={{ width: `${estimatedSeconds > 0 ? Math.min(96, ((estimatedSeconds - remainingSeconds) / estimatedSeconds) * 100) : 0}%` }}
-                      />
-                    </div>
+                <div className="flex flex-col items-center gap-2 w-full">
+                  <Loader2 size={26} className="text-google-blue animate-spin" />
+                  <p className="text-xs font-semibold text-google-blue">Analizando factura con IA…</p>
+                  <p className="text-[11px] text-blue-400">{remainingSeconds > 0 ? `Tiempo estimado: ${remainingSeconds} s` : 'Casi listo…'}</p>
+                  <div className="h-1.5 w-full max-w-[240px] bg-blue-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-google-blue rounded-full transition-all duration-500 ease-linear"
+                      style={{ width: `${estimatedSeconds > 0 ? Math.min(96, ((estimatedSeconds - remainingSeconds) / estimatedSeconds) * 100) : 0}%` }} />
                   </div>
                 </div>
               ) : dropped ? (
                 <div className="flex items-center justify-center gap-2">
                   <FileText size={16} className="text-google-blue flex-shrink-0" />
-                  <span className="text-sm font-medium text-google-dark truncate max-w-[200px]">{dropped.name}</span>
-                  <button type="button" className="text-gray-400 hover:text-red-500 transition-colors" onClick={e => { e.stopPropagation(); setDropped(null); setExtractionDone(false); setExtractionError(''); }}>
-                    <X size={14} />
-                  </button>
+                  <span className="text-sm font-medium text-google-dark truncate max-w-[220px]">{dropped.name}</span>
+                  <button type="button" className="text-gray-400 hover:text-red-500" onClick={e => { e.stopPropagation(); setDropped(null); setExtractionDone(false); setExtractionError(''); }}><X size={14} /></button>
                 </div>
               ) : (
-                <><Upload size={18} className="mx-auto mb-2 text-gray-400" /><p className="text-xs text-google-gray">Arrastra la factura aquí o <span className="text-google-blue underline">selecciona un archivo</span></p><p className="text-[11px] text-gray-400 mt-0.5">PDF, JPG o PNG · Rellena automáticamente los 18 campos de consumo/potencia</p></>
+                <><Upload size={18} className="mx-auto mb-2 text-gray-400" /><p className="text-xs text-google-gray">Arrastra la factura 3.0TD / 6.1TD o <span className="text-google-blue underline">selecciona un archivo</span></p></>
               )}
             </div>
             {extractionDone && !isExtracting && (
-              <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 mt-3">
-                <AlertTriangle size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
-                <p className="text-[11px] text-amber-800 leading-relaxed"><span className="font-bold text-amber-700 block mb-0.5">⚠️ Atención: Revisión obligatoria</span>Los datos han sido volcados automáticamente mediante IA. Revise todos los campos (incluyendo el nivel 3.0TD/6.1TD detectado) antes de presentar el estudio.</p>
-              </div>
+              <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2 mt-3">
+                <strong>Revisión obligatoria:</strong> la IA solo transcribe; los importes se validan y calculan con código. Revisa cada campo antes de presentar el estudio.
+              </p>
             )}
-            {extractionError && !isExtracting && (
-              <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5 mt-3">
-                <AlertTriangle size={13} className="text-red-500 flex-shrink-0 mt-0.5" />
-                <p className="text-[11px] text-red-700 leading-relaxed">{extractionError}</p>
-              </div>
+            {extractionError && !isExtracting && <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-3">{extractionError}</p>}
+            {incidenciasVisibles.length > 0 && (
+              <ul className="mt-3 space-y-1.5">
+                {incidenciasVisibles.map((i, k) => (
+                  <li key={k} className={`text-[11px] rounded-lg px-3 py-2 border ${i.nivel === 'error' ? 'bg-red-50 border-red-200 text-red-800' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
+                    <strong>{i.nivel === 'error' ? 'Error' : 'Aviso'}:</strong> {i.mensaje}
+                  </li>
+                ))}
+              </ul>
             )}
-          </div>
+            {incidenciasInfo.length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {incidenciasInfo.map((i, k) => <li key={k} className="text-[10px] text-google-gray flex gap-1.5"><Info size={11} className="flex-shrink-0 mt-0.5" />{i.mensaje}</li>)}
+              </ul>
+            )}
+          </section>
 
-          {/* 3 · Consumo y potencia por periodo */}
-          <div className="bg-white border border-google-border rounded-xl shadow-sm p-5">
-            <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-3">3 · Consumo y potencia por periodo (P1–P6)</p>
-            <div className="overflow-x-auto -mx-1">
+          {/* 2 · Oferta */}
+          <section className="bg-white border border-google-border rounded-xl shadow-sm p-5 space-y-3">
+            <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider">2 · Oferta Endesa a comparar</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] font-medium text-google-gray mb-1.5 block">Tarifa de acceso</label>
+                <div className="flex rounded-lg overflow-hidden border border-google-border">
+                  {NIVELES.map(nv => (
+                    <button key={nv.id} type="button" onClick={() => setNivel(nv.id)}
+                      className={`flex-1 py-2 text-xs font-medium ${nivel === nv.id ? 'bg-gray-800 text-white' : 'bg-white text-google-gray hover:bg-gray-50'}`}>{nv.label}</button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1">{NIVELES.find(x => x.id === nivel).sub}</p>
+              </div>
+              <div>
+                <label className="text-[10px] font-medium text-google-gray mb-1.5 block">Producto</label>
+                <select value={productoId} onChange={e => setProductoId(e.target.value)} className="input-field text-sm" id="ecb2b-producto">
+                  {PRODUCTOS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                </select>
+              </div>
+            </div>
+            {producto.modalidades && (
+              <div>
+                <p className="text-[10px] font-medium text-google-gray mb-1.5">Modalidad Open</p>
+                <div className="flex flex-wrap gap-2">
+                  {producto.modalidades.map(m => (
+                    <button key={m.id} type="button" onClick={() => setModalidadId(m.id)} title={m.desc}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${modalidadId === m.id ? 'bg-google-blue text-white border-google-blue' : 'bg-gray-50 text-google-gray border-google-border hover:border-google-blue'}`}>
+                      {m.label} <span className="opacity-75">({m.dto}% + {producto.extraAnyo}%)</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-google-gray mt-2">Horas Open: {modalidadSel?.desc}.</p>
+              </div>
+            )}
+            {productoId === 'indexada' && (
+              <div>
+                <label htmlFor="ecb2b-omie" className="text-[10px] font-medium text-google-gray mb-1 block">OMIE medio del periodo facturado (€/kWh) *</label>
+                <input id="ecb2b-omie" type="text" inputMode="decimal" value={form.omie} onChange={set('omie')} placeholder="p. ej. 0,065" className="input-field text-sm w-40" />
+              </div>
+            )}
+            {productoId === 'simply' && (
+              <label className="flex items-center gap-2 text-xs text-google-dark">
+                <input type="checkbox" checked={autoconsumo} onChange={e => setAutoconsumo(e.target.checked)} id="ecb2b-autoconsumo" />
+                El suministro tiene autoconsumo instalado (requisito de Simply)
+              </label>
+            )}
+            {vig !== 'vigente' && (
+              <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">
+                <strong>{ETIQUETA_ESTADO[vig]}.</strong> {producto.contratacion?.incidencia || `Ventana de contratación: ${producto.validez}.`}
+              </p>
+            )}
+            <p className="text-[10px] text-gray-400">Contratación: {producto.validez} · Fuente: {producto.contratacion?.fuente}</p>
+          </section>
+
+          {/* 3 · Consumo y potencia */}
+          <section className="bg-white border border-google-border rounded-xl shadow-sm p-5">
+            <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-3">3 · Consumo facturado y potencia por periodo</p>
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              <div><label htmlFor="ecb2b-desde" className="text-[10px] font-medium text-google-gray mb-1 block">Consumo desde</label><input id="ecb2b-desde" type="date" value={form.desde} onChange={set('desde')} className="input-field text-xs" /></div>
+              <div><label htmlFor="ecb2b-hasta" className="text-[10px] font-medium text-google-gray mb-1 block">Consumo hasta</label><input id="ecb2b-hasta" type="date" value={form.hasta} onChange={set('hasta')} className="input-field text-xs" /></div>
+              <div><label htmlFor="ecb2b-dias" className="text-[10px] font-medium text-google-gray mb-1 block">Días facturados *</label><input id="ecb2b-dias" type="text" inputMode="decimal" value={form.dias} onChange={set('dias')} className="input-field text-xs" /></div>
+            </div>
+            <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr>
-                    <th className="text-left px-1 py-1 text-[10px] font-medium text-google-gray">Periodo</th>
-                    <th className="text-left px-1 py-1 text-[10px] font-medium text-google-gray">Consumo (kWh)</th>
-                    <th className="text-left px-1 py-1 text-[10px] font-medium text-google-gray">Pot. contratada (kW)</th>
-                    <th className="text-left px-1 py-1 text-[10px] font-medium text-google-gray">Pot. máx. demandada (kW)</th>
+                  <tr className="text-[10px] text-google-gray">
+                    <th className="text-left px-1 py-1 font-medium">Periodo</th>
+                    <th className="text-left px-1 py-1 font-medium">kWh facturados</th>
+                    <th className="text-left px-1 py-1 font-medium">Pot. contratada (kW)</th>
+                    <th className="text-left px-1 py-1 font-medium">Maxímetro (kW)</th>
                   </tr>
                 </thead>
                 <tbody>
                   {PERIODS.map(i => (
                     <tr key={i} className="border-t border-gray-50">
-                      <td className="px-1 py-1.5 align-middle"><PBadge p={`P${i}`} /></td>
-                      <td className="px-1 py-1.5"><input type="text" inputMode="decimal" value={form[`kwhP${i}`]} onChange={set(`kwhP${i}`)} placeholder="kWh" className="input-field text-xs py-1.5" /></td>
-                      <td className="px-1 py-1.5"><input type="text" inputMode="decimal" value={form[`kwPotP${i}`]} onChange={set(`kwPotP${i}`)} placeholder="kW" className="input-field text-xs py-1.5" /></td>
-                      <td className="px-1 py-1.5"><input type="text" inputMode="decimal" value={form[`kwMaxP${i}`]} onChange={set(`kwMaxP${i}`)} placeholder="kW" className="input-field text-xs py-1.5" /></td>
+                      <td className="px-1 py-1.5"><PBadge p={`P${i}`} /></td>
+                      <td className="px-1 py-1.5"><input id={`ecb2b-kwh${i}`} type="text" inputMode="decimal" value={form[`kwhP${i}`]} onChange={set(`kwhP${i}`)} className="input-field text-xs py-1.5" /></td>
+                      <td className="px-1 py-1.5"><input id={`ecb2b-pot${i}`} type="text" inputMode="decimal" value={form[`kwPotP${i}`]} onChange={set(`kwPotP${i}`)} className="input-field text-xs py-1.5" /></td>
+                      <td className="px-1 py-1.5"><input id={`ecb2b-max${i}`} type="text" inputMode="decimal" value={form[`kwMaxP${i}`]} onChange={set(`kwMaxP${i}`)} className="input-field text-xs py-1.5" /></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <p className="text-[10px] text-gray-400 mt-2.5 leading-relaxed">
-              La Potencia Máxima Demandada (maxímetro) es solo informativa: identifica sobrepasamientos frente a la potencia contratada actual, pero no forma parte del cálculo del nuevo contrato propuesto.
-            </p>
-          </div>
+            <p className="text-[10px] text-gray-400 mt-2">El maxímetro es informativo (del periodo facturado, no del año móvil). Los excesos de potencia se trasladan desde la factura (sección 5).</p>
+          </section>
 
-          {/* 4 · Días y datos del cliente e impuestos */}
-          <div className="bg-white border border-google-border rounded-xl shadow-sm p-5">
-            <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-3">4 · Período, cliente e impuestos</p>
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] font-medium text-google-gray mb-1 block">Días facturados <span className="text-red-400">*</span></label>
-                  <input type="text" inputMode="decimal" value={form.dias} onChange={set('dias')} placeholder="días" className="input-field text-sm" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-google-gray mb-1 block">CUPS</label>
-                  <input type="text" value={form.cups} onChange={set('cups')} placeholder="ES..." className="input-field text-sm font-mono" />
-                </div>
-              </div>
+          {/* 4 · Horas Open */}
+          {producto.modalidades && (
+            <section className="bg-white border border-google-border rounded-xl shadow-sm p-5 space-y-3">
+              <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider">4 · Reparto horas Open / No Open</p>
+              <p className="text-[11px] text-google-gray leading-snug">
+                P1–P5 son siempre horas laborables de 8 a 24 h. Plana y Laboral se calculan con los totales P1–P6.
+                Día, Fin de Semana y Noche reparten el P6 (noches laborables y todo el fin de semana), así que necesitan
+                la curva horaria o el desglose del P6. No se inventa ningún reparto.
+              </p>
+              {nec?.necesitaDesgloseP6 && !curva && !desgloseP6 && (
+                <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">La modalidad {modalidadSel.label} necesita curva horaria o desglose del P6.</p>
+              )}
               <div>
-                <label className="text-[10px] font-medium text-google-gray mb-1 block">Nombre / Empresa</label>
-                <input type="text" value={form.cliente} onChange={set('cliente')} placeholder="Cliente" className="input-field text-sm" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] font-medium text-google-gray mb-1 block">Bono Social (€)</label>
-                  <input type="text" inputMode="decimal" value={form.bonoSocial} onChange={set('bonoSocial')} placeholder="0.00" className="input-field text-sm" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-google-gray mb-1 block">Alq. Contador (€)</label>
-                  <input type="text" inputMode="decimal" value={form.alquilerContador} onChange={set('alquilerContador')} placeholder="0.00" className="input-field text-sm" />
-                </div>
-              </div>
-              <div>
-                <label className="text-[10px] font-medium text-google-gray mb-1 block">Comp. excedentes (€)</label>
-                <input
-                  type="text" inputMode="decimal"
-                  value={form.compensacionExcedentes}
-                  onChange={set('compensacionExcedentes')}
-                  disabled={!compExcActiva}
-                  placeholder="0.00"
-                  className={`input-field text-sm ${!compExcActiva ? 'opacity-50 cursor-not-allowed bg-gray-50' : ''}`}
-                />
-                {!compExcActiva && (
-                  <p className="text-[10px] text-gray-400 mt-1 leading-snug">Activa "Comp. excedentes" en la sección 1 para habilitar este campo.</p>
+                <input ref={curvaRef} id="ecb2b-curva" type="file" accept=".csv,.txt" className="hidden" onChange={e => { handleCurva(e.target.files[0]); e.target.value = ''; }} />
+                <button type="button" onClick={() => curvaRef.current?.click()} className="text-xs font-medium text-google-blue border border-blue-200 bg-blue-50 rounded-lg px-3 py-1.5 hover:bg-blue-100">
+                  Cargar curva horaria (CSV Datadis / distribuidora)
+                </button>
+                {curvaInfo && (
+                  <div className="mt-2 text-[11px]">
+                    <p className="text-google-dark">{curvaInfo.nombre}: {curvaInfo.curva.length} horas dentro del periodo.
+                      <button type="button" className="ml-2 text-red-500" onClick={() => setCurvaInfo(null)}>Quitar</button></p>
+                    {curvaInfo.errores.slice(0, 3).map((e, k) => <p key={k} className="text-red-700">{e}</p>)}
+                  </div>
                 )}
               </div>
               <div>
-                <label className="text-[10px] font-medium text-google-gray mb-1 block">Factura actual — bruta (€) <span className="text-red-400">*</span></label>
-                <input type="text" inputMode="decimal" value={form.facturaActual} onChange={set('facturaActual')} placeholder="0.00" className="input-field text-sm" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] font-medium text-google-gray mb-1 block">
-                    Dto. fidelización / Cupones (€)
-                    <span className="ml-1 text-[9px] text-google-gray font-normal italic">PARA TI, Bienvenida…</span>
-                  </label>
-                  <input type="text" inputMode="decimal" value={form.dtoCupones} onChange={set('dtoCupones')} placeholder="0.00" className="input-field text-sm" />
-                </div>
-                <div className="flex items-end">
-                  {dtoCup > 0 && factActual > 0 ? (
-                    <div className="w-full bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
-                      <p className="text-[10px] text-orange-600 font-medium leading-none mb-0.5">Cupón no aplicado a la comparativa</p>
-                      <p className="text-sm font-bold text-orange-700 tabular-nums">−{eur(dtoCup)}</p>
+                <p className="text-[10px] font-medium text-google-gray mb-1.5">…o desglose del P6 facturado ({kwhFmt(kwhPeriodo[5])})</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {FRANJAS_P6.map(f => (
+                    <div key={f.id}>
+                      <label htmlFor={`ecb2b-p6-${f.id}`} className="text-[10px] text-google-gray block mb-0.5">{f.label} (kWh)</label>
+                      <input id={`ecb2b-p6-${f.id}`} type="text" inputMode="decimal" value={form[`p6_${f.id}`]} onChange={set(`p6_${f.id}`)} className="input-field text-xs py-1.5" />
                     </div>
-                  ) : (
-                    <div className="w-full text-[10px] text-google-gray leading-snug px-1">
-                      La comparativa siempre usa el importe bruto de la factura
-                    </div>
-                  )}
+                  ))}
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] font-medium text-google-gray mb-1 block">Asesor</label>
-                  <select value={form.asesor} onChange={set('asesor')} className="input-field text-sm">
-                    <option value="">— Seleccionar —</option>
-                    {(users ?? []).map(u => <option key={u.username} value={u.displayName}>{u.displayName}</option>)}
-                    <option value="__otro__">Otro (especificar)</option>
-                  </select>
-                  {form.asesor === '__otro__' && <input type="text" value={form.asesorLibre} onChange={set('asesorLibre')} placeholder="Nombre del asesor" className="input-field text-sm mt-2" autoFocus />}
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-google-gray mb-1 block">IVA / IGIC</label>
-                  <div className="flex rounded-lg overflow-hidden border border-google-border">
-                    {[['0.21', 'IVA 21%'], ['0.10', 'IVA 10%'], ['0.07', 'IGIC 7%']].map(([v, l]) => (
-                      <button key={v} type="button" onClick={() => setForm(f => ({ ...f, iva: v }))}
-                        className={`flex-1 py-2 text-xs font-medium transition-colors ${form.iva === v ? 'bg-google-blue text-white' : 'bg-white text-google-gray hover:bg-blue-50'}`}>
-                        {l}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] font-medium text-google-gray mb-1 block">Dto. adicional sobre energía (%)</label>
-                  <input type="text" inputMode="decimal" value={form.descuento} onChange={set('descuento')} placeholder="0" className="input-field text-sm" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-medium text-google-gray mb-1 block">Notas</label>
-                  <input type="text" value={form.notas} onChange={set('notas')} placeholder="Precio fijo, permanencia…" className="input-field text-sm" />
+            </section>
+          )}
+
+          {/* 5 · Importes de la factura actual */}
+          <section className="bg-white border border-google-border rounded-xl shadow-sm p-5 space-y-3">
+            <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider">5 · Factura actual y conceptos que se mantienen</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div><label htmlFor="ecb2b-total" className="text-[10px] font-medium text-google-gray mb-1 block">Total factura actual (€) *</label><input id="ecb2b-total" type="text" inputMode="decimal" value={form.facturaActual} onChange={set('facturaActual')} className="input-field text-sm" /></div>
+              <div><label htmlFor="ecb2b-otros" className="text-[10px] font-medium text-google-gray mb-1 block">Conceptos no energéticos en el total (€, IVA incl.)</label><input id="ecb2b-otros" type="text" inputMode="decimal" value={form.otrosNoComparables} onChange={set('otrosNoComparables')} className="input-field text-sm" /></div>
+              <div><label htmlFor="ecb2b-excesos" className="text-[10px] font-medium text-google-gray mb-1 block">Excesos de potencia (€)</label><input id="ecb2b-excesos" type="text" inputMode="decimal" value={form.excesos} onChange={set('excesos')} className="input-field text-sm" /></div>
+              <div><label htmlFor="ecb2b-reactiva" className="text-[10px] font-medium text-google-gray mb-1 block">Energía reactiva (€)</label><input id="ecb2b-reactiva" type="text" inputMode="decimal" value={form.reactiva} onChange={set('reactiva')} className="input-field text-sm" /></div>
+              <div><label htmlFor="ecb2b-alquiler" className="text-[10px] font-medium text-google-gray mb-1 block">Alquiler contador (€)</label><input id="ecb2b-alquiler" type="text" inputMode="decimal" value={form.alquiler} onChange={set('alquiler')} className="input-field text-sm" /></div>
+              <div><label htmlFor="ecb2b-bono" className="text-[10px] font-medium text-google-gray mb-1 block">Financiación bono social (€)</label><input id="ecb2b-bono" type="text" inputMode="decimal" value={form.bonoSocial} onChange={set('bonoSocial')} className="input-field text-sm" /></div>
+              {productoId === 'simply' && (
+                <div><label htmlFor="ecb2b-exc" className="text-[10px] font-medium text-google-gray mb-1 block">Excedentes vertidos (kWh)</label><input id="ecb2b-exc" type="text" inputMode="decimal" value={form.excedentesKwh} onChange={set('excedentesKwh')} className="input-field text-sm" /></div>
+              )}
+              <div>
+                <label className="text-[10px] font-medium text-google-gray mb-1 block">IVA / IGIC</label>
+                <div className="flex rounded-lg overflow-hidden border border-google-border">
+                  {[['0.21', '21%'], ['0.1', '10%'], ['0.03', 'IGIC 3%']].map(([v, l]) => (
+                    <button key={v} type="button" onClick={() => setForm(f => ({ ...f, iva: v }))}
+                      className={`flex-1 py-2 text-xs font-medium ${n(form.iva) === n(v) ? 'bg-google-blue text-white' : 'bg-white text-google-gray hover:bg-blue-50'}`}>{l}</button>
+                  ))}
                 </div>
               </div>
             </div>
-            <div className="pt-3 mt-3 border-t border-gray-100 flex justify-between items-center">
-              <button type="button" onClick={() => { setForm(INIT); setDropped(null); setExtractionDone(false); setExtractionError(''); }} className="text-xs text-google-gray hover:text-red-500 transition-colors">
-                Limpiar formulario
-              </button>
-              {isReady && <span className="text-[11px] text-green-600 font-medium">Informe listo →</span>}
+            <p className="text-[10px] text-gray-400 leading-snug">Excesos, reactiva, alquiler y bono social no dependen de la comercializadora: se mantienen iguales en la oferta (no se recalculan) para no inflar el ahorro.</p>
+            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100">
+              <div><label htmlFor="ecb2b-cliente" className="text-[10px] font-medium text-google-gray mb-1 block">Cliente</label><input id="ecb2b-cliente" type="text" value={form.cliente} onChange={set('cliente')} className="input-field text-sm" /></div>
+              <div><label htmlFor="ecb2b-cups" className="text-[10px] font-medium text-google-gray mb-1 block">CUPS</label><input id="ecb2b-cups" type="text" value={form.cups} onChange={set('cups')} className="input-field text-sm font-mono" /></div>
+              <div>
+                <label htmlFor="ecb2b-asesor" className="text-[10px] font-medium text-google-gray mb-1 block">Asesor</label>
+                <select id="ecb2b-asesor" value={form.asesor} onChange={set('asesor')} className="input-field text-sm">
+                  <option value="">— Seleccionar —</option>
+                  {(users ?? []).map(u => <option key={u.username} value={u.displayName}>{u.displayName}</option>)}
+                  <option value="__otro__">Otro (especificar)</option>
+                </select>
+                {form.asesor === '__otro__' && <input type="text" value={form.asesorLibre} onChange={set('asesorLibre')} className="input-field text-sm mt-2" />}
+              </div>
+              <div><label htmlFor="ecb2b-notas" className="text-[10px] font-medium text-google-gray mb-1 block">Notas</label><input id="ecb2b-notas" type="text" value={form.notas} onChange={set('notas')} className="input-field text-sm" /></div>
             </div>
-          </div>
+            <button type="button" onClick={() => { setForm(INIT); setDropped(null); setExtractionDone(false); setExtractionError(''); setIncidencias([]); setCurvaInfo(null); setAutoconsumo(false); }} className="text-xs text-google-gray hover:text-red-500">Limpiar formulario</button>
+          </section>
         </div>
 
         {/* ── COLUMNA DERECHA — Informe ── */}
         <div className="print:w-full">
           {!isReady ? (
             <div className="bg-white border border-google-border rounded-xl shadow-sm p-12 text-center flex flex-col items-center gap-3 min-h-[300px] justify-center">
-              <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center">
-                <Factory size={26} className="text-gray-600" />
-              </div>
+              <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center"><Factory size={26} className="text-gray-600" /></div>
               <p className="text-sm font-semibold text-google-dark">El informe aparecerá aquí</p>
-              <p className="text-xs text-google-gray max-w-xs text-center">Rellena al menos: kW contratada P1, días de facturación, consumo en algún periodo y factura actual.</p>
+              <p className="text-xs text-google-gray max-w-xs">Necesita días facturados, consumo, potencias contratadas y total de la factura actual.</p>
             </div>
           ) : (
-            <div id="ecb2b-informe" className="bg-white border border-google-border rounded-xl shadow-sm overflow-hidden print:border-0 print:shadow-none print:rounded-none print:w-full">
+            <div id="ecb2b-informe" className="bg-white border border-google-border rounded-xl shadow-sm overflow-hidden print:border-0 print:shadow-none print:rounded-none">
 
-              {/* Cabecera azul */}
-              <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-8 pt-8 pb-7 text-white relative">
+              <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-8 pt-7 pb-6 text-white">
                 <div className="flex items-start justify-between gap-4 mb-4">
-                  <div className="flex-1 min-w-0">
+                  <div className="min-w-0">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-gray-300 mb-1.5">GRUPO AVEDIE · COMPARATIVA ENERGÉTICA B2B</p>
                     <h3 className="text-xl font-bold leading-tight">{form.cliente || 'Sin nombre'}</h3>
                     {form.cups && <p className="text-xs text-gray-300 font-mono mt-1">{form.cups}</p>}
                   </div>
-                  <div className="flex-shrink-0">
-                    <div className="bg-white rounded-xl px-4 py-3">
-                      <img src="/endesa-logo.png" alt="Endesa" className="h-16 w-auto object-contain" />
-                    </div>
-                  </div>
+                  <div className="bg-white rounded-xl px-4 py-3 flex-shrink-0"><img src="/endesa-logo.png" alt="Endesa" className="h-14 w-auto object-contain" /></div>
                 </div>
-                <div className="flex flex-wrap gap-2.5 pr-40">
-                  <span className="inline-flex items-center bg-white/20 text-white text-[11px] font-semibold leading-none px-3 py-1.5 rounded-full">{tarifaLabel}</span>
-                  {isIndexada && <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">OMIE {omie.toFixed(4)} €/kWh</span>}
-                  <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">{dias} días</span>
-                  {n(form.descuento) > 0 && <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">Dto. adicional {form.descuento}%</span>}
+                <div className="flex flex-wrap gap-2 text-[11px]">
+                  <span className="bg-white/20 px-3 py-1.5 rounded-full font-semibold">{tituloOferta}</span>
+                  {periodo && <span className="bg-white/20 px-3 py-1.5 rounded-full">Consumo {fmtFechaES(periodo.desde)} – {fmtFechaES(periodo.hasta)}</span>}
+                  <span className="bg-white/20 px-3 py-1.5 rounded-full">{entrada.dias} días</span>
+                  {form.fechaEmision && <span className="bg-white/20 px-3 py-1.5 rounded-full">Factura emitida {fmtFechaES(form.fechaEmision)}</span>}
                 </div>
-                <div className="absolute bottom-6 right-8 text-right text-xs">
-                  <p className="font-semibold text-white">{today}</p>
-                  {asesorDisplay && <p className="text-gray-300 mt-0.5">{asesorDisplay}</p>}
-                </div>
+                <p className="text-xs text-gray-300 mt-3">{today}{asesorDisplay ? ` · ${asesorDisplay}` : ''} · Oferta contratable {producto.validez}</p>
               </div>
 
-              {/* Potencia */}
-              <div className="px-6 pt-5 pb-4">
-                <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-3">Término de Potencia</p>
-                <div className="space-y-1.5">
-                  {PERIODS.map((i, idx) => kwPot[idx] > 0 && (
-                    <div key={i} className="flex justify-between items-baseline text-sm">
-                      <span className="text-google-gray">{kwPot[idx]} kW (P{i}) × {dias} días × {potDiaTerminos[idx].toFixed(6)} €/kW</span>
-                      <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(imtPot[idx])}</span>
-                    </div>
-                  ))}
-                  <div className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-2 mt-1">
-                    <span className="text-xs font-semibold text-google-dark">Subtotal Potencia</span>
-                    <span className="text-sm font-bold text-google-dark tabular-nums">{eur(subtotPot)}</span>
-                  </div>
+              {!ok ? (
+                <div className="mx-6 my-6 rounded-xl border border-amber-300 bg-amber-50 px-5 py-4">
+                  <p className="text-sm font-bold text-amber-900 flex items-center gap-2"><Ban size={16} /> {ESTADO_UI[resultado.estado].label}: no se muestra coste ni ahorro</p>
+                  <ul className="mt-2 space-y-1 text-[12px] text-amber-900 list-disc pl-5">
+                    {resultado.motivos.map((m, k) => <li key={k}>{m}</li>)}
+                  </ul>
                 </div>
-              </div>
+              ) : (
+                <>
+                  <div className="px-6 pt-5 pb-3">
+                    <table className="w-full text-sm">
+                      <tbody>
+                        {resultado.lineas.map((l, k) => (
+                          <tr key={k} className="border-b border-gray-50 align-top">
+                            <td className="py-1.5 pr-3 text-google-dark">
+                              {l.concepto}{l.origen === 'factura_actual' && <span className="text-google-gray"> †</span>}
+                              <div className="text-[11px] text-google-gray">{l.detalle}</div>
+                            </td>
+                            <td className={`py-1.5 text-right tabular-nums font-semibold whitespace-nowrap ${l.importe < 0 ? 'text-green-700' : 'text-google-dark'}`}>{eur(l.importe)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="px-6 py-3 flex justify-between items-center border-t-2 border-gray-200">
+                    <span className="font-bold text-google-dark">TOTAL SIMULADO CON ENDESA</span>
+                    <span className="text-2xl font-bold text-google-blue tabular-nums">{eur(resultado.total)}</span>
+                  </div>
 
-              <div className="border-t border-gray-100 mx-6" />
-
-              {/* Energía */}
-              <div className="px-6 py-4">
-                <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-3">Término de Energía</p>
-                <div className="space-y-1.5">
-                  {PERIODS.map((i, idx) => kwh[idx] > 0 && (
-                    <div key={i} className="flex justify-between items-baseline text-sm">
-                      <span className="text-google-gray">
-                        {kwh[idx]} kWh (P{i}) × {precios[idx].toFixed(6)} €/kWh
-                        {isIndexada && <span className="text-cyan-600 ml-1.5 text-[11px]">({indexadaData.energiaA[`p${i}`].toFixed(6)} + {indexadaData.energiaB[`p${i}`]} × {omie.toFixed(4)})</span>}
-                        {dto > 0 && <span className="text-google-blue ml-1.5 text-[11px]">(dto. {pct(dto, 0)} incluido)</span>}
-                      </span>
-                      <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(imtEn[idx])}</span>
+                  <div className="mx-4 mb-4 rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="grid grid-cols-2 gap-3 p-4 bg-gray-50">
+                      <div className="bg-white rounded-xl p-3 text-center border border-gray-200">
+                        <p className="text-[10px] text-google-gray mb-1">Factura actual comparable</p>
+                        <p className="text-xl font-bold text-google-dark tabular-nums">{eur(costeActual)}</p>
+                        {otros > 0 && <p className="text-[9px] text-google-gray mt-0.5">Total {eur(factActual)} − {eur(otros)} no energéticos</p>}
+                      </div>
+                      <div className="bg-white rounded-xl p-3 text-center border border-blue-200">
+                        <p className="text-[10px] text-google-blue font-medium mb-1">Con Endesa (simulado)</p>
+                        <p className="text-xl font-bold text-google-blue tabular-nums">{eur(resultado.total)}</p>
+                      </div>
                     </div>
-                  ))}
-                  <div className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-2 mt-1">
-                    <span className="text-xs font-semibold text-google-dark">Subtotal Energía</span>
-                    <span className="text-sm font-bold text-google-dark tabular-nums">{eur(subtotEn)}</span>
-                  </div>
-                  {excedentes > 0 && (
-                    <div className="flex justify-between items-baseline text-sm mt-1.5">
-                      <span className="text-[12px] text-green-700">Compensación excedentes</span>
-                      <span className="font-semibold text-green-700 tabular-nums ml-4">−{eur(excedentes)}</span>
+                    <div className={`px-5 py-4 text-center ${ahorro.ahorroEur >= 0 ? 'bg-green-600' : 'bg-red-600'}`}>
+                      <p className="text-[10px] font-bold text-white/80 uppercase tracking-widest mb-1">
+                        {ahorro.ahorroEur >= 0 ? 'Ahorro en este periodo facturado' : 'Sobrecoste en este periodo facturado'}
+                      </p>
+                      <p className="text-3xl font-bold text-white tabular-nums">{eur(Math.abs(ahorro.ahorroEur))}</p>
+                      {ahorro.ahorroPct != null && <p className="text-sm text-white/90 mt-1">{Math.abs(ahorro.ahorroPct).toLocaleString('es-ES', { maximumFractionDigits: 1 })} % {ahorro.ahorroEur >= 0 ? 'menos' : 'más'} que la factura actual</p>}
                     </div>
-                  )}
+                    {extrap != null && (
+                      <p className="text-[11px] text-google-gray px-4 py-2.5 bg-white">
+                        Extrapolación lineal a 365 días: {eur(extrap)}. <strong>No es un ahorro anual garantizado</strong>: se basa en un único periodo de {entrada.dias} días; para un estudio anual se necesitan 12 facturas o la curva anual.
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {resultadosModalidad && (
+                <div className="px-6 pb-4">
+                  <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-2">Modalidades Open con estos datos</p>
+                  <table className="w-full text-xs">
+                    <tbody>
+                      {resultadosModalidad.map(({ modalidad, r }) => (
+                        <tr key={modalidad.id} className={`border-b border-gray-50 ${modalidad.id === modalidadId ? 'bg-blue-50/60' : ''}`}>
+                          <td className="py-1.5 pr-2 font-medium text-google-dark whitespace-nowrap">{modalidad.label}</td>
+                          <td className="py-1.5 pr-2"><span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${ESTADO_UI[r.estado].cls}`}>{ESTADO_UI[r.estado].label}</span></td>
+                          <td className="py-1.5 text-right tabular-nums">{r.estado === ESTADO.OK ? eur(r.total) : <span className="text-google-gray">no comparable</span>}</td>
+                          <td className="py-1.5 pl-2 text-right">{mejor?.modalidad.id === modalidad.id && <span className="text-[10px] text-green-700 font-semibold inline-flex items-center gap-1"><CheckCircle2 size={11} />menor coste calculable</span>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <p className="text-[10px] text-google-gray mt-1.5">Las modalidades sin datos suficientes no se comparan ni se recomiendan.</p>
                 </div>
+              )}
+
+              <div className="px-6 pb-6">
+                <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-2">Supuestos y avisos</p>
+                <ul className="space-y-1 text-[11px] text-google-dark list-disc pl-5">
+                  <li>Simulación: oferta contratable {producto.validez} aplicada al consumo facturado{periodo ? ` del ${fmtFechaES(periodo.desde)} al ${fmtFechaES(periodo.hasta)}` : ''}. No es el precio que se habría contratado entonces ni garantiza el ahorro futuro.</li>
+                  <li>Precios Endesa sin impuestos que ya incluyen peajes, cargos y los descuentos publicados; no se vuelven a descontar.</li>
+                  <li>† Conceptos mantenidos de la factura actual (no dependen de la comercializadora; no recalculados).</li>
+                  {vig !== 'vigente' && <li className="text-amber-800">{ETIQUETA_ESTADO[vig]}{producto.contratacion?.incidencia ? `: ${producto.contratacion.incidencia}` : ''}</li>}
+                  {(resultado?.avisos || []).map((a, k) => <li key={`a${k}`} className="text-amber-800">{a}</li>)}
+                  {incidenciasVisibles.map((i, k) => <li key={`i${k}`} className="text-amber-800">Factura: {i.mensaje}</li>)}
+                  {form.notas && <li>Nota: {form.notas}</li>}
+                </ul>
               </div>
-
-              <div className="border-t border-gray-100 mx-6" />
-
-              {/* Impuestos */}
-              <div className="px-6 py-4 space-y-2">
-                <div className="flex justify-between items-baseline text-sm">
-                  <span className="text-google-gray">Impuesto Eléctrico (5,11%) sobre {eur(baseIE)}</span>
-                  <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(impElec)}</span>
-                </div>
-                {bono > 0 && (
-                  <div className="flex justify-between items-baseline text-sm">
-                    <span className="text-google-gray">Financiación Bono Social</span>
-                    <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(bono)}</span>
-                  </div>
-                )}
-                {alqCont > 0 && (
-                  <div className="flex justify-between items-baseline text-sm">
-                    <span className="text-google-gray">Alquiler de Contador</span>
-                    <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(alqCont)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between items-baseline text-sm">
-                  <span className="text-google-gray">{n(form.iva) === 0.07 ? 'IGIC' : 'IVA'} ({pct(ivaRate, 0)}) sobre {eur(baseIVA)}</span>
-                  <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(ivaImp)}</span>
-                </div>
-              </div>
-
-              <div className="border-t-2 border-gray-200 mx-6" />
-
-              {/* Total */}
-              <div className="px-6 py-4 flex justify-between items-center">
-                <span className="font-bold text-google-dark text-base">TOTAL ESTIMADO CON ENDESA</span>
-                <span className="text-2xl font-bold text-google-blue tabular-nums">{eur(total)}</span>
-              </div>
-
-              {/* Conclusiones */}
-              <div className="mx-4 mb-5 rounded-xl overflow-hidden border border-green-200">
-                <div className="bg-gradient-to-br from-green-50 to-emerald-50 px-5 pt-4 pb-3">
-                  <p className="text-[10px] font-bold text-green-700 uppercase tracking-wider mb-4">Conclusiones del Estudio</p>
-                  <div className="grid grid-cols-2 gap-3 mb-4">
-                    <div className="bg-white rounded-xl p-3 text-center border border-green-100">
-                      <p className="text-[10px] text-google-gray mb-1">Factura actual</p>
-                      <p className="text-xl font-bold text-google-dark tabular-nums">{eur(factBase)}</p>
-                      {dtoCup > 0 && (
-                        <p className="text-[9px] text-orange-500 mt-0.5 leading-tight">
-                          Bruto sin cupón (−{eur(dtoCup)} no aplicado)
-                        </p>
-                      )}
-                    </div>
-                    <div className="bg-white rounded-xl p-3 text-center border border-blue-200">
-                      <p className="text-[10px] text-google-blue font-medium mb-1">Con Endesa</p>
-                      <p className="text-xl font-bold text-google-blue tabular-nums">{eur(total)}</p>
-                    </div>
-                  </div>
-                  <div className={`rounded-xl px-5 py-4 text-center mb-4 ${ahorroAnual >= 0 ? 'bg-green-500' : 'bg-red-500'}`}>
-                    <p className="text-[10px] font-bold text-white/80 uppercase tracking-widest mb-1">{ahorroAnual >= 0 ? 'Ahorro anual estimado' : 'Incremento anual estimado'}</p>
-                    <p className="text-4xl font-bold text-white tabular-nums">{eur(Math.abs(ahorroAnual))}</p>
-                    <p className="text-sm font-medium text-white/90 mt-3 leading-snug">
-                      {dif >= 0
-                        ? <>Un <span className="text-3xl font-extrabold text-white align-middle">{pct(ahorroPercent)}</span> más barato que el precio actual</>
-                        : <>Un <span className="text-3xl font-extrabold text-white align-middle">{pct(Math.abs(ahorroPercent))}</span> más caro que el precio actual</>
-                      }
-                    </p>
-                  </div>
-                  <div className="bg-white rounded-lg p-3 text-center">
-                    <p className="text-[10px] text-google-gray mb-0.5">Ahorro en factura</p>
-                    <p className={`text-base font-bold tabular-nums ${dif >= 0 ? 'text-green-600' : 'text-red-600'}`}>{eur(Math.abs(dif))}</p>
-                  </div>
-                  {form.notas && <p className="text-[11px] text-green-800 mt-3 pt-3 border-t border-green-200"><span className="font-semibold">Nota:</span> {form.notas}</p>}
-                </div>
-              </div>
-
             </div>
           )}
         </div>

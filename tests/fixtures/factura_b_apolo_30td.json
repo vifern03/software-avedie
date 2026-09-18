@@ -1,0 +1,61 @@
+{
+  "_referencia": "Factura B (Apolo, 3.0TD). Revisada manualmente contra el PDF original el 18/09/2026. Datos personales eliminados.",
+  "_paginas": { "resumen": 1, "detalle_importes": 2, "potencia_contratada": 2, "lecturas_maximetros": 3 },
+  "_discrepancias": [
+    "Lecturas: P1 7.269, P2 5.309, P6 9.676 kWh (total 22.254) frente a facturado P1 7.170, P2 5.156, P6 9.928 (total 22.254). Mismo total, distinto reparto por periodo.",
+    "Precios impresos en c€/kWh y c€/día.",
+    "Maxímetros impresos como 53.000,00 / 57.000,00 / 50.000,00 sin unidad: son W (53 / 57 / 50 kW).",
+    "Consumo de julio de 2026 emitido el 01/09/2026.",
+    "Lecturas de reactiva negativas: no utilizables."
+  ],
+  "comercializadora": "Apolo Energies",
+  "titular": null,
+  "cups": null,
+  "tarifaAcceso": "3.0TD",
+  "fechaEmision": "2026-09-01",
+  "periodoConsumo": { "desde": "2026-07-01", "hasta": "2026-07-31" },
+  "diasFacturados": 31,
+  "potenciaContratadaKw": [49, 63, 63, 63, 63, 63],
+  "consumoFacturadoKwh": [7170, 5156, 0, 0, 0, 9928],
+  "consumoTotalKwh": null,
+  "lecturas": [
+    { "periodo": "P1", "anterior": 378542, "actual": 385811 },
+    { "periodo": "P2", "anterior": 966968, "actual": 972277 },
+    { "periodo": "P3", "anterior": 390851, "actual": 390851 },
+    { "periodo": "P4", "anterior": 233198, "actual": 233198 },
+    { "periodo": "P5", "anterior": 374162, "actual": 374162 },
+    { "periodo": "P6", "anterior": 385396, "actual": 395072 }
+  ],
+  "maximetros": [
+    { "periodo": "P1", "valor": 53000, "unidad": null }, { "periodo": "P2", "valor": 57000, "unidad": null },
+    { "periodo": "P3", "valor": 0, "unidad": null }, { "periodo": "P4", "valor": 0, "unidad": null },
+    { "periodo": "P5", "valor": 0, "unidad": null }, { "periodo": "P6", "valor": 50000, "unidad": null }
+  ],
+  "maximetrosAnoMovil": [],
+  "energiaLineas": [
+    { "componente": "energia", "periodo": "P1", "kwh": 7170, "precio": 17.0270, "unidadPrecio": "c€/kWh", "importe": 1220.84 },
+    { "componente": "energia", "periodo": "P2", "kwh": 5156, "precio": 17.3438, "unidadPrecio": "c€/kWh", "importe": 894.25 },
+    { "componente": "energia", "periodo": "P6", "kwh": 9928, "precio": 18.3106, "unidadPrecio": "c€/kWh", "importe": 1817.87 },
+    { "componente": "acceso", "periodo": "P1", "kwh": 7170, "precio": 6.3352, "unidadPrecio": "c€/kWh", "importe": 454.23 },
+    { "componente": "acceso", "periodo": "P2", "kwh": 5156, "precio": 3.8914, "unidadPrecio": "c€/kWh", "importe": 200.64 },
+    { "componente": "acceso", "periodo": "P6", "kwh": 9928, "precio": 0.2898, "unidadPrecio": "c€/kWh", "importe": 28.77 }
+  ],
+  "potenciaLineas": [
+    { "componente": "potencia", "periodo": "P1", "kw": 49, "dias": 31, "precio": 5.5827, "unidadPrecio": "c€/kW día", "importe": 84.80 },
+    { "componente": "potencia", "periodo": "P2", "kw": 63, "dias": 31, "precio": 2.9090, "unidadPrecio": "c€/kW día", "importe": 56.81 },
+    { "componente": "potencia", "periodo": "P3", "kw": 63, "dias": 31, "precio": 1.2278, "unidadPrecio": "c€/kW día", "importe": 23.98 },
+    { "componente": "potencia", "periodo": "P4", "kw": 63, "dias": 31, "precio": 1.0647, "unidadPrecio": "c€/kW día", "importe": 20.79 },
+    { "componente": "potencia", "periodo": "P5", "kw": 63, "dias": 31, "precio": 0.6888, "unidadPrecio": "c€/kW día", "importe": 13.45 },
+    { "componente": "potencia", "periodo": "P6", "kw": 63, "dias": 31, "precio": 0.3951, "unidadPrecio": "c€/kW día", "importe": 7.72 }
+  ],
+  "importes": {
+    "potencia": 207.55, "energiaTotal": 3932.96, "excesosPotencia": 53.33, "reactiva": 124.56,
+    "bonoSocial": 0.77, "alquilerEquipos": 8.15, "otrosServicios": null,
+    "baseImpuestoElectrico": null, "tipoImpuestoElectricoPct": null, "impuestoElectrico": 255.78,
+    "baseIVA": 5266.74, "tipoIVAPct": 21, "iva": 1106.02, "total": 6372.76
+  },
+  "reactivaKvarh": null,
+  "autoconsumo": { "kwhExcedentes": null, "compensacion": null },
+  "descuentosInformativos": [],
+  "_esperado": { "energiaTodoIncluido": 4616.60, "potencia": 207.55, "discrepanciaLecturas": true }
+}

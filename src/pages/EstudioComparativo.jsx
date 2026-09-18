@@ -2,6 +2,10 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Calculator, Upload, FileText, Printer, Download, X, AlertTriangle, Loader2 } from 'lucide-react';
 import { exportElementToPdf, slugifyFilename } from '../lib/exportPdf';
+import { LUZ, LUZ_SOLAR, INDEXADA_2_0TD } from '../data/tarifasB2C';
+import { TEMPO_2_0TD } from '../data/tarifasB2B';
+import { IE_RATE as IE_RATE_MOTOR, calcularAhorro, extrapolarAnual } from '../lib/energia/motor';
+import { estadoVigencia, ETIQUETA_ESTADO } from '../lib/energia/vigencia';
 
 /* Estimación de tiempo de extracción proporcional al peso del archivo (no inventada):
    tiempo base de 4s (latencia fija de red + arranque del modelo) + 1.5s por cada
@@ -15,124 +19,48 @@ function estimateExtractionSeconds(fileSizeBytes) {
 
 /* ── Tarifas Endesa LUZ ──────────────────────────────────────────────────────── */
 
+/* Todas las tarifas salen del catálogo central (src/data/*). Solo 'toc' conserva
+   un precio medio heredado del comparador (no figura como tal en el PDF de Tu Otra
+   Casa 50, que publica precio en las 50 h de mayor consumo y en el resto). */
+const [LUZ_DIRECTO, LUZ_PRESCRIPTOR] = LUZ;
+const [SOLAR_BASIC, SOLAR_PLUS, SOLAR_BATERIA] = LUZ_SOLAR;
+
 const TARIFAS = [
-  {
-    id: 'directo',
-    label: 'Luz Fija 24H — Canal Directo',
-    shortLabel: 'Luz Fija 24H',
-    tag: 'Canal Directo',
-    tagClass: 'bg-blue-100 text-blue-700',
-    sinMant: 0.109000,
-    conMant: 0.104191,
-    potPunta: 34.188,
-    potValle: 34.188,
-    validez: '09/06/2026 – 14/07/2026',
-  },
-  {
-    id: 'prescriptor',
-    label: 'Luz Fija 24H — Con Prescriptor',
-    shortLabel: 'Luz Fija 24H',
-    tag: 'Con Prescriptor',
-    tagClass: 'bg-violet-100 text-violet-700',
-    sinMant: 0.128235,
-    conMant: 0.123426,
-    potPunta: 34.188,
-    potValle: 34.188,
-    validez: '09/06/2026 – 14/07/2026',
-  },
-  {
-    id: 'toc',
-    label: 'Tu Otra Casa 50 (2.0TD)',
-    shortLabel: 'Tu Otra Casa 50',
-    tag: '2.0TD',
-    tagClass: 'bg-emerald-100 text-emerald-700',
-    sinMant: 0.154500,
-    conMant: 0.150000,
-    potPunta: 32.880,
-    potValle: 5.904,
-    validez: '01/06/2026 – 14/07/2026',
-  },
-  {
-    id: 'tempo',
-    label: 'Tempo 2.0TD — Precio Único 24H',
-    shortLabel: 'Tempo 2.0TD',
-    tag: 'Tempo',
-    tagClass: 'bg-amber-100 text-amber-700',
-    sinMant: 0.124777,
-    conMant: 0.124777,
-    potPunta: 44.704416,
-    potValle: 17.725428,
-    validez: '24/06/2026 – 14/07/2026',
-  },
-  {
-    id: 'solar_basic',
-    label: 'Endesa Solar Basic',
-    shortLabel: 'Solar Basic',
-    tag: 'Autoconsumo',
-    tagClass: 'bg-yellow-100 text-yellow-700',
-    // Precio "resto horas" promocionado (0,148707 €/kWh): el 15% exclusivo de horas Basic
-    // (18h-10h) no se modela porque el comparador no desglosa consumo por banda horaria.
-    sinMant: 0.148707,
-    conMant: 0.148707,
-    potPunta: 34.188,
-    potValle: 34.188,
-    isSolar: true,
-    compExcedentes: 0, // Solar Basic no retribuye excedentes vertidos a la red
-    bateriaVirtual: false,
-    cuotaBateriaMes: 0,
-    validez: '01/06/2026 – 14/07/2026',
-  },
-  {
-    id: 'solar_plus',
-    label: 'Endesa Solar Plus',
-    shortLabel: 'Solar Plus',
-    tag: 'Autoconsumo',
-    tagClass: 'bg-orange-100 text-orange-700',
-    sinMant: 0.148707,
-    conMant: 0.148707,
-    potPunta: 34.188,
-    potValle: 34.188,
-    isSolar: true,
-    compExcedentes: 0.06,
-    bateriaVirtual: false,
-    cuotaBateriaMes: 0,
-    validez: '01/06/2026 – 14/07/2026',
-  },
-  {
-    id: 'solar_bateria',
-    label: 'Endesa Solar Plus & Batería Virtual',
-    shortLabel: 'Solar + Batería Virtual',
-    tag: 'Autoconsumo',
-    tagClass: 'bg-purple-100 text-purple-700',
-    sinMant: 0.148707,
-    conMant: 0.148707,
-    potPunta: 34.188,
-    potValle: 34.188,
-    isSolar: true,
-    compExcedentes: 0.06,
-    bateriaVirtual: true,
-    cuotaBateriaMes: 2,
-    validez: '01/06/2026 – 14/07/2026',
-  },
-  {
-    id: 'indexada_2.0td',
-    label: 'Indexada a OMIE 2.0TD',
-    shortLabel: 'Indexada OMIE',
-    tag: 'OMIE',
-    tagClass: 'bg-cyan-100 text-cyan-700',
-    // Sin descuentos ni mantenimiento (la propia oferta lo indica). Precio de energía
-    // dinámico por periodo: precio = A + (B × OMIEmes). Ver INIT.omie / cálculo más abajo.
-    isIndexada: true,
-    energiaA: { p1: 0.138015, p2: 0.070477, p3: 0.040620 },
-    energiaB: { p1: 1.448,    p2: 1.239,    p3: 1.137 },
-    potPunta: 31.216092,
-    potValle: 4.237104,
-    validez: '09/06/2026 – 14/07/2026',
-  },
+  { id: 'directo', label: 'Luz Fija 24H — Canal Directo', shortLabel: 'Luz Fija 24H', tag: 'Canal Directo', tagClass: 'bg-blue-100 text-blue-700',
+    sinMant: LUZ_DIRECTO.sinMant.promo, conMant: LUZ_DIRECTO.conMant.promo, potPunta: LUZ_DIRECTO.potPunta, potValle: LUZ_DIRECTO.potValle,
+    validez: LUZ_DIRECTO.validez, contratacion: LUZ_DIRECTO.contratacion },
+  { id: 'prescriptor', label: 'Luz Fija 24H — Con Prescriptor', shortLabel: 'Luz Fija 24H', tag: 'Con Prescriptor', tagClass: 'bg-violet-100 text-violet-700',
+    sinMant: LUZ_PRESCRIPTOR.sinMant.promo, conMant: LUZ_PRESCRIPTOR.conMant.promo, potPunta: LUZ_PRESCRIPTOR.potPunta, potValle: LUZ_PRESCRIPTOR.potValle,
+    validez: LUZ_PRESCRIPTOR.validez, contratacion: LUZ_PRESCRIPTOR.contratacion },
+  { id: 'toc', label: 'Tu Otra Casa 50 (2.0TD)', shortLabel: 'Tu Otra Casa 50', tag: '2.0TD', tagClass: 'bg-emerald-100 text-emerald-700',
+    sinMant: 0.154500, conMant: 0.150000, potPunta: LUZ[2].potPunta, potValle: LUZ[2].potValle,
+    validez: LUZ[2].validez, contratacion: LUZ[2].contratacion },
+  { id: 'tempo', label: 'TEMPO 2.0TD — Precio Único 24H (B2B ≤ 15 kW)', shortLabel: 'TEMPO 2.0TD', tag: 'Tempo', tagClass: 'bg-amber-100 text-amber-700',
+    sinMant: TEMPO_2_0TD.energia.promo, conMant: TEMPO_2_0TD.energia.promo,
+    potPunta: TEMPO_2_0TD.potencia[0].anyo, potValle: TEMPO_2_0TD.potencia[1].anyo,
+    validez: TEMPO_2_0TD.validez, contratacion: TEMPO_2_0TD.contratacion,
+    nota: `Precio de energía del primer año (${TEMPO_2_0TD.descuento}% dto.); después ${TEMPO_2_0TD.energia.base.toFixed(6)} €/kWh.` },
+  { id: 'solar_basic', label: 'Endesa Solar Basic', shortLabel: 'Solar Basic', tag: 'Autoconsumo', tagClass: 'bg-yellow-100 text-yellow-700',
+    // Precio "resto horas": el 15% exclusivo de horas Basic (18h-10h) no se modela (sin desglose horario).
+    sinMant: SOLAR_BASIC.energiaRestoHoras.promo, conMant: SOLAR_BASIC.energiaRestoHoras.promo, potPunta: SOLAR_BASIC.potPunta, potValle: SOLAR_BASIC.potValle,
+    isSolar: true, compExcedentes: SOLAR_BASIC.compExcedentes, bateriaVirtual: false, cuotaBateriaMes: 0,
+    validez: SOLAR_BASIC.validez, contratacion: SOLAR_BASIC.contratacion },
+  { id: 'solar_plus', label: 'Endesa Solar Plus', shortLabel: 'Solar Plus', tag: 'Autoconsumo', tagClass: 'bg-orange-100 text-orange-700',
+    sinMant: SOLAR_PLUS.energiaConsumida.promo, conMant: SOLAR_PLUS.energiaConsumida.promo, potPunta: SOLAR_PLUS.potPunta, potValle: SOLAR_PLUS.potValle,
+    isSolar: true, compExcedentes: SOLAR_PLUS.compExcedentes, bateriaVirtual: false, cuotaBateriaMes: 0,
+    validez: SOLAR_PLUS.validez, contratacion: SOLAR_PLUS.contratacion },
+  { id: 'solar_bateria', label: 'Endesa Solar Plus & Batería Virtual', shortLabel: 'Solar + Batería Virtual', tag: 'Autoconsumo', tagClass: 'bg-purple-100 text-purple-700',
+    sinMant: SOLAR_BATERIA.energiaConsumida.promo, conMant: SOLAR_BATERIA.energiaConsumida.promo, potPunta: SOLAR_BATERIA.potPunta, potValle: SOLAR_BATERIA.potValle,
+    isSolar: true, compExcedentes: SOLAR_BATERIA.compExcedentes, bateriaVirtual: true, cuotaBateriaMes: SOLAR_BATERIA.cuotaBateriaMes,
+    validez: SOLAR_BATERIA.validez, contratacion: SOLAR_BATERIA.contratacion },
+  { id: 'indexada_2.0td', label: 'Indexada a OMIE 2.0TD', shortLabel: 'Indexada OMIE', tag: 'OMIE', tagClass: 'bg-cyan-100 text-cyan-700',
+    isIndexada: true, energiaA: INDEXADA_2_0TD.energiaA, energiaB: INDEXADA_2_0TD.energiaB,
+    potPunta: INDEXADA_2_0TD.potenciaTerminos[0].anyo, potValle: INDEXADA_2_0TD.potenciaTerminos[1].anyo,
+    validez: INDEXADA_2_0TD.validez, contratacion: INDEXADA_2_0TD.contratacion },
 ];
 
-/* Impuesto Especial sobre la Electricidad — tipo vigente 5,113% */
-const IE_RATE = 0.05113;
+/* Impuesto Especial sobre la Electricidad: 5,11269632 % (PDFs Endesa 17/09/2026). */
+const IE_RATE = IE_RATE_MOTOR;
 
 const PROXY_URL = '/api/gemini';
 
@@ -314,7 +242,9 @@ export default function EstudioComparativo() {
   const dtoCup   = n(form.dtoCupones);
   const factBase = factActual; // el cupón/dto de fidelización nunca se aplica: se compara siempre el bruto de la factura
   const ivaRate  = n(form.iva, 0.21);
-  const dto      = n(form.descuento) / 100;
+  // Los precios del catálogo ya incluyen los descuentos publicados: no se aplica
+  // ningún descuento adicional (evita descontar dos veces).
+  const dto      = 0;
 
   const potPuntaDia = tarifa.potPunta / 365;
   const potValleDia = tarifa.potValle / 365;
@@ -356,9 +286,11 @@ export default function EstudioComparativo() {
   const ivaImp  = baseIVA * ivaRate;
   const total   = baseIVA + ivaImp;
 
-  const dif           = factBase - total;
-  const ahorroPercent = total > 0 ? (factBase / total - 1) : 0;
-  const ahorroAnual   = dias  > 0 ? (dif / dias) * 365 : 0;
+  // ahorro € = actual − oferta; ahorro % = ahorro / actual (puede ser negativo)
+  const { ahorroEur: dif, ahorroPct } = calcularAhorro(factBase, total);
+  const ahorroPercent = ahorroPct == null ? 0 : ahorroPct / 100;
+  const ahorroAnual   = extrapolarAnual(dif, dias) ?? 0;
+  const vigenciaLuz   = estadoVigencia(tarifa.contratacion);
   const isReady = kwhP1 > 0 && kwPunta > 0 && dias > 0 && factActual > 0;
 
   /* ════════════ FECHAS ════════════ */
@@ -848,8 +780,7 @@ export default function EstudioComparativo() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-medium text-google-gray mb-1 block">Dto. adicional sobre energía (%)</label>
-                  <input type="text" inputMode="decimal" value={form.descuento} onChange={set('descuento')} placeholder="0" className="input-field text-sm" />
+                  <p className="text-[10px] text-google-gray leading-snug pt-4">Los precios ya incluyen los descuentos publicados por Endesa; no se aplican descuentos adicionales.</p>
                 </div>
                 <div>
                   <label className="text-[10px] font-medium text-google-gray mb-1 block">Notas</label>
@@ -1017,8 +948,18 @@ export default function EstudioComparativo() {
 
               {/* Total */}
               <div className="px-6 py-4 flex justify-between items-center">
-                <span className="font-bold text-google-dark text-base">TOTAL ESTIMADO CON ENDESA</span>
+                <span className="font-bold text-google-dark text-base">TOTAL SIMULADO CON ENDESA</span>
                 <span className="text-2xl font-bold text-google-blue tabular-nums">{eur(total)}</span>
+              </div>
+              <div className="mx-6 mb-3 space-y-1 text-[11px]">
+                {vigenciaLuz !== 'vigente' && (
+                  <p className="text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">{ETIQUETA_ESTADO[vigenciaLuz]} ({tarifa.validez}). Simulación con precios no contratables hoy.</p>
+                )}
+                {tarifa.contratacion?.extensionInterna && vigenciaLuz === 'vigente' && (
+                  <p className="text-google-gray">Vigencia {tarifa.validez}: ampliada por instrucción interna; precios B2C sin cambios.</p>
+                )}
+                {tarifa.nota && <p className="text-google-gray">{tarifa.nota}</p>}
+                <p className="text-google-gray">Simulación con el consumo de la factura aportada; no garantiza el ahorro futuro.</p>
               </div>
 
               {/* Conclusiones */}
@@ -1040,19 +981,20 @@ export default function EstudioComparativo() {
                       <p className="text-xl font-bold text-google-blue tabular-nums">{eur(total)}</p>
                     </div>
                   </div>
-                  <div className={`rounded-xl px-5 py-4 text-center mb-4 ${ahorroAnual >= 0 ? 'bg-green-500' : 'bg-red-500'}`}>
-                    <p className="text-[10px] font-bold text-white/80 uppercase tracking-widest mb-1">{ahorroAnual >= 0 ? 'Ahorro anual estimado' : 'Incremento anual estimado'}</p>
-                    <p className="text-4xl font-bold text-white tabular-nums">{eur(Math.abs(ahorroAnual))}</p>
+                  <div className={`rounded-xl px-5 py-4 text-center mb-4 ${dif >= 0 ? 'bg-green-500' : 'bg-red-500'}`}>
+                    <p className="text-[10px] font-bold text-white/80 uppercase tracking-widest mb-1">{dif >= 0 ? 'Ahorro en este periodo facturado' : 'Sobrecoste en este periodo facturado'}</p>
+                    <p className="text-4xl font-bold text-white tabular-nums">{eur(Math.abs(dif))}</p>
                     <p className="text-sm font-medium text-white/90 mt-3 leading-snug">
                       {dif >= 0
-                        ? <>Un <span className="text-3xl font-extrabold text-white align-middle">{pct(ahorroPercent)}</span> más barato que el precio actual</>
-                        : <>Un <span className="text-3xl font-extrabold text-white align-middle">{pct(Math.abs(ahorroPercent))}</span> más caro que el precio actual</>
+                        ? <>Un <span className="text-3xl font-extrabold text-white align-middle">{pct(ahorroPercent)}</span> menos que la factura actual</>
+                        : <>Un <span className="text-3xl font-extrabold text-white align-middle">{pct(Math.abs(ahorroPercent))}</span> más que la factura actual</>
                       }
                     </p>
                   </div>
                   <div className="bg-white rounded-lg p-3 text-center">
-                    <p className="text-[10px] text-google-gray mb-0.5">Ahorro en factura</p>
-                    <p className={`text-base font-bold tabular-nums ${dif >= 0 ? 'text-green-600' : 'text-red-600'}`}>{eur(Math.abs(dif))}</p>
+                    <p className="text-[10px] text-google-gray mb-0.5">Extrapolación lineal a 365 días (no es un ahorro garantizado)</p>
+                    <p className={`text-base font-bold tabular-nums ${ahorroAnual >= 0 ? 'text-green-600' : 'text-red-600'}`}>{ahorroAnual >= 0 ? '' : '−'}{eur(Math.abs(ahorroAnual))}</p>
+                    <p className="text-[9px] text-google-gray mt-0.5">Basada en un único periodo de {dias} días; para un estudio anual se necesitan 12 facturas.</p>
                   </div>
                   {form.notas && <p className="text-[11px] text-green-800 mt-3 pt-3 border-t border-green-200"><span className="font-semibold">Nota:</span> {form.notas}</p>}
                 </div>

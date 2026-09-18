@@ -4,152 +4,19 @@ import EstudioComparativo from './EstudioComparativo';
 import EstudioComparativoGas from './EstudioComparativoGas';
 import EstudioComparativoB2B from './EstudioComparativoB2B';
 import { GAS, GAS_EMPRESA } from '../data/tarifasGas';
-import { OPEN_30TD, OPEN_61TD, INDEXADA_30TD, INDEXADA_61TD } from '../data/tarifasB2B';
+import { OPEN_30TD, OPEN_61TD, SIMPLY_30TD, SIMPLY_61TD, TEMPO_2_0TD as TEMPO, INDEXADA_30TD, INDEXADA_61TD } from '../data/tarifasB2B';
+import { BONO_SOCIAL, LUZ, LUZ_SOLAR, INDEXADA_2_0TD } from '../data/tarifasB2C';
+import { estadoVigencia, ETIQUETA_ESTADO } from '../lib/energia/vigencia';
 
-/* GAS importado desde src/data/tarifasGas.js (fuente única de verdad) */
-
-/* ── Datos B2C/Residencial extraídos de PDFs Endesa (09/06/2026 – 14/07/2026) ─ */
-
-const BONO_SOCIAL = [
-  { zona: 'Península y Baleares (< 10 kW)',       valor: '0,02431959 €/día' },
-  { zona: 'Canarias (< 10 kW, cliente doméstico)', valor: '0,02009883 €/día' },
-  { zona: 'Ceuta y Melilla',                        valor: '0,02029982 €/día' },
-  { zona: 'Resto de casos',                         valor: '0,02070180 €/día' },
-];
-
-const LUZ = [
-  {
-    id: 'directo',
-    title: 'Luz Fija 24H',
-    canal: 'Canal Directo',
-    canalColor: 'bg-blue-100 text-blue-700',
-    desc: 'Precio único en energía y potencia, sin franjas horarias.',
-    sinMant: { promo: 0.109000, noPromo: 0.160294 },
-    conMant: { promo: 0.104191, noPromo: 0.160294 },
-    potPunta: 34.188000,
-    potValle: 34.188000,
-    descuentos: ['10% — 1 año (nuevas contrataciones)', '22% — indefinido sobre término de energía'],
-    mantLabel: '3% adicional — serv. eléctrico en misma dirección',
-    validez: '09/06/2026 – 14/07/2026',
-  },
-  {
-    id: 'prescriptor',
-    title: 'Luz Fija 24H',
-    canal: 'Con Prescriptor',
-    canalColor: 'bg-violet-100 text-violet-700',
-    desc: 'Precio único sin franjas horarias. Canal venta con prescriptor.',
-    sinMant: { promo: 0.128235, noPromo: 0.160294 },
-    conMant: { promo: 0.123426, noPromo: 0.160294 },
-    potPunta: 34.188000,
-    potValle: 34.188000,
-    descuentos: ['10% — 1 año (nuevas contrataciones)', '10% — indefinido sobre término de energía'],
-    mantLabel: '3% adicional — serv. eléctrico en misma dirección (1 año)',
-    validez: '09/06/2026 – 14/07/2026',
-  },
-  {
-    id: 'tu-otra-casa',
-    title: 'Tu Otra Casa 50',
-    canal: '2.0TD',
-    canalColor: 'bg-emerald-100 text-emerald-700',
-    desc: '50% de descuento en las 50 horas de mayor consumo de cada mes.',
-    isToc: true,
-    sinMant: { promoH: 0.110250, restoH: 0.220000, noPromoH: 0.122500, noPromoR: 0.245000 },
-    conMant: { promoH: 0.106575, restoH: 0.210000, noPromoH: 0.122500, noPromoR: 0.245000 },
-    potPunta: 32.880000,
-    potValle: 5.904000,
-    descuentos: ['50% — en las 50h de mayor consumo del mes', '10% — 1 año (nuevas contrataciones)'],
-    mantLabel: '3% adicional — serv. eléctrico en misma dirección (1 año)',
-    validez: '01/06/2026 – 14/07/2026',
-  },
-];
-
-/* ── Datos Autoconsumo Solar extraídos de PDFs Endesa (01/06/2026 – 14/07/2026) ─ */
-/* Fuente: Oferta Endesa Solar Basic.pdf / Solar Plus.pdf / Solar Plus & Batería Virtual.pdf */
-
-const LUZ_SOLAR = [
-  {
-    id: 'solar-basic',
-    title: 'Solar Basic',
-    badge: 'Solar',
-    badgeColor: 'bg-yellow-100 text-yellow-700',
-    desc: 'Máximo ahorro en horas Basic (18h–10h). No retribuye excedentes vertidos a la red.',
-    energiaHorasBasic: { promo: 0.124722, noPromo: 0.159900 },
-    energiaRestoHoras: { promo: 0.148707, noPromo: 0.159900 },
-    potPunta: 34.188000,
-    potValle: 34.188000,
-    compExcedentes: 0,
-    bateriaVirtual: false,
-    cuotaBateriaMes: 0,
-    descuentos: ['15% — indefinido en horas Basic (18h–10h)', '7% — 1 año (nuevas contrataciones)'],
-    validez: '01/06/2026 – 14/07/2026',
-  },
-  {
-    id: 'solar-plus',
-    title: 'Solar Plus',
-    badge: 'Solar',
-    badgeColor: 'bg-orange-100 text-orange-700',
-    desc: 'Retribuye los excedentes vertidos a la red (Mecanismo de Compensación Simplificada, RD 244/2019).',
-    energiaConsumida: { promo: 0.148707, noPromo: 0.159900 },
-    potPunta: 34.188000,
-    potValle: 34.188000,
-    compExcedentes: 0.06,
-    bateriaVirtual: false,
-    cuotaBateriaMes: 0,
-    descuentos: ['7% — 1 año (nuevas contrataciones)'],
-    validez: '01/06/2026 – 14/07/2026',
-  },
-  {
-    id: 'solar-bateria',
-    title: 'Solar Plus & Batería Virtual',
-    badge: 'Batería',
-    badgeColor: 'bg-purple-100 text-purple-700',
-    desc: 'El excedente no compensado se acumula como saldo (Batería Virtual) para próximas facturas.',
-    energiaConsumida: { promo: 0.148707, noPromo: 0.159900 },
-    potPunta: 34.188000,
-    potValle: 34.188000,
-    compExcedentes: 0.06,
-    bateriaVirtual: true,
-    cuotaBateriaMes: 2,
-    descuentos: ['7% — 1 año (nuevas contrataciones)'],
-    validez: '01/06/2026 – 14/07/2026',
-  },
-];
-
-/* ── Datos Indexada a OMIE 2.0TD extraídos de PDF Endesa (09/06/2026 – 14/07/2026) ── */
-/* Fuente: "20260609 IND_2.0TD_OMIE_V1.pdf". Precio energía por periodo = A + (B × OMIEmes) */
-
-const INDEXADA_2_0TD = {
-  potenciaTerminos: [
-    { p: 'P1', anyo: 31.216092, mes: 2.601341, dia: 0.085524 },
-    { p: 'P2', anyo: 4.237104,  mes: 0.353092, dia: 0.011608 },
-  ],
-  energiaA: { p1: 0.138015, p2: 0.070477, p3: 0.040620 },
-  energiaB: { p1: 1.448,    p2: 1.239,    p3: 1.137 },
-  validez: '09/06/2026 – 14/07/2026',
-};
-
-
-/* ── Datos Gas Empresa (RL.4 – RL.6) extraídos de PDF Endesa Gas Estable ─────── */
-/* Solo se muestran como tarjetas informativas en Consulta de Tarifas.          */
-/* NO se incluyen en el Estudio Comparativo de Gas (sigue siendo solo RL.1-3).  */
-
-/* ── Datos B2B extraídos de PDFs Endesa (09/06/2026 – 14/07/2026) ───────────── */
-
-const TEMPO = {
-  energia:    { promo: 0.124777, base: 0.164180 },
-  descuento:  24,
-  potencia: [
-    { p: 'P1', anyo: 44.704416, mes: 3.725368, desc: 'Laborables 8h–24h' },
-    { p: 'P2', anyo: 17.725428, mes: 1.477119, desc: 'Laborables 0h–8h y fines de semana/festivos' },
-  ],
-  penalizacion: '5% del precio del contrato',
-  validez: 'del 15/07/2026 hasta el 21/07/2026',
-};
+/* Todos los datos de tarifas viven en src/data/ (fuente única compartida con
+   las comparativas y el informe PDF). */
 
 const B2B_SUBTABS = [
   { id: 'tempo',      label: 'TEMPO 2.0TD',        sub: 'Negocios ≤ 15 kW' },
   { id: 'open30',     label: 'Open 3.0TD',         sub: 'Negocios 15–100+ kW' },
   { id: 'open61',     label: 'Open 6.1TD',         sub: 'Alta Tensión hasta 450 kW' },
+  { id: 'simply30',   label: 'Simply 3.0TD',       sub: 'Autoconsumo · > 15 kW' },
+  { id: 'simply61',   label: 'Simply 6.1TD',       sub: 'Autoconsumo · pendiente de confirmar' },
   { id: 'indexada20', label: 'Indexada 2.0TD',     sub: 'Precio OMIE · Residencial ≤ 15 kW' },
   { id: 'indexada30', label: 'Indexada 3.0TD',     sub: 'Precio OMIE · 15–100+ kW' },
   { id: 'indexada61', label: 'Indexada 6.1TD',     sub: 'Precio OMIE · Alta Tensión' },
@@ -555,11 +422,15 @@ function GasEmpresaCard({ tarifa }) {
           <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-2">Término variable (€/kWh)</p>
           <div className="bg-orange-50 rounded-lg p-3 text-center">
             <p className="text-2xl font-bold text-orange-600 leading-tight">{fmt(tarifa.sinMant.promo)}</p>
-            <p className="text-xs text-orange-500 mt-0.5">precio promocionado</p>
+            <p className="text-xs text-orange-500 mt-0.5">
+              {tarifa.sinMant.promo === tarifa.sinMant.noPromo ? 'precio sin descuentos' : 'precio promocionado'}
+            </p>
           </div>
-          <p className="text-xs text-google-gray mt-1.5 text-center">
-            No promocionado: <span className="line-through">{fmt(tarifa.sinMant.noPromo)}</span>
-          </p>
+          {tarifa.sinMant.promo !== tarifa.sinMant.noPromo && (
+            <p className="text-xs text-google-gray mt-1.5 text-center">
+              No promocionado: <span className="line-through">{fmt(tarifa.sinMant.noPromo)}</span>
+            </p>
+          )}
         </div>
 
         <div>
@@ -593,6 +464,7 @@ function GasEmpresaCard({ tarifa }) {
 function TempoSection() {
   return (
     <div>
+      <VigenciaAviso producto={TEMPO} />
       <PermanenciaBadge penalizacion={TEMPO.penalizacion} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -664,6 +536,82 @@ function TempoSection() {
   );
 }
 
+/* ── Aviso de vigencia (ventana de contratación) ───────────────────────────── */
+
+function VigenciaAviso({ producto }) {
+  const c = producto?.contratacion;
+  if (!c) return null;
+  const estado = estadoVigencia(c);
+  const extension = c.extensionInterna;
+  if (estado === 'vigente' && !extension) return null;
+  const tone = estado === 'vigente'
+    ? 'bg-slate-50 border-slate-200 text-slate-700'
+    : 'bg-amber-50 border-amber-300 text-amber-800';
+  return (
+    <div className={`flex items-start gap-2 border rounded-lg px-3 py-2.5 mb-4 text-xs ${tone}`}>
+      <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
+      <div>
+        <p className="font-semibold">{ETIQUETA_ESTADO[estado]}{extension ? ' · vigencia ampliada por instrucción interna' : ''}</p>
+        {c.incidencia && <p className="mt-0.5">{c.incidencia}</p>}
+        {extension && <p className="mt-0.5">Precios B2C sin cambios. La fecha no procede de un documento Endesa B2C nuevo: {c.fuente}.</p>}
+        {estado === 'caducada' && !extension && <p className="mt-0.5">No hay documento nuevo para este producto. No ofertar sin confirmar precios vigentes.</p>}
+      </div>
+    </div>
+  );
+}
+
+/* ── Sección B2B: Simply (autoconsumo) ─────────────────────────────────────── */
+
+function SimplySection({ datos }) {
+  const periodos = datos.energiaPeriodos;
+  return (
+    <div>
+      <VigenciaAviso producto={datos} />
+      <PermanenciaBadge penalizacion={datos.penalizacion} />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="lg:col-span-2 bg-white border border-google-border rounded-xl shadow-sm p-5">
+          <h3 className="text-base font-semibold text-google-dark">Tarifa {datos.nombre}</h3>
+          <p className="text-xs text-google-gray mt-0.5 mb-4">Solo suministros con autoconsumo instalado · No aplican descuentos</p>
+          {periodos ? (
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
+              {periodos.map((v, i) => (
+                <div key={i} className="bg-blue-50 rounded-lg px-2 py-3 text-center">
+                  <PBadge p={`P${i + 1}`} />
+                  <p className="text-sm font-bold text-google-blue mt-1.5 tabular-nums">{fmt(v)}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-blue-50 rounded-xl px-6 py-5 text-center mb-4">
+              <p className="text-[10px] font-semibold text-blue-500 uppercase tracking-widest mb-2">Término de Energía · 24h</p>
+              <p className="text-4xl font-bold text-google-blue">{fmt(datos.energiaUnica)}</p>
+              <p className="text-sm text-blue-500 mt-1">€/kWh</p>
+            </div>
+          )}
+          <div className="flex items-start gap-2 bg-green-50 border border-green-100 rounded-lg px-3 py-2.5">
+            <Sun size={13} className="text-green-600 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-green-800">
+              Excedentes: <strong>{fmt(datos.excedentes)} €/kWh</strong>, deducidos del importe de la energía consumida de la red hasta su límite en cada periodo de facturación.
+            </p>
+          </div>
+          <p className="text-[10px] text-gray-400 text-right mt-3">Contratación: {datos.validez} · {datos.fuente}</p>
+        </div>
+        <div className="bg-white border border-google-border rounded-xl shadow-sm p-5">
+          <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-4">Término de Potencia (€/kW·año)</p>
+          <div className="space-y-1.5">
+            {datos.potenciaTerminos.map(t => (
+              <div key={t.p} className="flex items-center justify-between text-sm">
+                <PBadge p={t.p} />
+                <span className="font-mono tabular-nums text-google-dark">{fmt(t.anyo)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Sección B2B: Open (3.0TD / 6.1TD) ─────────────────────────────────────── */
 
 function OpenSection({ datos, titulo, subtitulo }) {
@@ -677,6 +625,7 @@ function OpenSection({ datos, titulo, subtitulo }) {
 
   return (
     <div>
+      <VigenciaAviso producto={datos} />
       <PermanenciaBadge penalizacion={datos.penalizacion} />
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
@@ -880,6 +829,7 @@ function IndexadaSection({ datos, titulo, subtitulo }) {
 
   return (
     <div>
+      <VigenciaAviso producto={datos} />
       <div className="flex items-start gap-2 bg-cyan-50 border border-cyan-200 rounded-lg px-4 py-2.5 mb-5">
         <TrendingUp size={14} className="text-cyan-600 mt-0.5 flex-shrink-0" />
         <div>
@@ -1028,6 +978,7 @@ export default function Tarifas() {
       {/* Tab: Luz */}
       {tab === 'luz' && (
         <div className="flex flex-col gap-6">
+          <div className="order-first"><VigenciaAviso producto={LUZ[0]} /></div>
           {/* Tarjetas: en mobile quedan debajo del botón (order-2), en desktop arriba (order-1) */}
           <div className="order-2 md:order-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {LUZ.map(t => <LuzCard key={t.id} tarifa={t} />)}
@@ -1062,6 +1013,7 @@ export default function Tarifas() {
       {/* Tab: Gas */}
       {tab === 'gas' && (
         <div className="flex flex-col gap-6">
+          <div className="order-first"><VigenciaAviso producto={GAS[0]} /></div>
           <div className="order-2 md:order-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {GAS.map(t => <GasCard key={t.id} tarifa={t} />)}
           </div>
@@ -1082,7 +1034,8 @@ export default function Tarifas() {
               <h2 className="text-sm font-semibold text-google-dark">Precios Gas Empresa</h2>
               <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 whitespace-nowrap">RL.4 – RL.6</span>
             </div>
-            <p className="text-xs text-google-gray mb-4">Tarifa Gas Estable Endesa para grandes consumos (baja presión). No incluida en la Comparativa de Gas.</p>
+            <p className="text-xs text-google-gray mb-4">Tarifa Gas Estable Endesa para grandes consumos (baja presión ≤ 4 bar). Precios sin impuestos; se añade el impuesto de hidrocarburos (0,00234 €/kWh) e IVA.</p>
+            <VigenciaAviso producto={GAS_EMPRESA[0]} />
             <PermanenciaBadge penalizacion={GAS_EMPRESA[0].penalizacion} />
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {GAS_EMPRESA.map(t => <GasEmpresaCard key={t.id} tarifa={t} />)}
@@ -1116,6 +1069,8 @@ export default function Tarifas() {
 
           {/* Contenido sub-tab */}
           {b2bSub === 'tempo'  && <TempoSection />}
+          {b2bSub === 'simply30' && <SimplySection datos={SIMPLY_30TD} />}
+          {b2bSub === 'simply61' && <SimplySection datos={SIMPLY_61TD} />}
           {b2bSub === 'open30' && (
             <OpenSection
               datos={OPEN_30TD}

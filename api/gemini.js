@@ -78,7 +78,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { text, history = [], file } = req.body;
+    const { text, history = [], file, json = false } = req.body;
 
     const contents = history.map((msg) => {
       if (msg.parts) return msg;
@@ -96,11 +96,15 @@ export default async function handler(req, res) {
     }
     contents.push({ role: "user", parts: currentParts });
 
+    // Gemini 2.5 Pro consume parte de maxOutputTokens en razonamiento interno
+    // ("thinking"): con 8192 las facturas con muchas líneas llegaban truncadas.
+    // json:true pide salida application/json nativa (sin markdown).
     const geminiBody = {
       contents,
       generationConfig: {
         temperature: 0,
-        maxOutputTokens: 8192,
+        maxOutputTokens: 32768,
+        ...(json ? { responseMimeType: "application/json" } : {}),
       },
     };
 
@@ -108,11 +112,19 @@ export default async function handler(req, res) {
 
     // Gemini 2.5 Pro devuelve partes de "thinking" con { thought: true }.
     // Tomamos la primera parte que NO sea thinking para obtener el texto real.
-    const parts = data?.candidates?.[0]?.content?.parts ?? [];
-    const responseText = parts.find((p) => !p.thought)?.text ?? "";
+    const candidate = data?.candidates?.[0];
+    const parts = candidate?.content?.parts ?? [];
+    const responseText = parts.filter((p) => !p.thought).map((p) => p.text || "").join("");
 
     if (!responseText) {
       throw new Error("Respuesta vacía del modelo.");
+    }
+    if (candidate?.finishReason === "MAX_TOKENS") {
+      // No devolver JSON cortado como si fuera válido.
+      return res.status(502).json({
+        error: "La respuesta de la IA llegó incompleta (límite de longitud). Introduce los datos manualmente o inténtalo de nuevo.",
+        retryable: true,
+      });
     }
 
     return res.status(200).json({ response: responseText });

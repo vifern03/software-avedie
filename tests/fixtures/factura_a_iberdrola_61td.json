@@ -1,0 +1,69 @@
+{
+  "_referencia": "Factura A (Iberdrola, 6.1TD). Revisada manualmente contra el PDF original el 18/09/2026. Datos personales eliminados.",
+  "_paginas": { "resumen": 1, "detalle_importes": 2, "potencia_contratada": 2, "lecturas_maximetros": [2, 3] },
+  "_discrepancias": [
+    "Potencia contratada P6 = 451 kW: supera el límite 'hasta 450 kW' de Open 6.1TD (no elegible).",
+    "El 'TOTAL ENERGÍA' impreso (8.261,98 €) incluye la financiación del bono social (0,40 €) y excluye peajes/cargos de energía (tarifa de acceso aparte).",
+    "El precio 'Energía Referenciada Omie' es solo un componente: la energía completa suma energía + peajes + cargos.",
+    "Periodo 30/11/2025–31/12/2025 = 31 días entre lecturas (no inclusivos). Emitida el 12/01/2026."
+  ],
+  "comercializadora": "Iberdrola",
+  "titular": null,
+  "cups": null,
+  "tarifaAcceso": "6.1TD",
+  "fechaEmision": "2026-01-12",
+  "periodoConsumo": { "desde": "2025-11-30", "hasta": "2025-12-31" },
+  "diasFacturados": 31,
+  "potenciaContratadaKw": [280, 280, 280, 280, 280, 451],
+  "consumoFacturadoKwh": [27263, 16448, 0, 0, 0, 31048],
+  "consumoTotalKwh": 74759,
+  "lecturas": [
+    { "periodo": "P1", "anterior": 2555962, "actual": 2583225 },
+    { "periodo": "P2", "anterior": 2728356, "actual": 2744804 },
+    { "periodo": "P3", "anterior": 1538600, "actual": 1538600 },
+    { "periodo": "P4", "anterior": 2030624, "actual": 2030624 },
+    { "periodo": "P5", "anterior": 2304289, "actual": 2304289 },
+    { "periodo": "P6", "anterior": 8777048, "actual": 8808096 }
+  ],
+  "maximetros": [
+    { "periodo": "P1", "valor": 225, "unidad": "kW" }, { "periodo": "P2", "valor": 199, "unidad": "kW" },
+    { "periodo": "P3", "valor": 0, "unidad": "kW" }, { "periodo": "P4", "valor": 0, "unidad": "kW" },
+    { "periodo": "P5", "valor": 0, "unidad": "kW" }, { "periodo": "P6", "valor": 237, "unidad": "kW" }
+  ],
+  "maximetrosAnoMovil": [],
+  "energiaLineas": [
+    { "componente": "energia", "periodo": "P1", "kwh": 27263, "precio": 0.121637, "unidadPrecio": "€/kWh", "importe": 3316.19 },
+    { "componente": "energia", "periodo": "P2", "kwh": 16448, "precio": 0.117895, "unidadPrecio": "€/kWh", "importe": 1939.14 },
+    { "componente": "energia", "periodo": "P6", "kwh": 31048, "precio": 0.096826, "unidadPrecio": "€/kWh", "importe": 3006.25 },
+    { "componente": "peajes", "periodo": "P1", "kwh": 27263, "precio": 0.027104, "unidadPrecio": "€/kWh", "importe": 738.94 },
+    { "componente": "peajes", "periodo": "P2", "kwh": 16448, "precio": 0.011894, "unidadPrecio": "€/kWh", "importe": 195.63 },
+    { "componente": "peajes", "periodo": "P6", "kwh": 31048, "precio": 0.000029, "unidadPrecio": "€/kWh", "importe": 0.90 },
+    { "componente": "cargos", "periodo": "P1", "kwh": 27263, "precio": 0.017674, "unidadPrecio": "€/kWh", "importe": 481.85 },
+    { "componente": "cargos", "periodo": "P2", "kwh": 16448, "precio": 0.013092, "unidadPrecio": "€/kWh", "importe": 215.34 },
+    { "componente": "cargos", "periodo": "P6", "kwh": 31048, "precio": 0.001414, "unidadPrecio": "€/kWh", "importe": 43.90 }
+  ],
+  "potenciaLineas": [
+    { "componente": "peajes", "periodo": "P1", "kw": 280, "dias": 31, "precio": 0.064847, "unidadPrecio": "€/kW día", "importe": 562.87 },
+    { "componente": "peajes", "periodo": "P2", "kw": 280, "dias": 31, "precio": 0.034285, "unidadPrecio": "€/kW día", "importe": 297.59 },
+    { "componente": "peajes", "periodo": "P3", "kw": 280, "dias": 31, "precio": 0.012867, "unidadPrecio": "€/kW día", "importe": 111.69 },
+    { "componente": "peajes", "periodo": "P4", "kw": 280, "dias": 31, "precio": 0.009066, "unidadPrecio": "€/kW día", "importe": 78.69 },
+    { "componente": "peajes", "periodo": "P5", "kw": 280, "dias": 31, "precio": 0.000192, "unidadPrecio": "€/kW día", "importe": 1.67 },
+    { "componente": "peajes", "periodo": "P6", "kw": 451, "dias": 31, "precio": 0.000171, "unidadPrecio": "€/kW día", "importe": 2.39 },
+    { "componente": "cargos", "periodo": "P1", "kw": 280, "dias": 31, "precio": 0.014035, "unidadPrecio": "€/kW día", "importe": 121.82 },
+    { "componente": "cargos", "periodo": "P2", "kw": 280, "dias": 31, "precio": 0.007024, "unidadPrecio": "€/kW día", "importe": 60.97 },
+    { "componente": "cargos", "periodo": "P3", "kw": 280, "dias": 31, "precio": 0.005104, "unidadPrecio": "€/kW día", "importe": 44.30 },
+    { "componente": "cargos", "periodo": "P4", "kw": 280, "dias": 31, "precio": 0.005104, "unidadPrecio": "€/kW día", "importe": 44.30 },
+    { "componente": "cargos", "periodo": "P5", "kw": 280, "dias": 31, "precio": 0.005104, "unidadPrecio": "€/kW día", "importe": 44.30 },
+    { "componente": "cargos", "periodo": "P6", "kw": 451, "dias": 31, "precio": 0.002339, "unidadPrecio": "€/kW día", "importe": 32.70 }
+  ],
+  "importes": {
+    "potencia": 1403.29, "energiaTotal": null, "excesosPotencia": 0, "reactiva": 0,
+    "bonoSocial": 0.40, "alquilerEquipos": 65.23, "otrosServicios": null,
+    "baseImpuestoElectrico": 11341.83, "tipoImpuestoElectricoPct": 5.11269632, "impuestoElectrico": 579.87,
+    "baseIVA": 11986.93, "tipoIVAPct": 21, "iva": 2517.26, "total": 14504.19
+  },
+  "reactivaKvarh": [1432, 631, 0, 0, 0, 2283],
+  "autoconsumo": { "kwhExcedentes": null, "compensacion": null },
+  "descuentosInformativos": [],
+  "_esperado": { "energiaTodoIncluido": 9938.14, "potencia": 1403.29, "discrepanciaLecturas": false }
+}
