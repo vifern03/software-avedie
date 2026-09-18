@@ -11,7 +11,7 @@
  * - Llamadas simultáneas sobre el mismo documento se deduplican.
  */
 
-export const EXTRACTOR_VERSION = 'luz-b2b-2026-09-18.2';
+export const EXTRACTOR_VERSION = 'luz-b2b-2026-09-18.3'; // prompt: energiaTotal solo si está impreso
 export const ESPERA_MAX_MS = 45000;
 const PRESUPUESTO_SERVIDOR_MS = 40000;
 const MAX_ENTRADAS = 20;

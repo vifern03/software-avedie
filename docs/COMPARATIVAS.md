@@ -61,16 +61,18 @@ intervalos y **no documentan qué potencia P1–P6 lo determina** cuando son dis
 - Open 3.0TD: 15 < Pc ≤ 30 · 30 < Pc ≤ 50 · 50 < Pc ≤ 100 · Pc > 100 kW
 - Open 6.1TD: Pc ≤ 30 · 30 < Pc ≤ 50 · 50 < Pc ≤ 100 · 100 < Pc ≤ 450 kW
 
-Por eso el tramo se **selecciona manualmente** (los 4 se ofrecen aunque compartan precio).
-Elegirlo no modifica las potencias P1–P6 ni los maxímetros. La pantalla indica a qué tramo
-corresponde cada potencia y el informe señala las potencias que quedan fuera del tramo elegido.
-Sin tramo seleccionado, Open no se calcula.
+Si todas las potencias P1–P6 caen en el mismo tramo, ese tramo se aplica automáticamente
+(no hay ambigüedad). Si caen en tramos distintos, el tramo se **selecciona manualmente**
+(los 4 se ofrecen aunque compartan precio) y el informe señala las potencias fuera del tramo.
+Elegir un tramo no modifica las potencias P1–P6 ni los maxímetros.
 
-Fuera de ámbito (p. ej. P6 = 451 kW frente a Open 6.1TD "hasta 450 kW"): la oferta no es
-elegible con ningún tramo, se explica el motivo y se puede seguir con otro producto. No se
-reducen potencias ni se asigna ningún tramo automáticamente.
-
-Números: "1.200" se interpreta como mil doscientos (formato español).
+Por encima del límite documental de Open 6.1TD (450 kW), por instrucción del responsable
+(18/09/2026): **se simula** con los precios del tramo que corresponde por potencia
+(Pc > 100 kW → 100 < Pc ≤ 450 kW) y con las **potencias reales** (p. ej. P1–P5 = 280 kW y
+P6 = 451 kW en el término de potencia). La condición documental (hasta 450 kW) no cambia:
+el informe y la pantalla muestran "Simulación con precios del tramo hasta 450 kW para
+suministro de N kW; contratación sujeta a confirmación". Simular no equivale a elegibilidad
+contractual ni a confirmación de Endesa.
 
 ## Qué entra en la comparación
 
@@ -79,6 +81,9 @@ Números: "1.200" se interpreta como mil doscientos (formato español).
   mantienen de la factura actual en los dos lados (marcados †, no recalculados).
 - IE 5,11269632 % sobre potencia + energía − excedentes + excesos + reactiva + bono social.
 - Gas: fijo €/mes × 12/365 × días + variable + IEH 0,00234 €/kWh + alquiler, más IVA.
+- Total de energía de la factura actual: si la IA devuelve un total que no coincide con la
+  suma de las líneas impresas (p. ej. 9.938,05 € frente a 9.938,14 € en la factura A: suma
+  propia del modelo con error de 0,09 €), se usa la suma de las líneas impresas y se avisa.
 - `ahorro € = coste actual comparable − coste ofertado`; `ahorro % = ahorro € / coste actual`.
   Puede ser negativo; con coste actual 0 no hay porcentaje.
 - La anualización es una extrapolación lineal de un único periodo y se rotula como tal.

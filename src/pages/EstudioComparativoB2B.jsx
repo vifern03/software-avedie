@@ -398,14 +398,14 @@ export default function EstudioComparativoB2B() {
                   {producto.tramos.map((t, i) => (
                     <button key={t.label} type="button" id={`ecb2b-tramo${i}`}
                       onClick={() => setTramoSel(ts => ({ ...ts, [nivel]: i }))}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${tramoSel[nivel] === i ? 'bg-google-blue text-white border-google-blue' : 'bg-gray-50 text-google-gray border-google-border hover:border-google-blue'}`}>
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${tramoSel[nivel] === i || (tramoSel[nivel] == null && resultado?.tramo === t.label) ? 'bg-google-blue text-white border-google-blue' : 'bg-gray-50 text-google-gray border-google-border hover:border-google-blue'}`}>
                       {t.label}
                     </button>
                   ))}
                 </div>
                 <p className="text-[10px] text-google-gray mt-1.5 leading-snug">
-                  El documento de la oferta no indica qué potencia (P1–P6) determina el tramo: selecciónalo manualmente.
-                  Elegir un tramo no modifica las potencias contratadas.
+                  Si todas las potencias están en el mismo tramo se aplica automáticamente. Si caen en tramos distintos,
+                  selecciónalo: el documento no indica qué potencia (P1–P6) lo determina. Elegir un tramo no modifica las potencias.
                 </p>
                 {potenciasKw.some(x => x > 0) && (
                   <p className="text-[10px] text-google-dark mt-1" id="ecb2b-tramos-potencia">
@@ -414,7 +414,12 @@ export default function EstudioComparativoB2B() {
                 )}
               </div>
             )}
-            {resultado?.fueraDeAmbito && (
+            {ok && resultado.simulacion === 'fuera_limite' && (
+              <p className="text-[10px] text-google-gray" id="ecb2b-nota-simulacion">
+                {resultado.avisos.find(a => a.startsWith('Simulación con precios del tramo'))}
+              </p>
+            )}
+            {resultado?.fueraDeAmbito && !ok && (
               <p className="text-[11px] text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2" id="ecb2b-fuera-ambito">
                 <strong>Fuera del ámbito de esta oferta.</strong> {resultado.motivos[0]} Puedes seguir comparando con otro producto o tarifa de acceso.
               </p>

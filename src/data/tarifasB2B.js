@@ -111,6 +111,12 @@ export const OPEN_61TD = {
     { label: '100 < Pc ≤ 450 kW', min: 100, max: 450 },
   ],
   potenciaMaxima: 450, // "Tarifa de acceso: 6.1TD hasta 450kW"
+  /* Simulación por encima del límite documental (instrucción del responsable,
+     18/09/2026): un suministro con alguna potencia > 450 kW se compara con los precios
+     del tramo que le corresponde por potencia (Pc > 100 kW → 100 < Pc ≤ 450 kW), con
+     sus potencias reales. La condición documental (hasta 450 kW) no cambia y la
+     contratación queda sujeta a confirmación de Endesa. */
+  excepcionSimulacion: { tramoIdx: 3 },
   potencias: ['Pc ≤ 30 kW', '30 < Pc ≤ 50 kW', '50 < Pc ≤ 100 kW', '100 < Pc ≤ 450 kW'],
   baseEnergia: [0.195395, 0.195395, 0.191895, 0.191895],
   modalidades: [

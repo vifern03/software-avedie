@@ -63,7 +63,7 @@ REGLAS
 3. UNIDADES. Copia la unidad impresa. Si el precio figura en c€/kWh o c€/día, escribe el número tal cual y unidadPrecio "c€/…". NO lo conviertas.
 4. CONSUMO FACTURADO ≠ LECTURAS. consumoFacturadoKwh es lo que se cobra en el detalle de energía (o la fila "Consumo en el periodo"). Las lecturas del contador van en "lecturas" aunque su diferencia no coincida con lo facturado. No sustituyas uno por otro.
 5. AUSENTE ≠ CERO. Si un periodo aparece con 0 kWh, pon 0. Si no aparece en ningún sitio, pon null.
-6. ENERGÍA DESGLOSADA. Si la energía aparece separada (energía/OMIE, peajes, cargos, término de acceso), añade UNA línea por componente y periodo en "energiaLineas". importes.energiaTotal es el total de energía impreso; si no hay total único, null. Nunca tomes solo el componente OMIE como coste total de la energía.
+6. ENERGÍA DESGLOSADA. Si la energía aparece separada (energía/OMIE, peajes, cargos, término de acceso), añade UNA línea por componente y periodo en "energiaLineas". importes.energiaTotal es un total de energía IMPRESO que incluya todos los componentes; si la factura no imprime ese total único, pon null (NO sumes tú). Nunca tomes solo el componente OMIE como coste total de la energía.
 7. MAXÍMETROS. "maximetros" = potencia máxima demandada EN ESTE PERIODO de facturación. Los máximos del "año móvil"/"últimos 12 meses" van SOLO en "maximetrosAnoMovil". Copia el valor y la unidad; si la tabla muestra 53.000,00 sin unidad o con W, escribe 53000 y la unidad impresa (o null).
 8. IMPUESTOS. tipoImpuestoElectricoPct y tipoIVAPct son PORCENTAJES impresos (5,11269632 → 5.11269632; 21 → 21). No confundas el importe en € con el tipo.
 9. DESCUENTOS INFORMATIVOS. Notas del tipo "Descuento asociado al ahorro de cargos … -677,38 €" van en descuentosInformativos. No los restes de ningún importe.
@@ -189,7 +189,12 @@ export function validarExtraccion(ex) {
       energiaTotal = Math.round(sumaLineasEnergia * 100) / 100;
       add('info', 'importes.energiaTotal', `Energía total = suma de componentes (${energiaTotal} €).`);
     } else if (!cerca(sumaLineasEnergia, energiaTotal, 0.05)) {
-      add('info', 'importes.energiaTotal', `El total de energía impreso (${energiaTotal} €) no es la suma de todos los componentes (${sumaLineasEnergia.toFixed(2)} €); probablemente peajes/acceso figuran aparte.`);
+      const dif = Math.abs(sumaLineasEnergia - energiaTotal);
+      if (dif < 1) {
+        add('info', 'importes.energiaTotal', `La IA devolvió un total de energía de ${energiaTotal} € que no coincide con la suma de las líneas impresas (${sumaLineasEnergia.toFixed(2)} €; diferencia ${dif.toFixed(2)} €). Probable suma propia del modelo: se usa la suma de las líneas impresas.`);
+      } else {
+        add('info', 'importes.energiaTotal', `El total de energía impreso (${energiaTotal} €) no incluye todos los componentes (suma de líneas ${sumaLineasEnergia.toFixed(2)} €; peajes/cargos figuran aparte). Se usa la suma de líneas.`);
+      }
       energiaTotal = Math.round(sumaLineasEnergia * 100) / 100;
     }
   }

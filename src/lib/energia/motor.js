@@ -61,32 +61,52 @@ export function seleccionarTramoOpen(producto, potenciasKw, tramoIdx) {
   const conValor = pots.map((kw, i) => ({ p: `P${i + 1}`, kw })).filter(x => x.kw > 0);
   if (!conValor.length) return { idx: -1, motivos: ['Faltan las potencias contratadas P1–P6.'], avisos };
 
-  // Ámbito documentado de la oferta
+  // Potencias por encima del límite documental: simular ≠ elegibilidad contractual.
+  const exc = producto.excepcionSimulacion;
   const fuera = producto.potenciaMaxima ? conValor.filter(x => x.kw > producto.potenciaMaxima) : [];
+  let simulacion = null;
   if (fuera.length) {
-    motivos.push(`${producto.nombre} solo admite suministros hasta ${producto.potenciaMaxima} kW ("Tarifa de acceso: 6.1TD hasta 450kW"). Este suministro tiene ${fuera.map(x => `${x.p} = ${x.kw} kW`).join(', ')}. No se modifica ninguna potencia ni se asigna otro tramo: compara con otra oferta.`);
-    return { idx: -1, motivos, avisos, fueraDeAmbito: true };
+    if (!exc) {
+      motivos.push(`${producto.nombre} está documentada hasta ${producto.potenciaMaxima} kW (${fuera.map(x => `${x.p} = ${esN(x.kw)} kW`).join(', ')}).`);
+      return { idx: -1, motivos, avisos, fueraDeAmbito: true };
+    }
+    const pMax = Math.max(...fuera.map(x => x.kw));
+    avisos.push(`Simulación con precios del tramo hasta ${producto.potenciaMaxima} kW para suministro de ${esN(pMax)} kW; contratación sujeta a confirmación.`);
+    simulacion = 'fuera_limite';
   }
+
   const minimo = producto.tramos[0].minIncl ? null : producto.tramos[0].min;
   if (minimo != null && conValor.every(x => x.kw <= minimo)) {
     motivos.push(`${producto.nombre} es para potencias contratadas superiores a ${minimo} kW; todas las potencias de este suministro son ≤ ${minimo} kW.`);
     return { idx: -1, motivos, avisos, fueraDeAmbito: true };
   }
 
-  if (tramoIdx == null || tramoIdx === '' || !producto.tramos[tramoIdx]) {
-    motivos.push('Selecciona el tramo comercial de potencia. El documento de la oferta no define qué potencia (P1–P6) determina el tramo cuando son distintas.');
-    return { idx: -1, motivos, avisos, requiereTramo: true };
+  // Tramo de cada potencia (las que superan el límite pertenecen al tramo "Pc > 100 kW").
+  const tramoDe = (kw) => {
+    const i = tramoPara(producto.tramos, kw);
+    return i >= 0 ? i : (exc && kw > producto.potenciaMaxima ? exc.tramoIdx : -1);
+  };
+  const idxs = [...new Set(conValor.map(x => tramoDe(x.kw)))];
+
+  let idx = tramoIdx;
+  if (idx == null || idx === '' || !producto.tramos[idx]) {
+    if (idxs.length === 1 && idxs[0] >= 0) {
+      idx = idxs[0]; // todas las potencias en el mismo tramo: no hay ambigüedad
+    } else {
+      motivos.push('Las potencias P1–P6 caen en tramos distintos y el documento de la oferta no define cuál determina el precio: selecciona el tramo comercial.');
+      return { idx: -1, motivos, avisos, requiereTramo: true };
+    }
+  } else if (idxs.length > 1) {
+    avisos.push(`Tramo comercial "${producto.tramos[idx].label}" seleccionado manualmente: las potencias caen en tramos distintos y la regla no está documentada; confirmar con Endesa.`);
   }
-  const t = producto.tramos[tramoIdx];
-  const dentro = conValor.filter(x => tramoPara([t], x.kw) === 0);
-  const noDentro = conValor.filter(x => tramoPara([t], x.kw) !== 0);
-  avisos.push(`Tramo comercial "${t.label}" seleccionado manualmente: la regla que determina el tramo no está documentada en la oferta; confirmar con Endesa.`);
-  if (!dentro.length) {
-    avisos.push(`DISCREPANCIA: ninguna potencia contratada está en el tramo "${t.label}" (${conValor.map(x => `${x.p} ${x.kw} kW`).join(', ')}).`);
+  const t = producto.tramos[idx];
+  const noDentro = conValor.filter(x => tramoDe(x.kw) !== idx);
+  if (noDentro.length === conValor.length) {
+    avisos.push(`DISCREPANCIA: ninguna potencia contratada está en el tramo "${t.label}" (${conValor.map(x => `${x.p} ${esN(x.kw)} kW`).join(', ')}).`);
   } else if (noDentro.length) {
-    avisos.push(`Discrepancia: ${noDentro.map(x => `${x.p} = ${x.kw} kW`).join(', ')} fuera del tramo "${t.label}".`);
+    avisos.push(`Discrepancia: ${noDentro.map(x => `${x.p} = ${esN(x.kw)} kW`).join(', ')} fuera del tramo "${t.label}".`);
   }
-  return { idx: tramoIdx, motivos, avisos };
+  return { idx, motivos, avisos, simulacion, fueraDeAmbito: !!simulacion };
 }
 
 /** Tramos que corresponden a cada potencia P1–P6 (solo informativo, nunca se aplica solo). */
@@ -94,8 +114,13 @@ export function tramosPorPotencia(producto, potenciasKw) {
   return potenciasKw.map((kw, i) => {
     const v = Number(kw);
     if (!(v > 0)) return null;
-    const idx = tramoPara(producto.tramos, v);
-    return { p: `P${i + 1}`, kw: v, idx, label: idx >= 0 ? producto.tramos[idx].label : 'fuera de los tramos' };
+    let idx = tramoPara(producto.tramos, v);
+    let label = idx >= 0 ? producto.tramos[idx].label : 'fuera de los tramos';
+    if (idx < 0 && producto.excepcionSimulacion && producto.potenciaMaxima && v > producto.potenciaMaxima) {
+      idx = producto.excepcionSimulacion.tramoIdx;
+      label = `${producto.tramos[idx].label} (simulación: supera ${producto.potenciaMaxima} kW)`;
+    }
+    return { p: `P${i + 1}`, kw: v, idx, label };
   }).filter(Boolean);
 }
 
@@ -279,7 +304,7 @@ export function calcularOfertaLuz(i) {
     const pOpen = p.matrix[tr.idx][mIdx];
     const pNo = modalidad.id === 'plana' ? pOpen : p.horasNoOpen[tr.idx];
     const rep = repartirOpen({ modalidad, kwhPeriodo: kwh, desgloseP6: i.desgloseP6, curva: i.curva, periodo: i.periodo });
-    if (!rep.ok) { motivos.push(rep.motivo); return res(ESTADO.DATOS_INSUFICIENTES, { tramo: p.tramos[tr.idx].label }); }
+    if (!rep.ok) { motivos.push(rep.motivo); return res(ESTADO.DATOS_INSUFICIENTES); }
     avisos.push(...rep.avisos);
     const eOpen = rep.kOpen * pOpen, eNo = rep.kNo * pNo;
     energia = eOpen + eNo;
@@ -287,7 +312,7 @@ export function calcularOfertaLuz(i) {
     if (rep.kNo > 0 || modalidad.id !== 'plana') {
       lineas.push({ concepto: 'Energía horas No Open', detalle: `${esN(rep.kNo)} kWh × ${es6(pNo)} €/kWh`, importe: eNo, origen: 'oferta' });
     }
-    precioInfo = { tramo: p.tramos[tr.idx].label, modalidad: modalidad.label, precioOpen: pOpen, precioNoOpen: pNo, kwhOpen: rep.kOpen, kwhNoOpen: rep.kNo, metodoReparto: rep.metodo };
+    precioInfo = { tramo: p.tramos[tr.idx].label, simulacion: tr.simulacion || null, fueraDeAmbito: !!tr.fueraDeAmbito, modalidad: modalidad.label, precioOpen: pOpen, precioNoOpen: pNo, kwhOpen: rep.kOpen, kwhNoOpen: rep.kNo, metodoReparto: rep.metodo };
   } else if (p.energiaUnica != null || p.id === 'tempo') {
     const precio = p.energiaUnica ?? p.energia.promo;
     energia = totalKwh * precio;

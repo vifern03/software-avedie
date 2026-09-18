@@ -157,3 +157,12 @@ test('parseo de respuestas del modelo con y sin bloque de código', () => {
   assert.deepEqual(parsearRespuestaModelo('texto {"a":2} fin'), { a: 2 });
   assert.throws(() => parsearRespuestaModelo('sin json'));
 });
+
+test('factura A: total de energía devuelto por la IA (9938,05) distinto de la suma impresa (9938,14) → se usa la suma y se explica', () => {
+  const v = validarExtraccion({ ...A, importes: { ...A.importes, energiaTotal: 9938.05 } });
+  near(v.datos.importes.energiaTotal, 9938.14);
+  const i = v.incidencias.find(x => x.campo === 'importes.energiaTotal');
+  assert.ok(i.mensaje.includes('Probable suma propia del modelo'));
+  const w = validarExtraccion({ ...A, importes: { ...A.importes, energiaTotal: 8261.58 } });
+  assert.ok(w.incidencias.find(x => x.campo === 'importes.energiaTotal').mensaje.includes('peajes/cargos figuran aparte'));
+});
