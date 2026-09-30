@@ -1,10 +1,18 @@
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models/";
 // Modelos estables (https://ai.google.dev/gemini-api/docs/models, consultado 30/09/2026).
-// Extracción de facturas: gemini-3.5-flash con thinkingBudget 128 resuelve una factura
-// en 1,3–1,9 s sin fallar ningún campo, frente a los 16–22 s de gemini-2.5-pro.
-// Se descarta gemini-3-flash-preview: mismo resultado y un tercio del coste, pero es
-// preview y sin límite de razonamiento se dispara a 88 s y 31.000 tokens de "thinking".
-const MODELOS = { pro: "gemini-2.5-pro", flash: "gemini-3.5-flash" };
+// Extracción de facturas (estudio de 30/09/2026 sobre 6 facturas reales de luz y gas,
+// con la config de la app: temperature 0, JSON nativo y thinkingBudget 128):
+//   gemini-3.8-flash       100% campos · 1,6 s · $0,0045 comparativa 2.0  ← elegido
+//   gemini-3.5-flash       100% campos · 1,4 s · $0,0093  (el doble de caro, igual resultado)
+//   gemini-2.5-flash       100% campos · 3,2 s · $0,0021  (generación anterior, el doble de lento)
+//   gemini-3.5-flash-lite  1,4 s y $0,0020, pero se deja componentes del término fijo
+//                          cuando la comercializadora lo parte en varias líneas
+//   gemini-3-flash-preview buen resultado, pero es preview y sin tope de razonamiento
+//                          se dispara a 88 s y 31.458 tokens
+//   gemini-2.5-pro         100% campos · 5,3 s · $0,0081  (lo que se usaba antes)
+// El precio de 3.8-flash es promocional hasta el 31/12/2026; en enero se dobla y se
+// igualaría con 3.5-flash, momento de revisar esta elección.
+const MODELOS = { pro: "gemini-2.5-pro", flash: "gemini-3.8-flash" };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
