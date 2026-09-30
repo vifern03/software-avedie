@@ -25,6 +25,7 @@ const VIGENCIA_B2C_GAS = {
 export const GAS = [
   {
     id: 'rl1',
+    precioSinActualizar: true,
     title: 'Gas RL.1',
     consumo: '0 – 5.000 kWh/año',
     consumoMin: 0, consumoMax: 5000,
@@ -39,6 +40,7 @@ export const GAS = [
   },
   {
     id: 'rl2',
+    precioSinActualizar: true,
     title: 'Gas RL.2',
     consumo: '5.001 – 15.000 kWh/año',
     consumoMin: 5000, consumoMax: 15000,
@@ -53,6 +55,7 @@ export const GAS = [
   },
   {
     id: 'rl3',
+    precioSinActualizar: true,
     title: 'Gas RL.3',
     consumo: '15.001 – 50.000 kWh/año',
     consumoMin: 15000, consumoMax: 50000,
@@ -82,6 +85,7 @@ const PENALIZACION_GAS = '20% del término de energía × días restantes × con
 export const GAS_EMPRESA = [
   {
     id: 'rl4',
+    precioSinActualizar: true,
     title: 'Gas RL.4',
     consumo: '50.000 – 300.000 kWh/año',
     consumoMin: 50000, consumoMax: 300000,
@@ -98,6 +102,7 @@ export const GAS_EMPRESA = [
   },
   {
     id: 'rl5',
+    precioSinActualizar: true,
     title: 'Gas RL.5',
     consumo: '300.000 – 1.500.000 kWh/año',
     consumoMin: 300000, consumoMax: 1500000,
@@ -114,6 +119,7 @@ export const GAS_EMPRESA = [
   },
   {
     id: 'rl6',
+    precioSinActualizar: true,
     title: 'Gas RL.6',
     consumo: '1.500.000 – 8.000.000 kWh/año',
     consumoMin: 1500000, consumoMax: 8000000,

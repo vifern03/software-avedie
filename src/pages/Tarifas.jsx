@@ -115,6 +115,14 @@ function BonoSocialModal({ onClose }) {
 
 /* ── Tarjetas B2C Luz ───────────────────────────────────────────────────────── */
 
+function SinActualizarBadge() {
+  return (
+    <span className="flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded border border-red-300 bg-red-50 text-red-700 whitespace-nowrap">
+      Precio sin actualizar
+    </span>
+  );
+}
+
 function LuzCard({ tarifa }) {
   const [mant, setMant] = useState(false);
   const [showBono, setShowBono] = useState(false);
@@ -127,9 +135,12 @@ function LuzCard({ tarifa }) {
         <div className="px-5 pt-5 pb-4 border-b border-gray-100">
           <div className="flex items-start justify-between gap-2 mb-1.5">
             <h3 className="text-base font-semibold text-google-dark leading-tight">{tarifa.title}</h3>
-            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${tarifa.canalColor}`}>
-              {tarifa.canal}
-            </span>
+            <div className="flex flex-col items-end gap-1 flex-shrink-0">
+              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${tarifa.canalColor}`}>
+                {tarifa.canal}
+              </span>
+              {tarifa.precioSinActualizar && <SinActualizarBadge />}
+            </div>
           </div>
           <p className="text-xs text-google-gray">{tarifa.desc}</p>
         </div>
@@ -227,9 +238,12 @@ function SolarLuzCard({ tarifa }) {
         <div className="px-5 pt-5 pb-4 border-b border-gray-100">
           <div className="flex items-start justify-between gap-2 mb-1.5">
             <h3 className="text-base font-semibold text-google-dark leading-tight">{tarifa.title}</h3>
-            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${tarifa.badgeColor}`}>
-              {tarifa.badge}
-            </span>
+            <div className="flex flex-col items-end gap-1 flex-shrink-0">
+              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${tarifa.badgeColor}`}>
+                {tarifa.badge}
+              </span>
+              {tarifa.precioSinActualizar && <SinActualizarBadge />}
+            </div>
           </div>
           <p className="text-xs text-google-gray">{tarifa.desc}</p>
         </div>
@@ -348,9 +362,12 @@ function GasCard({ tarifa }) {
       <div className="px-5 pt-5 pb-4 border-b border-gray-100">
         <div className="flex items-start justify-between gap-2 mb-1">
           <h3 className="text-base font-semibold text-google-dark leading-tight">{tarifa.title}</h3>
-          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 whitespace-nowrap">
-            {tarifa.consumo}
-          </span>
+          <div className="flex flex-col items-end gap-1 flex-shrink-0">
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 whitespace-nowrap">
+              {tarifa.consumo}
+            </span>
+            {tarifa.precioSinActualizar && <SinActualizarBadge />}
+          </div>
         </div>
         <p className="text-xs text-google-gray">Precio fijo sin permanencia. Sin fluctuaciones del mercado.</p>
       </div>
@@ -409,9 +426,12 @@ function GasEmpresaCard({ tarifa }) {
       <div className="px-5 pt-5 pb-4 border-b border-gray-100">
         <div className="flex items-start justify-between gap-2 mb-1">
           <h3 className="text-base font-semibold text-google-dark leading-tight">{tarifa.title}</h3>
-          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 whitespace-nowrap">
-            {tarifa.consumo}
-          </span>
+          <div className="flex flex-col items-end gap-1 flex-shrink-0">
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 whitespace-nowrap">
+              {tarifa.consumo}
+            </span>
+            {tarifa.precioSinActualizar && <SinActualizarBadge />}
+          </div>
         </div>
         <p className="text-xs text-google-gray">Precio fijo con permanencia de 1 año. Sin fluctuaciones del mercado.</p>
       </div>
@@ -474,9 +494,12 @@ function TempoSection() {
               <h3 className="text-base font-semibold text-google-dark">Tarifa TEMPO 2.0TD</h3>
               <p className="text-xs text-google-gray mt-0.5">Un solo precio las 24 horas del día · Potencia ≤ 15 kW</p>
             </div>
-            <span className="flex-shrink-0 bg-blue-600 text-white text-xs font-bold px-2.5 py-1 rounded-lg whitespace-nowrap">
-              +{TEMPO.descuento}% 1er año
-            </span>
+            <div className="flex flex-col items-end gap-1 flex-shrink-0">
+              <span className="bg-blue-600 text-white text-xs font-bold px-2.5 py-1 rounded-lg whitespace-nowrap">
+                +{TEMPO.descuento}% 1er año
+              </span>
+              {TEMPO.precioSinActualizar && <SinActualizarBadge />}
+            </div>
           </div>
 
           {/* Precio grande */}
@@ -543,7 +566,10 @@ function SimplySection({ datos }) {
       <PermanenciaBadge penalizacion={datos.penalizacion} />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 bg-white border border-google-border rounded-xl shadow-sm p-5">
-          <h3 className="text-base font-semibold text-google-dark">Tarifa {datos.nombre}</h3>
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="text-base font-semibold text-google-dark">Tarifa {datos.nombre}</h3>
+            {datos.precioSinActualizar && <SinActualizarBadge />}
+          </div>
           <p className="text-xs text-google-gray mt-0.5 mb-4">Solo suministros con autoconsumo instalado · No aplican descuentos</p>
           {periodos ? (
             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
@@ -612,9 +638,12 @@ function OpenSection({ datos, titulo, subtitulo }) {
                 <h3 className="text-base font-semibold text-google-dark">{titulo}</h3>
                 <p className="text-xs text-google-gray mt-0.5">{subtitulo}</p>
               </div>
-              <span className="flex-shrink-0 bg-blue-600 text-white text-xs font-bold px-2.5 py-1 rounded-lg whitespace-nowrap">
-                +{datos.extraAnyo}% 1er año
-              </span>
+              <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                <span className="bg-blue-600 text-white text-xs font-bold px-2.5 py-1 rounded-lg whitespace-nowrap">
+                  +{datos.extraAnyo}% 1er año
+                </span>
+                {datos.precioSinActualizar && <SinActualizarBadge />}
+              </div>
             </div>
 
             {/* Selector 1: Potencia */}
@@ -820,9 +849,12 @@ function IndexadaSection({ datos, titulo, subtitulo }) {
                 <h3 className="text-base font-semibold text-google-dark">{titulo}</h3>
                 <p className="text-xs text-google-gray mt-0.5">{subtitulo}</p>
               </div>
-              <span className="flex-shrink-0 bg-cyan-600 text-white text-xs font-bold px-2.5 py-1 rounded-lg whitespace-nowrap">
-                OMIE
-              </span>
+              <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                <span className="bg-cyan-600 text-white text-xs font-bold px-2.5 py-1 rounded-lg whitespace-nowrap">
+                  OMIE
+                </span>
+                {datos.precioSinActualizar && <SinActualizarBadge />}
+              </div>
             </div>
 
             <div className="mb-5">
@@ -921,7 +953,6 @@ export default function Tarifas() {
       <div className="mb-6 print:hidden">
         <h1 className="text-xl font-semibold text-google-dark">Consulta de Tarifas</h1>
         <p className="text-sm text-google-gray mt-1">Precios vigentes Endesa · Sin impuestos</p>
-        <p className="text-sm text-gray-400 mt-0.5">Documento editado el 03/07/2026</p>
       </div>
 
       {/* Tabs principales */}

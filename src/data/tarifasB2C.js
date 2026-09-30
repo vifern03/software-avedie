@@ -2,13 +2,26 @@
  * Tarifas B2C (Luz Residencial 2.0TD) — fuente única para Consulta de Tarifas,
  * Comparativas 2.0 e informe PDF.
  *
- * PRECIOS Y DESCUENTOS SIN CAMBIOS respecto a los documentos Endesa de junio de 2026.
+ * LUZ 24H (Canal Directo y Con Prescriptor): precios y vigencia del documento
+ * Endesa 'Oferta LUZ 24H' editado el 09/09/2026 (contrataciones 17/09/2026 – 14/10/2026).
+ *
+ * EL RESTO (Tu Otra Casa, Solar e Indexada 2.0TD) sigue pendiente de documento nuevo:
+ * precios y descuentos sin cambios respecto a los documentos Endesa de junio de 2026.
  * VIGENCIA: extensión por instrucción interna del responsable comercial
  * (18/09/2026), tomando como referencia la ventana de los documentos B2B de luz
  * del 17/09/2026 (Open 3.0TD / 6.1TD / TEMPO: 17/09/2026 – 27/09/2026).
  * No procede de un documento Endesa B2C nuevo.
  */
 
+/* LUZ 24H: documento Endesa propio, no es una extensión interna. */
+export const VIGENCIA_LUZ_24H = {
+  desde: '2026-09-17',
+  hasta: '2026-10-14',
+  fuente: 'Oferta LUZ 24H — documento Endesa editado el 09/09/2026',
+};
+const VALIDEZ_LUZ_24H = '17/09/2026 – 14/10/2026';
+
+/* Resto de tarifas B2C: siguen sin documento nuevo. */
 export const VIGENCIA_B2C_LUZ = {
   desde: '2026-09-17',
   hasta: '2026-09-27',
@@ -31,14 +44,14 @@ export const LUZ = [
     canal: 'Canal Directo',
     canalColor: 'bg-blue-100 text-blue-700',
     desc: 'Precio único en energía y potencia, sin franjas horarias.',
-    sinMant: { promo: 0.109000, noPromo: 0.160294 },
-    conMant: { promo: 0.104191, noPromo: 0.160294 },
+    sinMant: { promo: 0.119990, noPromo: 0.171414 },
+    conMant: { promo: 0.114847, noPromo: 0.171414 },
     potPunta: 34.188000,
     potValle: 34.188000,
-    descuentos: ['10% — 1 año (nuevas contrataciones)', '22% — indefinido sobre término de energía'],
+    descuentos: ['10% — 1 año (nuevas contrataciones)', '20% — indefinido sobre término de energía'],
     mantLabel: '3% adicional — serv. eléctrico en misma dirección',
-    contratacion: VIGENCIA_B2C_LUZ,
-    validez: VALIDEZ_B2C,
+    contratacion: VIGENCIA_LUZ_24H,
+    validez: VALIDEZ_LUZ_24H,
   },
   {
     id: 'prescriptor',
@@ -46,17 +59,18 @@ export const LUZ = [
     canal: 'Con Prescriptor',
     canalColor: 'bg-violet-100 text-violet-700',
     desc: 'Precio único sin franjas horarias. Canal venta con prescriptor.',
-    sinMant: { promo: 0.128235, noPromo: 0.160294 },
-    conMant: { promo: 0.123426, noPromo: 0.160294 },
+    sinMant: { promo: 0.137131, noPromo: 0.171414 },
+    conMant: { promo: 0.131989, noPromo: 0.171414 },
     potPunta: 34.188000,
     potValle: 34.188000,
     descuentos: ['10% — 1 año (nuevas contrataciones)', '10% — indefinido sobre término de energía'],
     mantLabel: '3% adicional — serv. eléctrico en misma dirección (1 año)',
-    contratacion: VIGENCIA_B2C_LUZ,
-    validez: VALIDEZ_B2C,
+    contratacion: VIGENCIA_LUZ_24H,
+    validez: VALIDEZ_LUZ_24H,
   },
   {
     id: 'tu-otra-casa',
+    precioSinActualizar: true,
     title: 'Tu Otra Casa 50',
     canal: '2.0TD',
     canalColor: 'bg-emerald-100 text-emerald-700',
@@ -79,6 +93,7 @@ export const LUZ = [
 export const LUZ_SOLAR = [
   {
     id: 'solar-basic',
+    precioSinActualizar: true,
     title: 'Solar Basic',
     badge: 'Solar',
     badgeColor: 'bg-yellow-100 text-yellow-700',
@@ -96,6 +111,7 @@ export const LUZ_SOLAR = [
   },
   {
     id: 'solar-plus',
+    precioSinActualizar: true,
     title: 'Solar Plus',
     badge: 'Solar',
     badgeColor: 'bg-orange-100 text-orange-700',
@@ -112,6 +128,7 @@ export const LUZ_SOLAR = [
   },
   {
     id: 'solar-bateria',
+    precioSinActualizar: true,
     title: 'Solar Plus & Batería Virtual',
     badge: 'Batería',
     badgeColor: 'bg-purple-100 text-purple-700',
@@ -135,6 +152,7 @@ export const LUZ_SOLAR = [
  * se conservan precios y la vigencia original (vencida). */
 
 export const INDEXADA_2_0TD = {
+  precioSinActualizar: true,
   potenciaTerminos: [
     { p: 'P1', anyo: 31.216092, mes: 2.601341, dia: 0.085524 },
     { p: 'P2', anyo: 4.237104,  mes: 0.353092, dia: 0.011608 },

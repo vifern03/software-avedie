@@ -55,6 +55,7 @@ const POTENCIA_61TD = [
  */
 export const OPEN_30TD = {
   id: 'open30',
+  precioSinActualizar: true,
   nombre: 'Open 3.0TD',
   nivel: '30',
   fuente: DOC_OPEN_30,
@@ -100,6 +101,7 @@ export const OPEN_30TD = {
 
 export const OPEN_61TD = {
   id: 'open61',
+  precioSinActualizar: true,
   nombre: 'Open 6.1TD',
   nivel: '61',
   fuente: DOC_OPEN_61,
@@ -151,6 +153,7 @@ export const OPEN_61TD = {
 /* ── Simply (solo suministros con autoconsumo instalado) ─────────────────────── */
 export const SIMPLY_30TD = {
   id: 'simply30',
+  precioSinActualizar: true,
   nombre: 'Simply 3.0TD',
   nivel: '30',
   fuente: '20260917 AUT_3.0TD_SIMPLY_V1.pdf',
@@ -174,6 +177,7 @@ export const SIMPLY_30TD = {
  */
 export const SIMPLY_61TD = {
   id: 'simply61',
+  precioSinActualizar: true,
   nombre: 'Simply 6.1TD',
   nivel: '61',
   fuente: '20260917 AUT_6.1TD_SIMPLY_V1.pdf',
@@ -195,6 +199,7 @@ export const SIMPLY_61TD = {
 /* ── TEMPO 2.0TD (producto B2B, ≤ 15 kW) ─────────────────────────────────────── */
 export const TEMPO_2_0TD = {
   id: 'tempo',
+  precioSinActualizar: true,
   nombre: 'TEMPO 2.0TD (24h)',
   nivel: '20',
   fuente: '20260917 2.0TD_TEMPO24H_28_V1.pdf',
@@ -217,6 +222,7 @@ export const TEMPO_2_0TD = {
  * Los comparadores muestran el aviso de ventana vencida. */
 export const INDEXADA_30TD = {
   id: 'indexada30',
+  precioSinActualizar: true,
   nombre: 'Indexada OMIE 3.0TD',
   potenciaTerminos: [
     { p: 'P1', anyo: 21.876927, mes: 1.823077, dia: 0.059937 },
@@ -234,6 +240,7 @@ export const INDEXADA_30TD = {
 
 export const INDEXADA_61TD = {
   id: 'indexada61',
+  precioSinActualizar: true,
   nombre: 'Indexada OMIE 6.1TD',
   potenciaTerminos: [
     { p: 'P1', anyo: 31.095368, mes: 2.591281, dia: 0.085193 },
