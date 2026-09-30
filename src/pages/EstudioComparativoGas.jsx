@@ -196,8 +196,14 @@ export default function EstudioComparativoGas() {
   const total      = baseIVA + ivaImp;
   const factBase   = incluyeTF ? factActual : Math.max(0, factActual - tfFactura * (1 + ivaRate));
 
-  const { ahorroEur: dif, ahorroPct } = calcularAhorro(factBase, total);
-  const ahorroPercent = ahorroPct == null ? 0 : ahorroPct / 100;
+  const { ahorroEur: dif } = calcularAhorro(factBase, total);
+  // El porcentaje de ahorro que se enseña al cliente compara contra la oferta de
+  // Endesa (mismo criterio que la comparativa 2.0 y que las comparativas ya
+  // entregadas). Si sale sobrecoste, "más caro que el precio actual" se mide
+  // sobre la factura actual.
+  const ahorroPctOferta = dif >= 0
+    ? (total > 0 ? dif / total : 0)
+    : (factBase > 0 ? dif / factBase : 0);
   const ahorroAnual   = extrapolarAnual(dif, dias) ?? 0;
   const dto = 0;
 
@@ -730,7 +736,7 @@ export default function EstudioComparativoGas() {
                 </div>
                 {alqCont > 0 && (
                   <div className="flex justify-between items-baseline text-sm">
-                    <span className="text-google-gray">Alquiler de Contador (mantenido de la factura actual)</span>
+                    <span className="text-google-gray">Alquiler de Contador</span>
                     <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(alqCont)}</span>
                   </div>
                 )}
@@ -746,14 +752,12 @@ export default function EstudioComparativoGas() {
 
               {/* ── Total ── */}
               <div className="px-6 py-4 flex justify-between items-center">
-                <span className="font-bold text-google-dark text-base">TOTAL SIMULADO CON ENDESA</span>
+                <span className="font-bold text-google-dark text-base">TOTAL ESTIMADO CON ENDESA</span>
                 <span className="text-2xl font-bold text-orange-500 tabular-nums">{eur(total)}</span>
               </div>
-              <div className="mx-6 mb-3 space-y-1 text-[11px]">
-                {!incluyeTF && <p className="text-google-gray">Comparación sin término fijo: se excluye en la oferta y en la factura actual ({eur(tfFactura)} + IVA).</p>}
-                {rGas.avisos.map((a, k) => <p key={k} className="text-amber-800">{a}</p>)}
-                <p className="text-google-gray">Simulación con el consumo de la factura aportada; no garantiza el ahorro futuro.</p>
-              </div>
+              {!incluyeTF && (
+                <p className="mx-6 mb-3 text-[11px] text-google-gray">Comparación sin término fijo: se excluye en la oferta y en la factura actual ({eur(tfFactura)} + IVA).</p>
+              )}
 
               {/* ── Conclusiones ── */}
               <div className="mx-4 mb-5 rounded-xl overflow-hidden border border-green-200">
@@ -766,28 +770,22 @@ export default function EstudioComparativoGas() {
                       <p className="text-xl font-bold text-google-dark tabular-nums">{eur(factBase)}</p>
                     </div>
                     <div className="bg-white rounded-xl p-3 text-center border border-orange-200">
-                      <p className="text-[10px] text-orange-500 font-medium mb-1">Con Endesa Gas</p>
+                      <p className="text-[10px] text-orange-500 font-medium mb-1">Con Endesa</p>
                       <p className="text-xl font-bold text-orange-500 tabular-nums">{eur(total)}</p>
                     </div>
                   </div>
 
-                  <div className={`rounded-xl px-5 py-4 text-center mb-4 ${dif >= 0 ? 'bg-green-500' : 'bg-red-500'}`}>
-                    <p className="text-[10px] font-bold text-white/80 uppercase tracking-widest mb-1">
-                      {dif >= 0 ? 'Ahorro en este periodo facturado' : 'Sobrecoste en este periodo facturado'}
-                    </p>
-                    <p className="text-4xl font-bold text-white tabular-nums">{eur(Math.abs(dif))}</p>
+                  <div className={`rounded-xl px-5 py-5 text-center mb-3 ${dif >= 0 ? 'bg-green-500' : 'bg-red-500'}`}>
+                    <p className="text-[10px] font-bold text-white/80 uppercase tracking-widest mb-1">{dif >= 0 ? 'Ahorro anual estimado' : 'Sobrecoste anual estimado'}</p>
+                    <p className="text-4xl font-bold text-white tabular-nums">{eur(Math.abs(ahorroAnual))}</p>
                     <p className="text-sm font-medium text-white/90 mt-3 leading-snug">
-                      {dif >= 0
-                        ? <>Un <span className="text-3xl font-extrabold text-white align-middle">{pct(ahorroPercent)}</span> menos que la factura actual</>
-                        : <>Un <span className="text-3xl font-extrabold text-white align-middle">{pct(Math.abs(ahorroPercent))}</span> más que la factura actual</>
-                      }
+                      Un <span className="text-3xl font-extrabold text-white align-middle">{pct(Math.abs(ahorroPctOferta))}</span> {dif >= 0 ? 'más barato' : 'más caro'} que el precio actual
                     </p>
                   </div>
 
                   <div className="bg-white rounded-lg p-3 text-center">
-                    <p className="text-[10px] text-google-gray mb-0.5">Extrapolación lineal a 365 días (no es un ahorro garantizado)</p>
-                    <p className={`text-base font-bold tabular-nums ${ahorroAnual >= 0 ? 'text-green-600' : 'text-red-600'}`}>{ahorroAnual >= 0 ? '' : '−'}{eur(Math.abs(ahorroAnual))}</p>
-                    <p className="text-[9px] text-google-gray mt-0.5">Basada en un único periodo de {dias} días; para un estudio anual se necesitan 12 facturas.</p>
+                    <p className="text-[10px] text-google-gray mb-0.5">{dif >= 0 ? 'Ahorro en factura' : 'Sobrecoste en factura'}</p>
+                    <p className={`text-base font-bold tabular-nums ${dif >= 0 ? 'text-green-600' : 'text-red-600'}`}>{eur(Math.abs(dif))}</p>
                   </div>
 
                   {form.notas && (
