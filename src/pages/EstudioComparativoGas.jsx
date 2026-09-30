@@ -15,9 +15,9 @@ const PROXY_URL  = '/api/gemini';
    tarjetas informativas de Tarifas.jsx (src/data/tarifasGas.js). */
 const GAS_ALL = [...GAS, ...GAS_EMPRESA];
 
-/* Ninguna tarifa de gas tiene todavía documento de precios nuevo: la comparativa
-   queda bloqueada hasta que se actualicen. */
-const COMPARATIVA_BLOQUEADA = true;
+/* Interruptor de bloqueo de la comparativa. Las tarifas de gas siguen sin documento
+   de precios nuevo, pero se deja abierta para poder probarla. */
+const COMPARATIVA_BLOQUEADA = false;
 
 /* Timeout de seguridad: si Gemini no responde en este tiempo, se aborta la petición
    y se muestra un error en vez de dejar la carga colgada indefinidamente. */
