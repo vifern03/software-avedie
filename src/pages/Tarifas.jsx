@@ -10,21 +10,28 @@ import { BONO_SOCIAL, LUZ, LUZ_SOLAR, INDEXADA_2_0TD } from '../data/tarifasB2C'
 /* Todos los datos de tarifas viven en src/data/ (fuente única compartida con
    las comparativas y el informe PDF). */
 
-const B2B_SUBTABS = [
-  { id: 'tempo',      label: 'TEMPO 2.0TD',        sub: 'Negocios ≤ 15 kW' },
-  { id: 'open30',     label: 'Open 3.0TD',         sub: 'Negocios 15–100+ kW' },
-  { id: 'open61',     label: 'Open 6.1TD',         sub: 'Alta Tensión hasta 450 kW' },
-  { id: 'simply30',   label: 'Simply 3.0TD',       sub: 'Autoconsumo · > 15 kW' },
-  { id: 'simply61',   label: 'Simply 6.1TD',       sub: 'Autoconsumo · pendiente de confirmar' },
-  { id: 'indexada20', label: 'Indexada 2.0TD',     sub: 'Precio OMIE · Residencial ≤ 15 kW' },
-  { id: 'indexada30', label: 'Indexada 3.0TD',     sub: 'Precio OMIE · 15–100+ kW' },
-  { id: 'indexada61', label: 'Indexada 6.1TD',     sub: 'Precio OMIE · Alta Tensión' },
+/* Tarifas de la pestaña Luz B2B, agrupadas en una columna por tarifa de acceso. */
+const B2B_GRUPOS = [
+  { id: '20', titulo: '2.0TD', sub: 'Hasta 15 kW', tarifas: [
+    { id: 'tempo',      label: 'TEMPO 2.0TD',    sub: 'Negocios ≤ 15 kW',          datos: TEMPO },
+    { id: 'indexada20', label: 'Indexada 2.0TD', sub: 'Precio OMIE · ≤ 15 kW',     datos: INDEXADA_2_0TD },
+  ] },
+  { id: '30', titulo: '3.0TD', sub: 'Más de 15 kW', tarifas: [
+    { id: 'open30',     label: 'Open 3.0TD',     sub: 'Negocios 15–100+ kW',       datos: OPEN_30TD },
+    { id: 'simply30',   label: 'Simply 3.0TD',   sub: 'Autoconsumo · > 15 kW',     datos: SIMPLY_30TD },
+    { id: 'indexada30', label: 'Indexada 3.0TD', sub: 'Precio OMIE · 15–100+ kW',  datos: INDEXADA_30TD },
+  ] },
+  { id: '61', titulo: '6.1TD', sub: 'Alta Tensión', tarifas: [
+    { id: 'open61',     label: 'Open 6.1TD',     sub: 'Alta Tensión hasta 450 kW', datos: OPEN_61TD },
+    { id: 'simply61',   label: 'Simply 6.1TD',   sub: 'Autoconsumo',               datos: SIMPLY_61TD },
+    { id: 'indexada61', label: 'Indexada 6.1TD', sub: 'Precio OMIE · Alta Tensión', datos: INDEXADA_61TD },
+  ] },
 ];
 
 const TABS = [
   { id: 'luz',          label: 'Luz Residencial (2.0TD)',  icon: Zap,        activeText: 'text-google-blue',  activeBorder: 'border-google-blue'  },
   { id: 'gas',          label: 'Gas (RL.1 – RL.6)',        icon: Flame,      activeText: 'text-orange-500',   activeBorder: 'border-orange-500'   },
-  { id: 'industrial',   label: 'Luz 3.0 y 6.1 (B2B)',     icon: Factory,    activeText: 'text-gray-700',     activeBorder: 'border-gray-600'     },
+  { id: 'industrial',   label: 'Luz B2B',                 icon: Factory,    activeText: 'text-gray-700',     activeBorder: 'border-gray-600'     },
   { id: 'estudio',      label: 'Comparativas 2.0',         icon: Calculator, activeText: 'text-green-600',    activeBorder: 'border-green-600'    },
   { id: 'estudio-b2b',  label: 'Comparativas 3.0 y 6.1',   icon: Calculator, activeText: 'text-gray-700',     activeBorder: 'border-gray-600'     },
   { id: 'estudio-gas',  label: 'Comparativas Gas',         icon: Calculator, activeText: 'text-orange-500',   activeBorder: 'border-orange-500'   },
@@ -593,7 +600,7 @@ function SimplySection({ datos }) {
               Excedentes: <strong>{fmt(datos.excedentes)} €/kWh</strong>, deducidos del importe de la energía consumida de la red hasta su límite en cada periodo de facturación.
             </p>
           </div>
-          <p className="text-[10px] text-gray-400 text-right mt-3">Contratación: {datos.validez} · {datos.fuente}</p>
+          <p className="text-[10px] text-gray-400 text-right mt-3">Contratación: {datos.validez}</p>
         </div>
         <div className="bg-white border border-google-border rounded-xl shadow-sm p-5">
           <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-4">Término de Potencia (€/kW·año)</p>
@@ -700,14 +707,14 @@ function OpenSection({ datos, titulo, subtitulo }) {
                   <p className="text-[10px] font-semibold text-blue-500 uppercase tracking-wider mb-1.5">
                     Horas Open — {modalidad.label}
                   </p>
-                  <p className="text-4xl font-bold text-google-blue leading-none">{fmt(precio)}</p>
+                  <p className="text-2xl sm:text-4xl font-bold text-google-blue leading-none">{fmt(precio)}</p>
                   <p className="text-xs text-blue-500 mt-1.5">€/kWh</p>
                 </div>
                 <div className="text-center border-l border-blue-200 pl-4">
                   <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-1.5">
                     Horas No Open
                   </p>
-                  <p className="text-4xl font-bold text-google-dark leading-none">{fmt(noOpen)}</p>
+                  <p className="text-2xl sm:text-4xl font-bold text-google-dark leading-none">{fmt(noOpen)}</p>
                   <p className="text-xs text-google-gray mt-1.5">€/kWh</p>
                 </div>
               </div>
@@ -1046,23 +1053,43 @@ export default function Tarifas() {
       {/* Tab: B2B Industrial */}
       {tab === 'industrial' && (
         <div>
-          {/* Sub-tabs B2B */}
-          <div className="flex gap-2 flex-wrap mb-6">
-            {B2B_SUBTABS.map(st => (
-              <button
-                key={st.id}
-                onClick={() => setB2bSub(st.id)}
-                className={`flex flex-col items-start px-4 py-2.5 rounded-xl border text-left transition-colors duration-150 ${
-                  b2bSub === st.id
-                    ? 'bg-gray-900 text-white border-gray-900 shadow-sm'
-                    : 'bg-white text-google-gray border-google-border hover:border-gray-400 hover:text-google-dark'
-                }`}
-              >
-                <span className="text-sm font-semibold leading-tight">{st.label}</span>
-                <span className={`text-[10px] leading-tight mt-0.5 ${b2bSub === st.id ? 'text-gray-300' : 'text-gray-400'}`}>
-                  {st.sub}
-                </span>
-              </button>
+          {/* Sub-tabs B2B: una columna por tarifa de acceso (2.0TD · 3.0TD · 6.1TD) */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-6">
+            {B2B_GRUPOS.map(g => (
+              <div key={g.id} className="bg-white border border-google-border rounded-xl p-2.5">
+                <div className="flex items-baseline gap-2 px-1.5 mb-2">
+                  <span className="text-xs font-bold text-google-dark">{g.titulo}</span>
+                  <span className="text-[10px] text-gray-400">{g.sub}</span>
+                </div>
+                <div className="space-y-1.5">
+                  {g.tarifas.map(st => {
+                    const isActive = b2bSub === st.id;
+                    return (
+                      <button
+                        key={st.id}
+                        onClick={() => setB2bSub(st.id)}
+                        className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border text-left transition-colors duration-150 ${
+                          isActive
+                            ? 'bg-gray-900 text-white border-gray-900 shadow-sm'
+                            : 'bg-white text-google-gray border-google-border hover:border-gray-400 hover:text-google-dark'
+                        }`}
+                      >
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold leading-tight">{st.label}</span>
+                          <span className={`block text-[10px] leading-tight mt-0.5 ${isActive ? 'text-gray-300' : 'text-gray-400'}`}>
+                            {st.sub}
+                          </span>
+                        </span>
+                        {st.datos.precioSinActualizar && (
+                          <span className={`flex-shrink-0 text-right text-[10px] font-semibold leading-tight ${isActive ? 'text-red-300' : 'text-red-600'}`}>
+                            * Precio sin<br className="hidden lg:inline xl:hidden" /> actualizar
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             ))}
           </div>
 

@@ -160,5 +160,5 @@ export const INDEXADA_2_0TD = {
   energiaA: { p1: 0.138015, p2: 0.070477, p3: 0.040620 },
   energiaB: { p1: 1.448,    p2: 1.239,    p3: 1.137 },
   contratacion: { desde: '2026-06-09', hasta: '2026-07-14', fuente: '20260609 IND_2.0TD_OMIE_V1.pdf (sin documento nuevo)' },
-  validez: '09/06/2026 – 14/07/2026 — sin documento nuevo',
+  validez: '09/06/2026 – 14/07/2026',
 };

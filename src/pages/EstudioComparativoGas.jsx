@@ -701,7 +701,7 @@ export default function EstudioComparativoGas() {
                     <span className="text-google-gray">
                       {tarifa.terFijo.toFixed(3)} €/mes × 12/365 × {dias} días
                     </span>
-                    <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(tfEndesa)}</span>
+                    <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(tfEndesa)}</span>
                   </div>
                 </div>
               )}
@@ -717,7 +717,7 @@ export default function EstudioComparativoGas() {
                       {kwhGas} kWh × {precioVar.toFixed(6)} €/kWh
                       {dto > 0 && <span className="text-orange-500 ml-1.5 text-[11px]">(dto. {pct(dto, 0)} incluido)</span>}
                     </span>
-                    <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(subtotVar)}</span>
+                    <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(subtotVar)}</span>
                   </div>
                   <div className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-2 mt-1">
                     <span className="text-xs font-semibold text-google-dark">Subtotal Energía</span>
@@ -732,19 +732,19 @@ export default function EstudioComparativoGas() {
               <div className="px-6 py-4 space-y-2">
                 <div className="flex justify-between items-baseline text-sm">
                   <span className="text-google-gray">Impuesto de hidrocarburos ({kwhGas} kWh × {IEH_GAS_EUR_KWH} €/kWh)</span>
-                  <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(ieh)}</span>
+                  <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(ieh)}</span>
                 </div>
                 {alqCont > 0 && (
                   <div className="flex justify-between items-baseline text-sm">
                     <span className="text-google-gray">Alquiler de Contador</span>
-                    <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(alqCont)}</span>
+                    <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(alqCont)}</span>
                   </div>
                 )}
                 <div className="flex justify-between items-baseline text-sm">
                   <span className="text-google-gray">
                     {n(form.iva) === 0.03 ? 'IGIC' : 'IVA'} ({pct(ivaRate, 0)}) sobre {eur(baseIVA)}
                   </span>
-                  <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(ivaImp)}</span>
+                  <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(ivaImp)}</span>
                 </div>
               </div>
 
@@ -753,7 +753,7 @@ export default function EstudioComparativoGas() {
               {/* ── Total ── */}
               <div className="px-6 py-4 flex justify-between items-center">
                 <span className="font-bold text-google-dark text-base">TOTAL ESTIMADO CON ENDESA</span>
-                <span className="text-2xl font-bold text-orange-500 tabular-nums">{eur(total)}</span>
+                <span className="text-2xl font-bold text-orange-500 tabular-nums whitespace-nowrap ml-4">{eur(total)}</span>
               </div>
               {!incluyeTF && (
                 <p className="mx-6 mb-3 text-[11px] text-google-gray">Comparación sin término fijo: se excluye en la oferta y en la factura actual ({eur(tfFactura)} + IVA).</p>

@@ -39,6 +39,23 @@ export const HISTORICO_TARIFAS = [
     },
   },
   {
+    producto: 'Open 6.1TD',
+    vigencia: { desde: '2026-09-17', hasta: '2026-09-27' },
+    fuente: '20260917 6.1TD_OPEN_18_V1.pdf',
+    datos: {
+      baseEnergia: [0.195395, 0.195395, 0.191895, 0.191895],
+      extraAnyo: 18,
+      dtoModalidad: { plana: 15, dia: 20, laboral: 25, finde: 45, noche: 35 },
+      matrix: [
+        [0.130915, 0.121145, 0.111375, 0.072296, 0.091836],
+        [0.130915, 0.121145, 0.111375, 0.072296, 0.091836],
+        [0.128570, 0.118975, 0.109380, 0.071001, 0.090191],
+        [0.128570, 0.118975, 0.109380, 0.071001, 0.090191],
+      ],
+      horasNoOpen: [0.160224, 0.160224, 0.157354, 0.157354],
+    },
+  },
+  {
     producto: 'TEMPO 2.0TD',
     vigencia: { desde: '2026-07-15', hasta: '2026-07-21' },
     fuente: 'PDF Endesa TEMPO 2.0TD anterior',

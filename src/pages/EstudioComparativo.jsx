@@ -916,12 +916,12 @@ export default function EstudioComparativo() {
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-baseline text-sm">
                     <span className="text-google-gray">{kwPunta} kW (Punta) × {dias} días × {potPuntaDia.toFixed(6)} €/kW</span>
-                    <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(imtPotPunta)}</span>
+                    <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(imtPotPunta)}</span>
                   </div>
                   {kwValle > 0 && (
                     <div className="flex justify-between items-baseline text-sm">
                       <span className="text-google-gray">{kwValle} kW (Valle) × {dias} días × {potValleDia.toFixed(6)} €/kW</span>
-                      <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(imtPotValle)}</span>
+                      <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(imtPotValle)}</span>
                     </div>
                   )}
                   <div className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-2 mt-1">
@@ -943,7 +943,7 @@ export default function EstudioComparativo() {
                       {isIndexada && <span className="text-cyan-600 ml-1.5 text-[11px]">({tarifa.energiaA.p1.toFixed(6)} + {tarifa.energiaB.p1} × {omie.toFixed(4)})</span>}
                       {dto > 0 && <span className="text-google-blue ml-1.5 text-[11px]">(dto. {pct(dto, 0)} incluido)</span>}
                     </span>
-                    <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(imtEnP1)}</span>
+                    <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(imtEnP1)}</span>
                   </div>
                   {kwhP2 > 0 && (
                     <div className="flex justify-between items-baseline text-sm">
@@ -951,7 +951,7 @@ export default function EstudioComparativo() {
                         {kwhP2} kWh (P2) × {precioP2.toFixed(6)} €/kWh
                         {isIndexada && <span className="text-cyan-600 ml-1.5 text-[11px]">({tarifa.energiaA.p2.toFixed(6)} + {tarifa.energiaB.p2} × {omie.toFixed(4)})</span>}
                       </span>
-                      <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(imtEnP2)}</span>
+                      <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(imtEnP2)}</span>
                     </div>
                   )}
                   {kwhP3 > 0 && (
@@ -960,7 +960,7 @@ export default function EstudioComparativo() {
                         {kwhP3} kWh (P3) × {precioP3.toFixed(6)} €/kWh
                         {isIndexada && <span className="text-cyan-600 ml-1.5 text-[11px]">({tarifa.energiaA.p3.toFixed(6)} + {tarifa.energiaB.p3} × {omie.toFixed(4)})</span>}
                       </span>
-                      <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(imtEnP3)}</span>
+                      <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(imtEnP3)}</span>
                     </div>
                   )}
                   <div className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-2 mt-1">
@@ -973,13 +973,13 @@ export default function EstudioComparativo() {
                         Compensación excedentes (autoconsumo)
                         {tarifa.isSolar && <span className="text-google-gray ml-1">({excedentesKwh} kWh × {tarifa.compExcedentes.toFixed(2)} €/kWh)</span>}
                       </span>
-                      <span className="font-semibold text-green-700 tabular-nums ml-4">−{eur(excedentes)}</span>
+                      <span className="font-semibold text-green-700 tabular-nums whitespace-nowrap ml-4">−{eur(excedentes)}</span>
                     </div>
                   )}
                   {tarifa.bateriaVirtual && bateriaCredito > 0 && (
                     <div className="flex justify-between items-baseline text-sm mt-1">
                       <span className="text-[11px] text-purple-600">Saldo acumulado en Batería Virtual (próximas facturas)</span>
-                      <span className="font-semibold text-purple-600 tabular-nums ml-4">{eur(bateriaCredito)}</span>
+                      <span className="font-semibold text-purple-600 tabular-nums whitespace-nowrap ml-4">{eur(bateriaCredito)}</span>
                     </div>
                   )}
                 </div>
@@ -991,29 +991,29 @@ export default function EstudioComparativo() {
               <div className="px-6 py-4 space-y-2">
                 <div className="flex justify-between items-baseline text-sm">
                   <span className="text-google-gray">Impuesto Eléctrico (5,11%) sobre {eur(baseIE)}</span>
-                  <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(impElec)}</span>
+                  <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(impElec)}</span>
                 </div>
                 {bono > 0 && (
                   <div className="flex justify-between items-baseline text-sm">
                     <span className="text-google-gray">Financiación Bono Social</span>
-                    <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(bono)}</span>
+                    <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(bono)}</span>
                   </div>
                 )}
                 {alqCont > 0 && (
                   <div className="flex justify-between items-baseline text-sm">
                     <span className="text-google-gray">Alquiler de Contador</span>
-                    <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(alqCont)}</span>
+                    <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(alqCont)}</span>
                   </div>
                 )}
                 {cuotaBateriaImporte > 0 && (
                   <div className="flex justify-between items-baseline text-sm">
                     <span className="text-google-gray">Cuota Batería Virtual ({tarifa.cuotaBateriaMes}€/mes)</span>
-                    <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(cuotaBateriaImporte)}</span>
+                    <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(cuotaBateriaImporte)}</span>
                   </div>
                 )}
                 <div className="flex justify-between items-baseline text-sm">
                   <span className="text-google-gray">{n(form.iva) === 0.07 ? 'IGIC' : 'IVA'} ({pct(ivaRate, 0)}) sobre {eur(baseIVA)}</span>
-                  <span className="font-semibold text-google-dark tabular-nums ml-4">{eur(ivaImp)}</span>
+                  <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(ivaImp)}</span>
                 </div>
               </div>
 
@@ -1022,7 +1022,7 @@ export default function EstudioComparativo() {
               {/* Total */}
               <div className="px-6 py-4 flex justify-between items-center">
                 <span className="font-bold text-google-dark text-base">TOTAL SIMULADO CON ENDESA</span>
-                <span className="text-2xl font-bold text-google-blue tabular-nums">{eur(total)}</span>
+                <span className="text-2xl font-bold text-google-blue tabular-nums whitespace-nowrap ml-4">{eur(total)}</span>
               </div>
               <div className="mx-6 mb-3 space-y-1 text-[11px]">
                 {tarifa.nota && <p className="text-google-gray">{tarifa.nota}</p>}
