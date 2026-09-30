@@ -29,7 +29,7 @@ const B2B_GRUPOS = [
 ];
 
 const TABS = [
-  { id: 'luz',          label: 'Luz Residencial (2.0TD)',  icon: Zap,        activeText: 'text-google-blue',  activeBorder: 'border-google-blue'  },
+  { id: 'luz',          label: 'Luz B2C (2.0TD)',          icon: Zap,        activeText: 'text-google-blue',  activeBorder: 'border-google-blue'  },
   { id: 'gas',          label: 'Gas (RL.1 – RL.6)',        icon: Flame,      activeText: 'text-orange-500',   activeBorder: 'border-orange-500'   },
   { id: 'industrial',   label: 'Luz B2B',                 icon: Factory,    activeText: 'text-gray-700',     activeBorder: 'border-gray-600'     },
   { id: 'estudio',      label: 'Comparativas 2.0',         icon: Calculator, activeText: 'text-green-600',    activeBorder: 'border-green-600'    },
@@ -1093,6 +1093,24 @@ export default function Tarifas() {
             ))}
           </div>
 
+          {/* Botones CTA: comparativa 2.0 a la izquierda y 3.0 / 6.1 a la derecha, centrados */}
+          <div className="flex flex-wrap justify-center gap-3 mb-6">
+            <button
+              onClick={() => setTab('estudio')}
+              className="w-72 flex items-center justify-center gap-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-sm px-5 py-3 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
+            >
+              <Calculator size={17} />
+              Realizar Comparativa 2.0
+            </button>
+            <button
+              onClick={() => setTab('estudio-b2b')}
+              className="w-72 flex items-center justify-center gap-2.5 bg-gray-800 hover:bg-gray-900 active:bg-black text-white font-semibold text-sm px-5 py-3 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
+            >
+              <Calculator size={17} />
+              Realizar Comparativa 3.0 / 6.1
+            </button>
+          </div>
+
           {/* Contenido sub-tab */}
           {b2bSub === 'tempo'  && <TempoSection />}
           {b2bSub === 'simply30' && <SimplySection datos={SIMPLY_30TD} />}
@@ -1132,16 +1150,6 @@ export default function Tarifas() {
               subtitulo="Alta Tensión hasta 450 kW · Precio de energía ligado al mercado eléctrico"
             />
           )}
-
-          <div className="flex justify-center pt-6 mt-2 border-t border-google-border">
-            <button
-              onClick={() => setTab('estudio-b2b')}
-              className="flex items-center gap-2.5 bg-gray-800 hover:bg-gray-900 active:bg-black text-white font-semibold text-sm px-7 py-3 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
-            >
-              <Calculator size={17} />
-              Realizar Comparativa 3.0 / 6.1
-            </button>
-          </div>
         </div>
       )}
 
