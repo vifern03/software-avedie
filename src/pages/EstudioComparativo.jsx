@@ -67,6 +67,9 @@ const PROXY_URL = '/api/gemini';
 
 function n(v, fb = 0) {
   if (v === null || v === undefined) return fb;
+  // Un number ya es inequivoco: aplicarle la heuristica de miles lo corrompe
+  // (109.252 kWh se convertiria en 109252 kWh).
+  if (typeof v === 'number') return Number.isFinite(v) ? v : fb;
   const s = String(v).trim().replace(/\s/g, '');
   if (!s) return fb;
   // "1.200" o "27.263" = miles (formato español); "0.153" o "1,5" = decimales.
@@ -74,6 +77,16 @@ function n(v, fb = 0) {
     : /^\d{1,3}(\.\d{3})+$/.test(s) ? s.replace(/\./g, '') : s;
   const x = parseFloat(t);
   return isNaN(x) ? fb : x;
+}
+
+/* Numero -> texto para los campos del formulario, en formato espanol.
+   Imprescindible: "109.252" seria ambiguo (miles o decimales) y n() lo leeria
+   como 109252; "109,252" no admite otra lectura. */
+function numStr(v) {
+  if (v === null || v === undefined || v === '') return '';
+  const x = Number(v);
+  if (!Number.isFinite(x)) return '';
+  return String(x).replace('.', ',');
 }
 
 function eur(v) {
@@ -117,6 +130,20 @@ El JSON debe tener exactamente estos campos (usa null para strings no encontrado
 
 ════════ REGLAS OBLIGATORIAS — MERCADO ELÉCTRICO ESPAÑOL ════════
 
+REGLA 0 — FORMATO DE LOS NÚMEROS (la más importante: un error aquí multiplica la factura por mil):
+Todos los campos numéricos deben devolverse como NÚMERO JSON, nunca como texto, usando el PUNTO
+como separador decimal y SIN separador de miles.
+En España las facturas escriben la COMA como decimal y el PUNTO como millares. Conviértelo tú:
+• "109,252 kWh"   → 109.252   (ciento nueve con doscientos cincuenta y dos milésimas)
+• "1.514 kWh"     → 1514      (mil quinientos catorce)
+• "12.345,67 €"   → 12345.67
+• "0,170742 €/kWh"→ 0.170742
+NUNCA devuelvas 109252 cuando la factura pone "109,252": son 109 kWh, no 109 mil.
+Comprobación de sensatez antes de responder: un suministro doméstico o de comunidad consume entre
+50 y 3.000 kWh en un periodo de facturación, y la factura va de 20 € a 600 €. Un suministro
+industrial puede llegar a decenas de miles. Si un número se te va varios órdenes de magnitud
+fuera de eso, has confundido el separador decimal: reléelo y corrígelo.
+
 REGLA 1 — IVA ELÉCTRICO — LEE SIEMPRE EL TIPO DE LA FACTURA:
 El tipo de IVA sobre la electricidad varía según el decreto vigente en la fecha de factura:
 • 0.21 (21%): tipo general, vigente desde el Real Decreto-ley 7/2026 (marzo 2026)
@@ -129,9 +156,14 @@ REGLA 2 — IVA MIXTO: Si la factura incluye conceptos con distintos tipos de IV
 REGLA 3 — NO confundas el Impuesto Especial de la Electricidad (IEE/IVPEE, 5,11%) con el IVA.
 El IEE aparece como un porcentaje distinto antes del IVA. No lo uses para el campo tipoIVA.
 
-REGLA 4 — CUPS:
-Los caracteres del CUPS en el PDF pueden tener "O" (letra O) en lugar de "0" (cero) por OCR.
-Corrige: las posiciones 3-6 del CUPS son SIEMPRE dígitos numéricos (ej. "ES0021", no "ESOO21").
+REGLA 4 — CUPS (estructura fija, úsala para corregir el OCR):
+Formato: "ES" + 16 DÍGITOS + 2 LETRAS + (opcional) 1 DÍGITO + 1 LETRA.
+Ejemplo: ES0021000009238964TE0F → ES | 0021000009238964 | TE | 0 | F
+Por OCR aparecen "O" (letra) donde hay "0" (cero) y viceversa. Corrige SIEMPRE según la estructura:
+• los 16 caracteres tras "ES" son dígitos → "ESOO21..." es en realidad "ES0021..."
+• si el CUPS tiene 22 caracteres, el penúltimo es un DÍGITO → "...TEOF" es en realidad "...TE0F"
+• las 2 letras centrales (posiciones 19-20) sí son letras; no las toques.
+Devuelve el CUPS en mayúsculas, sin espacios ni guiones.
 
 REGLA 5 — kWh TOTALES:
 Suma TODOS los consumos de energía activa CONSUMIDA DE LA RED (P1, P2, P3 y sus equivalentes).
@@ -168,7 +200,30 @@ Algunos comercializadores aplican un cupón/descuento de fidelización en una l�
 En ese caso:
 - "importeTotalFacturaActual" = 56.94  (el TOTAL energético ANTES del cupón)
 - "descuentoCupon" = 5.00              (el importe del cupón, como número positivo)
-NUNCA pongas el TOTAL A PAGAR (51,94 €) en "importeTotalFacturaActual" cuando exista un descuento post-IVA de esta naturaleza.`;
+NUNCA pongas el TOTAL A PAGAR (51,94 €) en "importeTotalFacturaActual" cuando exista un descuento post-IVA de esta naturaleza.
+
+REGLA 10 — CUALQUIER COMERCIALIZADORA, NO SOLO ENDESA:
+Te llegarán facturas de Iberdrola, Naturgy, Repsol, TotalEnergies, Holaluz, Plenitude, Endesa,
+comercializadoras de referencia (TUR/PVPC) y cooperativas. Cada una maqueta distinto: cambian los
+nombres de los conceptos, el orden y hasta el número de páginas.
+Identifica cada dato por su SIGNIFICADO, nunca por su posición ni por una etiqueta literal:
+• días facturados → la diferencia entre las dos fechas del periodo de facturación; si solo aparece
+  el periodo ("del 31/01/2026 a 28/02/2026"), cuéntalos tú.
+• kWh → el consumo de energía activa del periodo; puede llamarse "Consumo", "Energía consumida",
+  "Energía activa" o venir desglosado por P1…P6.
+• potencia contratada en kW → "Potencia contratada", "Potencia punta/valle", "P1/P2"; es kW, nunca kWh.
+• alquiler de contador → "Alquiler equipo de medida", "Alquiler de contador", "Equipo de medida".
+• bono social → "Financiación bono social", "Coste bono social"; si no aparece, 0.
+Si un dato no está en la factura, devuelve 0 (números) o null (textos). No lo inventes ni lo estimes.
+
+REGLA 11 — COMPRUEBA TU PROPIA RESPUESTA ANTES DE DEVOLVERLA:
+1. Los kWh de los periodos suman aproximadamente el consumo total impreso en la factura.
+2. El importe total concuerda con la suma de sus componentes (potencia + energía + otros + impuestos).
+3. Los días facturados cuadran con las fechas del periodo (entre 25 y 35 días en facturación mensual,
+   entre 55 y 70 en bimestral).
+4. La potencia contratada está entre 1 y 15 kW en 2.0TD; si te sale mayor, revisa si has leído kWh.
+5. Precio medio implícito (importe de energía ÷ kWh) entre 0,05 y 0,40 €/kWh.
+Si alguna comprobación falla, vuelve a leer la factura y corrige antes de responder.`;
 
 /* ── Toggle mini ─────────────────────────────────────────────────────────────── */
 
@@ -294,6 +349,9 @@ export default function EstudioComparativo() {
   // ahorro € = actual − oferta; ahorro % = ahorro / actual (puede ser negativo)
   const { ahorroEur: dif, ahorroPct } = calcularAhorro(factBase, total);
   const ahorroPercent = ahorroPct == null ? 0 : ahorroPct / 100;
+  // El porcentaje que se enseña al cliente compara contra la oferta de Endesa
+  // (mismo criterio que las comparativas ya entregadas y que Ahorro_por_CUPS).
+  const ahorroPctOferta = total > 0 ? dif / total : 0;
   const ahorroAnual   = extrapolarAnual(dif, dias) ?? 0;
   const isReady = kwhP1 > 0 && kwPunta > 0 && dias > 0 && factActual > 0;
 
@@ -371,20 +429,20 @@ export default function EstudioComparativo() {
         ...f,
         cliente:          ex.nombreCliente                     || f.cliente,
         cups:             ex.cups                              || f.cups,
-        dias:             ex.diasFacturacion        != null    ? String(ex.diasFacturacion)              : f.dias,
-        kwhP1:            ex.totalKwhFacturados     != null    ? String(ex.totalKwhFacturados)           : f.kwhP1,
+        dias:             ex.diasFacturacion        != null    ? numStr(ex.diasFacturacion)              : f.dias,
+        kwhP1:            ex.totalKwhFacturados     != null    ? numStr(ex.totalKwhFacturados)           : f.kwhP1,
         kwhP2:            '0',
         kwhP3:            '0',
-        kwPunta:          ex.kwPotenciaPunta        != null    ? String(ex.kwPotenciaPunta)              : f.kwPunta,
+        kwPunta:          ex.kwPotenciaPunta        != null    ? numStr(ex.kwPotenciaPunta)              : f.kwPunta,
         kwValle:          (ex.kwPotenciaValle != null && ex.kwPotenciaValle !== 0)
-                            ? String(ex.kwPotenciaValle)
-                            : (ex.kwPotenciaPunta != null ? String(ex.kwPotenciaPunta) : f.kwValle),
-        facturaActual:          ex.importeTotalFacturaActual != null ? String(ex.importeTotalFacturaActual)    : f.facturaActual,
-        alquilerContador:       ex.costeAlquilerContador    != null ? String(ex.costeAlquilerContador)        : f.alquilerContador,
-        bonoSocial:             ex.costeBonoSocial          != null ? String(ex.costeBonoSocial)              : f.bonoSocial,
-        compensacionExcedentes: ex.compensacionExcedentes   != null ? String(ex.compensacionExcedentes)       : f.compensacionExcedentes,
-        excedentesKwh:          ex.kwhExcedentesVertidos    != null ? String(ex.kwhExcedentesVertidos)        : f.excedentesKwh,
-        dtoCupones:             ex.descuentoCupon           != null ? String(ex.descuentoCupon)                : f.dtoCupones,
+                            ? numStr(ex.kwPotenciaValle)
+                            : (ex.kwPotenciaPunta != null ? numStr(ex.kwPotenciaPunta) : f.kwValle),
+        facturaActual:          ex.importeTotalFacturaActual != null ? numStr(ex.importeTotalFacturaActual)    : f.facturaActual,
+        alquilerContador:       ex.costeAlquilerContador    != null ? numStr(ex.costeAlquilerContador)        : f.alquilerContador,
+        bonoSocial:             ex.costeBonoSocial          != null ? numStr(ex.costeBonoSocial)              : f.bonoSocial,
+        compensacionExcedentes: ex.compensacionExcedentes   != null ? numStr(ex.compensacionExcedentes)       : f.compensacionExcedentes,
+        excedentesKwh:          ex.kwhExcedentesVertidos    != null ? numStr(ex.kwhExcedentesVertidos)        : f.excedentesKwh,
+        dtoCupones:             ex.descuentoCupon           != null ? numStr(ex.descuentoCupon)                : f.dtoCupones,
         iva:                    ivaValue,
       }));
       setExtractionDone(true);
@@ -990,20 +1048,16 @@ export default function EstudioComparativo() {
                       <p className="text-xl font-bold text-google-blue tabular-nums">{eur(total)}</p>
                     </div>
                   </div>
-                  <div className={`rounded-xl px-5 py-4 text-center mb-4 ${dif >= 0 ? 'bg-green-500' : 'bg-red-500'}`}>
-                    <p className="text-[10px] font-bold text-white/80 uppercase tracking-widest mb-1">{dif >= 0 ? 'Ahorro en este periodo facturado' : 'Sobrecoste en este periodo facturado'}</p>
-                    <p className="text-4xl font-bold text-white tabular-nums">{eur(Math.abs(dif))}</p>
+                  <div className={`rounded-xl px-5 py-5 text-center mb-3 ${dif >= 0 ? 'bg-green-500' : 'bg-red-500'}`}>
+                    <p className="text-[10px] font-bold text-white/80 uppercase tracking-widest mb-1">{dif >= 0 ? 'Ahorro anual estimado' : 'Sobrecoste anual estimado'}</p>
+                    <p className="text-4xl font-bold text-white tabular-nums">{eur(Math.abs(ahorroAnual))}</p>
                     <p className="text-sm font-medium text-white/90 mt-3 leading-snug">
-                      {dif >= 0
-                        ? <>Un <span className="text-3xl font-extrabold text-white align-middle">{pct(ahorroPercent)}</span> menos que la factura actual</>
-                        : <>Un <span className="text-3xl font-extrabold text-white align-middle">{pct(Math.abs(ahorroPercent))}</span> más que la factura actual</>
-                      }
+                      Un <span className="text-3xl font-extrabold text-white align-middle">{pct(Math.abs(ahorroPctOferta))}</span> {dif >= 0 ? 'más barato' : 'más caro'} que el precio actual
                     </p>
                   </div>
                   <div className="bg-white rounded-lg p-3 text-center">
-                    <p className="text-[10px] text-google-gray mb-0.5">Extrapolación lineal a 365 días (no es un ahorro garantizado)</p>
-                    <p className={`text-base font-bold tabular-nums ${ahorroAnual >= 0 ? 'text-green-600' : 'text-red-600'}`}>{ahorroAnual >= 0 ? '' : '−'}{eur(Math.abs(ahorroAnual))}</p>
-                    <p className="text-[9px] text-google-gray mt-0.5">Basada en un único periodo de {dias} días; para un estudio anual se necesitan 12 facturas.</p>
+                    <p className="text-[10px] text-google-gray mb-0.5">{dif >= 0 ? 'Ahorro en factura' : 'Sobrecoste en factura'}</p>
+                    <p className={`text-base font-bold tabular-nums ${dif >= 0 ? 'text-green-600' : 'text-red-600'}`}>{eur(Math.abs(dif))}</p>
                   </div>
                   {form.notas && <p className="text-[11px] text-green-800 mt-3 pt-3 border-t border-green-200"><span className="font-semibold">Nota:</span> {form.notas}</p>}
                 </div>
