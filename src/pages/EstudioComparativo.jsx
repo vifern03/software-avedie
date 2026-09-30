@@ -31,28 +31,28 @@ const TARIFAS = [
   { id: 'prescriptor', label: 'Luz Fija 24H — Con Prescriptor', shortLabel: 'Luz Fija 24H', tag: 'Con Prescriptor', tagClass: 'bg-violet-100 text-violet-700',
     sinMant: LUZ_PRESCRIPTOR.sinMant.promo, conMant: LUZ_PRESCRIPTOR.conMant.promo, potPunta: LUZ_PRESCRIPTOR.potPunta, potValle: LUZ_PRESCRIPTOR.potValle,
     validez: LUZ_PRESCRIPTOR.validez, contratacion: LUZ_PRESCRIPTOR.contratacion },
-  { id: 'toc', label: 'Tu Otra Casa 50 (2.0TD)', shortLabel: 'Tu Otra Casa 50', tag: '2.0TD', tagClass: 'bg-emerald-100 text-emerald-700',
+  { id: 'toc', bloqueada: true, label: 'Tu Otra Casa 50 (2.0TD)', shortLabel: 'Tu Otra Casa 50', tag: '2.0TD', tagClass: 'bg-emerald-100 text-emerald-700',
     sinMant: 0.154500, conMant: 0.150000, potPunta: LUZ[2].potPunta, potValle: LUZ[2].potValle,
     validez: LUZ[2].validez, contratacion: LUZ[2].contratacion },
-  { id: 'tempo', label: 'TEMPO 2.0TD — Precio Único 24H (B2B ≤ 15 kW)', shortLabel: 'TEMPO 2.0TD', tag: 'Tempo', tagClass: 'bg-amber-100 text-amber-700',
+  { id: 'tempo', bloqueada: true, label: 'TEMPO 2.0TD — Precio Único 24H (B2B ≤ 15 kW)', shortLabel: 'TEMPO 2.0TD', tag: 'Tempo', tagClass: 'bg-amber-100 text-amber-700',
     sinMant: TEMPO_2_0TD.energia.promo, conMant: TEMPO_2_0TD.energia.promo,
     potPunta: TEMPO_2_0TD.potencia[0].anyo, potValle: TEMPO_2_0TD.potencia[1].anyo,
     validez: TEMPO_2_0TD.validez, contratacion: TEMPO_2_0TD.contratacion,
     nota: `Precio de energía del primer año (${TEMPO_2_0TD.descuento}% dto.); después ${TEMPO_2_0TD.energia.base.toFixed(6)} €/kWh.` },
-  { id: 'solar_basic', label: 'Endesa Solar Basic', shortLabel: 'Solar Basic', tag: 'Autoconsumo', tagClass: 'bg-yellow-100 text-yellow-700',
+  { id: 'solar_basic', bloqueada: true, label: 'Endesa Solar Basic', shortLabel: 'Solar Basic', tag: 'Autoconsumo', tagClass: 'bg-yellow-100 text-yellow-700',
     // Precio "resto horas": el 15% exclusivo de horas Basic (18h-10h) no se modela (sin desglose horario).
     sinMant: SOLAR_BASIC.energiaRestoHoras.promo, conMant: SOLAR_BASIC.energiaRestoHoras.promo, potPunta: SOLAR_BASIC.potPunta, potValle: SOLAR_BASIC.potValle,
     isSolar: true, compExcedentes: SOLAR_BASIC.compExcedentes, bateriaVirtual: false, cuotaBateriaMes: 0,
     validez: SOLAR_BASIC.validez, contratacion: SOLAR_BASIC.contratacion },
-  { id: 'solar_plus', label: 'Endesa Solar Plus', shortLabel: 'Solar Plus', tag: 'Autoconsumo', tagClass: 'bg-orange-100 text-orange-700',
+  { id: 'solar_plus', bloqueada: true, label: 'Endesa Solar Plus', shortLabel: 'Solar Plus', tag: 'Autoconsumo', tagClass: 'bg-orange-100 text-orange-700',
     sinMant: SOLAR_PLUS.energiaConsumida.promo, conMant: SOLAR_PLUS.energiaConsumida.promo, potPunta: SOLAR_PLUS.potPunta, potValle: SOLAR_PLUS.potValle,
     isSolar: true, compExcedentes: SOLAR_PLUS.compExcedentes, bateriaVirtual: false, cuotaBateriaMes: 0,
     validez: SOLAR_PLUS.validez, contratacion: SOLAR_PLUS.contratacion },
-  { id: 'solar_bateria', label: 'Endesa Solar Plus & Batería Virtual', shortLabel: 'Solar + Batería Virtual', tag: 'Autoconsumo', tagClass: 'bg-purple-100 text-purple-700',
+  { id: 'solar_bateria', bloqueada: true, label: 'Endesa Solar Plus & Batería Virtual', shortLabel: 'Solar + Batería Virtual', tag: 'Autoconsumo', tagClass: 'bg-purple-100 text-purple-700',
     sinMant: SOLAR_BATERIA.energiaConsumida.promo, conMant: SOLAR_BATERIA.energiaConsumida.promo, potPunta: SOLAR_BATERIA.potPunta, potValle: SOLAR_BATERIA.potValle,
     isSolar: true, compExcedentes: SOLAR_BATERIA.compExcedentes, bateriaVirtual: true, cuotaBateriaMes: SOLAR_BATERIA.cuotaBateriaMes,
     validez: SOLAR_BATERIA.validez, contratacion: SOLAR_BATERIA.contratacion },
-  { id: 'indexada_2.0td', label: 'Indexada a OMIE 2.0TD', shortLabel: 'Indexada OMIE', tag: 'OMIE', tagClass: 'bg-cyan-100 text-cyan-700',
+  { id: 'indexada_2.0td', bloqueada: true, label: 'Indexada a OMIE 2.0TD', shortLabel: 'Indexada OMIE', tag: 'OMIE', tagClass: 'bg-cyan-100 text-cyan-700',
     isIndexada: true, energiaA: INDEXADA_2_0TD.energiaA, energiaB: INDEXADA_2_0TD.energiaB,
     potPunta: INDEXADA_2_0TD.potenciaTerminos[0].anyo, potValle: INDEXADA_2_0TD.potenciaTerminos[1].anyo,
     validez: INDEXADA_2_0TD.validez, contratacion: INDEXADA_2_0TD.contratacion },
@@ -495,11 +495,15 @@ export default function EstudioComparativo() {
               {TARIFAS.map(t => (
                 <label
                   key={t.id}
-                  className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                    tarifaId === t.id ? 'border-google-blue bg-blue-50' : 'border-google-border hover:border-blue-200'
+                  className={`flex items-start gap-3 p-3 rounded-xl border transition-all ${
+                    t.bloqueada
+                      ? 'border-google-border bg-gray-50 opacity-50 cursor-not-allowed'
+                      : tarifaId === t.id
+                        ? 'border-google-blue bg-blue-50 cursor-pointer'
+                        : 'border-google-border hover:border-blue-200 cursor-pointer'
                   }`}
                 >
-                  <input type="radio" name="tarifa" value={t.id} checked={tarifaId === t.id} onChange={() => setTarifaId(t.id)} className="accent-google-blue mt-0.5" />
+                  <input type="radio" name="tarifa" value={t.id} checked={tarifaId === t.id} disabled={t.bloqueada} onChange={() => setTarifaId(t.id)} className="accent-google-blue mt-0.5 disabled:cursor-not-allowed" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium text-google-dark">{t.label}</span>
