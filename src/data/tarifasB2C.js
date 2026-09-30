@@ -12,10 +12,10 @@
 export const VIGENCIA_B2C_LUZ = {
   desde: '2026-09-17',
   hasta: '2026-09-27',
-  fuente: 'Extensión interna (instrucción del responsable) — referencia: documentos B2B luz 20260917',
+  fuente: 'Referencia: documentos B2B luz 20260917',
   extensionInterna: true,
 };
-const VALIDEZ_B2C = '17/09/2026 – 27/09/2026 (extensión interna)';
+const VALIDEZ_B2C = '17/09/2026 – 27/09/2026';
 
 export const BONO_SOCIAL = [
   { zona: 'Península y Baleares (< 10 kW)',       valor: '0,02431959 €/día' },

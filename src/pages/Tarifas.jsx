@@ -6,7 +6,6 @@ import EstudioComparativoB2B from './EstudioComparativoB2B';
 import { GAS, GAS_EMPRESA } from '../data/tarifasGas';
 import { OPEN_30TD, OPEN_61TD, SIMPLY_30TD, SIMPLY_61TD, TEMPO_2_0TD as TEMPO, INDEXADA_30TD, INDEXADA_61TD } from '../data/tarifasB2B';
 import { BONO_SOCIAL, LUZ, LUZ_SOLAR, INDEXADA_2_0TD } from '../data/tarifasB2C';
-import { estadoVigencia, ETIQUETA_ESTADO } from '../lib/energia/vigencia';
 
 /* Todos los datos de tarifas viven en src/data/ (fuente única compartida con
    las comparativas y el informe PDF). */
@@ -464,7 +463,6 @@ function GasEmpresaCard({ tarifa }) {
 function TempoSection() {
   return (
     <div>
-      <VigenciaAviso producto={TEMPO} />
       <PermanenciaBadge penalizacion={TEMPO.penalizacion} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -536,37 +534,12 @@ function TempoSection() {
   );
 }
 
-/* ── Aviso de vigencia (ventana de contratación) ───────────────────────────── */
-
-function VigenciaAviso({ producto }) {
-  const c = producto?.contratacion;
-  if (!c) return null;
-  const estado = estadoVigencia(c);
-  const extension = c.extensionInterna;
-  if (estado === 'vigente' && !extension) return null;
-  const tone = estado === 'vigente'
-    ? 'bg-slate-50 border-slate-200 text-slate-700'
-    : 'bg-amber-50 border-amber-300 text-amber-800';
-  return (
-    <div className={`flex items-start gap-2 border rounded-lg px-3 py-2.5 mb-4 text-xs ${tone}`}>
-      <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
-      <div>
-        <p className="font-semibold">{ETIQUETA_ESTADO[estado]}{extension ? ' · vigencia ampliada por instrucción interna' : ''}</p>
-        {c.incidencia && <p className="mt-0.5">{c.incidencia}</p>}
-        {extension && <p className="mt-0.5">Precios B2C sin cambios. La fecha no procede de un documento Endesa B2C nuevo: {c.fuente}.</p>}
-        {estado === 'caducada' && !extension && <p className="mt-0.5">No hay documento nuevo para este producto. No ofertar sin confirmar precios vigentes.</p>}
-      </div>
-    </div>
-  );
-}
-
 /* ── Sección B2B: Simply (autoconsumo) ─────────────────────────────────────── */
 
 function SimplySection({ datos }) {
   const periodos = datos.energiaPeriodos;
   return (
     <div>
-      <VigenciaAviso producto={datos} />
       <PermanenciaBadge penalizacion={datos.penalizacion} />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 bg-white border border-google-border rounded-xl shadow-sm p-5">
@@ -625,7 +598,6 @@ function OpenSection({ datos, titulo, subtitulo }) {
 
   return (
     <div>
-      <VigenciaAviso producto={datos} />
       <PermanenciaBadge penalizacion={datos.penalizacion} />
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
@@ -829,7 +801,6 @@ function IndexadaSection({ datos, titulo, subtitulo }) {
 
   return (
     <div>
-      <VigenciaAviso producto={datos} />
       <div className="flex items-start gap-2 bg-cyan-50 border border-cyan-200 rounded-lg px-4 py-2.5 mb-5">
         <TrendingUp size={14} className="text-cyan-600 mt-0.5 flex-shrink-0" />
         <div>
@@ -978,7 +949,6 @@ export default function Tarifas() {
       {/* Tab: Luz */}
       {tab === 'luz' && (
         <div className="flex flex-col gap-6">
-          <div className="order-first"><VigenciaAviso producto={LUZ[0]} /></div>
           {/* Tarjetas: en mobile quedan debajo del botón (order-2), en desktop arriba (order-1) */}
           <div className="order-2 md:order-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {LUZ.map(t => <LuzCard key={t.id} tarifa={t} />)}
@@ -1013,7 +983,6 @@ export default function Tarifas() {
       {/* Tab: Gas */}
       {tab === 'gas' && (
         <div className="flex flex-col gap-6">
-          <div className="order-first"><VigenciaAviso producto={GAS[0]} /></div>
           <div className="order-2 md:order-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {GAS.map(t => <GasCard key={t.id} tarifa={t} />)}
           </div>
@@ -1035,7 +1004,6 @@ export default function Tarifas() {
               <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 whitespace-nowrap">RL.4 – RL.6</span>
             </div>
             <p className="text-xs text-google-gray mb-4">Tarifa Gas Estable Endesa para grandes consumos (baja presión ≤ 4 bar). Precios sin impuestos; se añade el impuesto de hidrocarburos (0,00234 €/kWh) e IVA.</p>
-            <VigenciaAviso producto={GAS_EMPRESA[0]} />
             <PermanenciaBadge penalizacion={GAS_EMPRESA[0].penalizacion} />
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {GAS_EMPRESA.map(t => <GasEmpresaCard key={t.id} tarifa={t} />)}

@@ -9,7 +9,7 @@ import { calcularOfertaLuz, ESTADO, FRANJAS_P6, tramosPorPotencia } from '../lib
 import { PROMPT_EXTRACCION_LUZ, validarExtraccion, parsearRespuestaModelo } from '../lib/energia/extraccion';
 import { parsearCurvaCSV } from '../lib/energia/curva';
 import { extraerFactura, ExtraccionTimeout, ESPERA_MAX_MS } from '../lib/energia/geminiCliente';
-import { estadoVigencia, ETIQUETA_ESTADO, fmtFechaES, hoyMadridISO } from '../lib/energia/vigencia';
+import { hoyMadridISO } from '../lib/energia/vigencia';
 
 /* ── Constantes ──────────────────────────────────────────────────────────────── */
 
@@ -246,7 +246,7 @@ export default function EstudioComparativoB2B() {
     omie: form.omie === '' ? null : n(form.omie),
     tieneAutoconsumo: autoconsumo, excedentesKwh: n(form.excedentesKwh),
     mantenidos: { excesos: n(form.excesos), reactiva: n(form.reactiva), alquiler: n(form.alquiler), bonoSocial: n(form.bonoSocial) },
-    ivaRate: n(form.iva, 0.21), fechaOferta: hoy, 
+    ivaRate: n(form.iva, 0.21), fechaOferta: hoy, ignorarVigencia: true,
   };
 
   const resultadosModalidad = useMemo(() => {
@@ -268,7 +268,6 @@ export default function EstudioComparativoB2B() {
   const isReady = factActual > 0 && entrada.dias > 0 && kwhPeriodo.some(x => x > 0) && potenciasKw.some(x => x > 0);
 
   const modalidadSel = producto.modalidades?.find(m => m.id === modalidadId);
-  const vig = estadoVigencia(producto.contratacion, hoy);
   const asesorDisplay = form.asesor === '__otro__' ? form.asesorLibre : form.asesor;
   const today = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
   const tituloOferta = producto.modalidades ? `${producto.nombre} — ${modalidadSel?.label}` : producto.nombre;
@@ -277,7 +276,6 @@ export default function EstudioComparativoB2B() {
   // Limitaciones materiales que deben constar brevemente en el informe.
   const limitaciones = [];
   if (ok) {
-    if (vig !== 'vigente') limitaciones.push(`${ETIQUETA_ESTADO[vig]}: ${producto.contratacion?.incidencia || `ventana de contratación ${producto.validez}`}.`);
     const nota450 = resultado.avisos.find(a => a.startsWith('Simulación con precios del tramo'));
     if (nota450) limitaciones.push(nota450);
     const manual = resultado.avisos.find(a => a.includes('elegido manualmente'));
@@ -467,11 +465,6 @@ export default function EstudioComparativoB2B() {
             {resultado?.fueraDeAmbito && !ok && (
               <p className="text-[11px] text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2" id="ecb2b-fuera-ambito">
                 <strong>Fuera del ámbito de esta oferta.</strong> {resultado.motivos[0]} Puedes seguir comparando con otro producto o tarifa de acceso.
-              </p>
-            )}
-            {vig !== 'vigente' && (
-              <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">
-                <strong>{ETIQUETA_ESTADO[vig]}.</strong> {producto.contratacion?.incidencia || `Ventana de contratación: ${producto.validez}.`}
               </p>
             )}
             <p className="text-[10px] text-gray-400">Contratación: {producto.validez} · Fuente: {producto.contratacion?.fuente}</p>
@@ -711,7 +704,6 @@ export default function EstudioComparativoB2B() {
                 <ul className="space-y-1 text-[11px] text-google-dark list-disc pl-5">
                   {(resultado?.avisos || []).map((a, k) => <li key={`a${k}`} className="text-amber-800">{a}</li>)}
                   {incidenciasVisibles.map((i, k) => <li key={`i${k}`} className="text-amber-800">Factura: {i.mensaje}</li>)}
-                  {vig !== 'vigente' && <li className="text-amber-800">{ETIQUETA_ESTADO[vig]}{producto.contratacion?.incidencia ? `: ${producto.contratacion.incidencia}` : ''}</li>}
                 </ul>
               </div>
             </div>

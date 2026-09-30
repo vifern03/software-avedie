@@ -244,7 +244,8 @@ export function calcularOfertaLuz(i) {
   if (est !== 'vigente') {
     const txt = `${ETIQUETA_ESTADO[est]}${p.contratacion?.incidencia ? ': ' + p.contratacion.incidencia : ''}`;
     if (!i.ignorarVigencia) { motivos.push(txt); return res(ESTADO.NO_DISPONIBLE); }
-    avisos.push(`Simulación con oferta no contratable hoy (${txt}).`);
+    // Ventana vencida: no se avisa en la interfaz; la vigencia se gestiona fuera de la herramienta.
+    if (est !== 'caducada') avisos.push(`Simulación con oferta no contratable hoy (${txt}).`);
   }
 
   const dias = Number(i.dias) || 0;
@@ -398,7 +399,8 @@ export function calcularOfertaGas(i) {
   const est = estadoVigencia(p.contratacion, i.fechaOferta);
   if (est !== 'vigente') {
     if (!i.ignorarVigencia) { motivos.push(ETIQUETA_ESTADO[est]); return res(ESTADO.NO_DISPONIBLE); }
-    avisos.push(`Simulación con oferta no contratable hoy (${ETIQUETA_ESTADO[est]}).`);
+    // Ventana vencida: no se avisa en la interfaz; la vigencia se gestiona fuera de la herramienta.
+    if (est !== 'caducada') avisos.push(`Simulación con oferta no contratable hoy (${ETIQUETA_ESTADO[est]}).`);
   }
   const kwh = Number(i.kwh) || 0, dias = Number(i.dias) || 0;
   if (kwh <= 0 || dias <= 0) { motivos.push('Faltan consumo (kWh) o días facturados.'); return res(ESTADO.DATOS_INSUFICIENTES); }

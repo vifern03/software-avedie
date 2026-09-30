@@ -18,7 +18,7 @@ export const IEH_GAS_EUR_KWH = 0.00234;
 const VIGENCIA_B2C_GAS = {
   desde: '2026-09-17',
   hasta: '2026-09-20',
-  fuente: 'Extensión interna (instrucción del responsable) — referencia: 20260917 RL4_RL5_RL6_GAS ESTABLE_00_V1.pdf',
+  fuente: 'Referencia: 20260917 RL4_RL5_RL6_GAS ESTABLE_00_V1.pdf',
   extensionInterna: true,
 };
 
@@ -35,7 +35,7 @@ export const GAS = [
     descuentos: ['20% — 1 año (electricidad en misma dirección)', '10% — 1 año (nuevas contrataciones)'],
     mantLabel: '3% — Dto. por Mantenimiento',
     contratacion: VIGENCIA_B2C_GAS,
-    validez: '17/09/2026 – 20/09/2026 (extensión interna)',
+    validez: '17/09/2026 – 20/09/2026',
   },
   {
     id: 'rl2',
@@ -49,7 +49,7 @@ export const GAS = [
     descuentos: ['20% — 1 año (electricidad en misma dirección)', '10% — 1 año (nuevas contrataciones)'],
     mantLabel: '3% — Dto. por Mantenimiento',
     contratacion: VIGENCIA_B2C_GAS,
-    validez: '17/09/2026 – 20/09/2026 (extensión interna)',
+    validez: '17/09/2026 – 20/09/2026',
   },
   {
     id: 'rl3',
@@ -63,7 +63,7 @@ export const GAS = [
     descuentos: ['20% — 1 año (electricidad en misma dirección)', '10% — 1 año (nuevas contrataciones)'],
     mantLabel: null,
     contratacion: VIGENCIA_B2C_GAS,
-    validez: '17/09/2026 – 20/09/2026 (extensión interna)',
+    validez: '17/09/2026 – 20/09/2026',
   },
 ];
 

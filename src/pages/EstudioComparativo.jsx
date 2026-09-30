@@ -5,7 +5,6 @@ import { exportElementToPdf, slugifyFilename } from '../lib/exportPdf';
 import { LUZ, LUZ_SOLAR, INDEXADA_2_0TD } from '../data/tarifasB2C';
 import { TEMPO_2_0TD } from '../data/tarifasB2B';
 import { IE_RATE as IE_RATE_MOTOR, calcularAhorro, extrapolarAnual } from '../lib/energia/motor';
-import { estadoVigencia, ETIQUETA_ESTADO } from '../lib/energia/vigencia';
 
 /* Estimación de tiempo de extracción proporcional al peso del archivo (no inventada):
    tiempo base de 4s (latencia fija de red + arranque del modelo) + 1.5s por cada
@@ -296,7 +295,6 @@ export default function EstudioComparativo() {
   const { ahorroEur: dif, ahorroPct } = calcularAhorro(factBase, total);
   const ahorroPercent = ahorroPct == null ? 0 : ahorroPct / 100;
   const ahorroAnual   = extrapolarAnual(dif, dias) ?? 0;
-  const vigenciaLuz   = estadoVigencia(tarifa.contratacion);
   const isReady = kwhP1 > 0 && kwPunta > 0 && dias > 0 && factActual > 0;
 
   /* ════════════ FECHAS ════════════ */
@@ -965,12 +963,6 @@ export default function EstudioComparativo() {
                 <span className="text-2xl font-bold text-google-blue tabular-nums">{eur(total)}</span>
               </div>
               <div className="mx-6 mb-3 space-y-1 text-[11px]">
-                {vigenciaLuz !== 'vigente' && (
-                  <p className="text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">{ETIQUETA_ESTADO[vigenciaLuz]} ({tarifa.validez}). Simulación con precios no contratables hoy.</p>
-                )}
-                {tarifa.contratacion?.extensionInterna && vigenciaLuz === 'vigente' && (
-                  <p className="text-google-gray">Vigencia {tarifa.validez}: ampliada por instrucción interna; precios B2C sin cambios.</p>
-                )}
                 {tarifa.nota && <p className="text-google-gray">{tarifa.nota}</p>}
                 <p className="text-google-gray">Simulación con el consumo de la factura aportada; no garantiza el ahorro futuro.</p>
               </div>

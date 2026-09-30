@@ -4,7 +4,6 @@ import { GAS, GAS_EMPRESA } from '../data/tarifasGas';
 import { Calculator, Upload, FileText, Printer, Download, X, AlertTriangle, Loader2 } from 'lucide-react';
 import { exportElementToPdf, slugifyFilename } from '../lib/exportPdf';
 import { calcularOfertaGas, calcularAhorro, extrapolarAnual, ESTADO } from '../lib/energia/motor';
-import { estadoVigencia, ETIQUETA_ESTADO } from '../lib/energia/vigencia';
 import { IEH_GAS_EUR_KWH } from '../data/tarifasGas';
 
 /* ── Constantes ──────────────────────────────────────────────────────────────── */
@@ -176,7 +175,6 @@ export default function EstudioComparativoGas() {
   /* Cálculo en el motor determinista (src/lib/energia/motor.js): término fijo
      prorrateado por días, variable al precio publicado (sin volver a descontar),
      impuesto de hidrocarburos 0,00234 €/kWh e IVA. */
-  const vigenciaGas = estadoVigencia(tarifa.contratacion);
   const rGas = calcularOfertaGas({
     producto: tarifa, kwh: kwhGas, dias, mantenimiento: mant, alquiler: alqCont, ivaRate,
     consumoAnualKwh: n(form.consumoAnual), ignorarVigencia: true,
@@ -739,14 +737,6 @@ export default function EstudioComparativoGas() {
                 <span className="text-2xl font-bold text-orange-500 tabular-nums">{eur(total)}</span>
               </div>
               <div className="mx-6 mb-3 space-y-1 text-[11px]">
-                {vigenciaGas !== 'vigente' && (
-                  <p className="text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2">
-                    {ETIQUETA_ESTADO[vigenciaGas]} ({tarifa.validez}). Simulación con precios no contratables hoy.
-                  </p>
-                )}
-                {tarifa.contratacion?.extensionInterna && vigenciaGas === 'vigente' && (
-                  <p className="text-google-gray">Vigencia {tarifa.validez}: ampliada por instrucción interna; precios B2C sin cambios.</p>
-                )}
                 {!incluyeTF && <p className="text-google-gray">Comparación sin término fijo: se excluye en la oferta y en la factura actual ({eur(tfFactura)} + IVA).</p>}
                 {rGas.avisos.map((a, k) => <p key={k} className="text-amber-800">{a}</p>)}
                 <p className="text-google-gray">Simulación con el consumo de la factura aportada; no garantiza el ahorro futuro.</p>
