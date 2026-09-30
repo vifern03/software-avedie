@@ -6,14 +6,17 @@
  * - Caché en memoria de la pestaña (no se guarda en disco ni en localStorage porque
  *   contiene datos personales), con clave = SHA-256 del documento + versión del
  *   extractor. Cambiar el prompt o el esquema → subir EXTRACTOR_VERSION invalida todo.
- * - Espera máxima 45 s: el servidor recibe un presupuesto de 40 s para sus
- *   reintentos y el navegador corta a los 45 s. Un corte NO cuenta como extracción.
+ * - Gemini 3.8 Flash responde normalmente en 2–4 s. Si a los 4,5 s no ha contestado,
+ *   el servidor lanza una segunda llamada en paralelo y se queda con la primera que
+ *   llegue (presupuesto total 14 s); el navegador corta a los 16 s. Un corte NO
+ *   cuenta como extracción.
  * - Llamadas simultáneas sobre el mismo documento se deduplican.
  */
 
-export const EXTRACTOR_VERSION = 'luz-b2b-2026-09-18.3'; // prompt: energiaTotal solo si está impreso
-export const ESPERA_MAX_MS = 45000;
-const PRESUPUESTO_SERVIDOR_MS = 40000;
+export const EXTRACTOR_VERSION = 'luz-b2b-2026-09-30.1'; // prompt acotado a los campos de la comparativa
+export const ESPERA_MAX_MS = 16000;
+const PRESUPUESTO_SERVIDOR_MS = 14000;
+const RELEVO_SERVIDOR_MS = 4500;
 const MAX_ENTRADAS = 20;
 
 const cache = new Map();     // clave → objeto extraído (JSON)
@@ -53,7 +56,7 @@ export async function extraerFactura(file, { prompt, version = EXTRACTOR_VERSION
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text: prompt, history: [], json: true,
-          modelo: 'pro', thinkingBudget: 128, presupuestoMs: PRESUPUESTO_SERVIDOR_MS,
+          modelo: 'flash', thinkingBudget: 128, presupuestoMs: PRESUPUESTO_SERVIDOR_MS, relevoMs: RELEVO_SERVIDOR_MS,
           file: { mimeType: file.type || 'application/pdf', data: aBase64(buffer) },
         }),
         signal: controller.signal,

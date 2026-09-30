@@ -76,3 +76,28 @@ test('servidor: los reintentos respetan el presupuesto total de tiempo', async (
   globalThis.fetch = orig;
   process.env.GEMINI_API_KEY = origKey;
 });
+
+test('servidor: con relevoMs, si la primera llamada se cuelga responde la de relevo', async () => {
+  const orig = globalThis.fetch;
+  const origKey = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = 'prueba';
+  let n = 0;
+  const cuelga = fetchQueNoResponde();
+  globalThis.fetch = (url, opts) => {
+    n++;
+    if (n === 1) return cuelga(url, opts);
+    return Promise.resolve({ ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: '{"x":1}' }] }, finishReason: 'STOP' }] }) });
+  };
+  const t0 = Date.now();
+  const out = await new Promise((resolve) => {
+    const r = { status(c) { r.c = c; return r; }, json(o) { resolve({ c: r.c, o }); return r; } };
+    handler({ method: 'POST', body: { text: 'x', presupuestoMs: 14000, relevoMs: 1000 } }, r);
+  });
+  const ms = Date.now() - t0;
+  assert.equal(out.c, 200);
+  assert.equal(out.o.response, '{"x":1}');
+  assert.equal(n, 2);
+  assert.ok(ms >= 900 && ms < 2000, `tardó ${ms} ms`);
+  globalThis.fetch = orig;
+  process.env.GEMINI_API_KEY = origKey;
+});

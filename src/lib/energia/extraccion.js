@@ -14,63 +14,61 @@ import { diasInclusivos } from './calendario.js';
 
 export const IE_RATE_REF = 5.11269632; // % impreso habitualmente
 
-export const PROMPT_EXTRACCION_LUZ = `Eres un transcriptor de facturas eléctricas españolas. Tu única tarea es COPIAR datos impresos en el documento a un JSON. No calcules, no redondees, no deduzcas valores que no estén impresos, no conviertas unidades.
+/* Prompt acotado a lo que usa la comparativa 3.0TD / 6.1TD (30/09/2026). El anterior
+   pedía además lecturas, maxímetros y cada línea de energía y potencia: 7 veces más
+   texto de salida, 9 s de media en vez de 3 s y el triple de coste, sin mejorar
+   ningún campo de los que se usan. El validador de abajo sigue aceptando esos
+   bloques si llegan. */
+export const PROMPT_EXTRACCION_LUZ = `Eres un transcriptor de facturas eléctricas españolas de empresa (tarifas 3.0TD y 6.1TD). Tu única tarea es COPIAR a un JSON los datos impresos en el documento. No calcules, no redondees, no deduzcas valores que no estén impresos, no conviertas unidades.
 
 Devuelve EXCLUSIVAMENTE un objeto JSON válido (sin markdown) con esta forma:
 
 {
-  "comercializadora": texto o null,
   "titular": texto o null,
   "cups": texto sin espacios o null,
   "tarifaAcceso": "2.0TD" | "3.0TD" | "6.1TD" | null,
   "fechaEmision": "AAAA-MM-DD" o null,
   "periodoConsumo": { "desde": "AAAA-MM-DD" o null, "hasta": "AAAA-MM-DD" o null },
   "diasFacturados": entero impreso o null,
-  "potenciaContratadaKw": [P1, P2, P3, P4, P5, P6]  (número o null por periodo; 2.0TD: [P1, P2, null, null, null, null]),
-  "consumoFacturadoKwh": [P1, P2, P3, P4, P5, P6]  (kWh FACTURADOS de energía activa por periodo; 0 si está impreso 0; null si ese periodo no aparece),
+  "potenciaContratadaKw": [P1, P2, P3, P4, P5, P6],
+  "consumoFacturadoKwh": [P1, P2, P3, P4, P5, P6],
   "consumoTotalKwh": número impreso o null,
-  "lecturas": [ { "periodo": "P1", "anterior": número, "actual": número, "fechaAnterior": "AAAA-MM-DD" o null, "fechaActual": "AAAA-MM-DD" o null } ],
-  "maximetros": [ { "periodo": "P1", "valor": número tal cual impreso, "unidad": "kW" | "W" | null } ],
-  "maximetrosAnoMovil": [ { "periodo": "P1", "valor": número, "unidad": "kW" | "W" | null } ],
-  "energiaLineas": [ { "componente": "energia" | "peajes" | "cargos" | "acceso" | "otro", "periodo": "P1", "kwh": número, "precio": número, "unidadPrecio": "€/kWh" | "c€/kWh", "importe": número } ],
-  "potenciaLineas": [ { "componente": "potencia" | "peajes" | "cargos", "periodo": "P1", "kw": número, "dias": número, "precio": número, "unidadPrecio": "€/kW día" | "c€/kW día" | "€/kW año" | "€/kW mes", "importe": número } ],
   "importes": {
-    "potencia": número o null,
-    "energiaTotal": número o null,
     "excesosPotencia": número o null,
     "reactiva": número o null,
     "bonoSocial": número o null,
     "alquilerEquipos": número o null,
     "otrosServicios": número o null,
-    "baseImpuestoElectrico": número o null,
-    "tipoImpuestoElectricoPct": número o null,
-    "impuestoElectrico": número o null,
     "baseIVA": número o null,
     "tipoIVAPct": número o null,
     "iva": número o null,
     "total": número o null
   },
-  "reactivaKvarh": [P1..P6] o null,
-  "autoconsumo": { "kwhExcedentes": número o null, "compensacion": número o null },
-  "descuentosInformativos": [ { "texto": texto, "importe": número } ],
-  "paginas": { "resumen": entero o null, "detalle": entero o null, "lecturas": entero o null },
-  "notas": [ texto ]
+  "autoconsumo": { "kwhExcedentes": número o null }
 }
 
 REGLAS
-1. FECHAS. Distingue: fecha de emisión (cuando se emite la factura), periodo de consumo (desde–hasta del consumo facturado) y el nombre del archivo, que NO es un dato. Usa las fechas del "periodo de facturación"/"periodo de consumo". Formato ISO AAAA-MM-DD. Ejemplo: "Periodo 01/07/2025 a 31/07/2025, fecha factura 18/08/2025" → desde 2025-07-01, hasta 2025-07-31, emisión 2025-08-18.
-2. NÚMEROS. Formato español: "27.263" = 27263; "0,121637" = 0.121637; "3.316,19" = 3316.19. Devuelve números JSON.
-3. UNIDADES. Copia la unidad impresa. Si el precio figura en c€/kWh o c€/día, escribe el número tal cual y unidadPrecio "c€/…". NO lo conviertas.
-4. CONSUMO FACTURADO ≠ LECTURAS. consumoFacturadoKwh es lo que se cobra en el detalle de energía (o la fila "Consumo en el periodo"). Las lecturas del contador van en "lecturas" aunque su diferencia no coincida con lo facturado. No sustituyas uno por otro.
-5. AUSENTE ≠ CERO. Si un periodo aparece con 0 kWh, pon 0. Si no aparece en ningún sitio, pon null.
-6. ENERGÍA DESGLOSADA. Si la energía aparece separada (energía/OMIE, peajes, cargos, término de acceso), añade UNA línea por componente y periodo en "energiaLineas". importes.energiaTotal es un total de energía IMPRESO que incluya todos los componentes; si la factura no imprime ese total único, pon null (NO sumes tú). Nunca tomes solo el componente OMIE como coste total de la energía.
-7. MAXÍMETROS. "maximetros" = potencia máxima demandada EN ESTE PERIODO de facturación. Los máximos del "año móvil"/"últimos 12 meses" van SOLO en "maximetrosAnoMovil". Copia el valor y la unidad; si la tabla muestra 53.000,00 sin unidad o con W, escribe 53000 y la unidad impresa (o null).
-8. IMPUESTOS. tipoImpuestoElectricoPct y tipoIVAPct son PORCENTAJES impresos (5,11269632 → 5.11269632; 21 → 21). No confundas el importe en € con el tipo.
-9. DESCUENTOS INFORMATIVOS. Notas del tipo "Descuento asociado al ahorro de cargos … -677,38 €" van en descuentosInformativos. No los restes de ningún importe.
-10. DÍAS. diasFacturados es el número de días impreso (p. ej. "31 días" en el término de potencia o "Días facturados: 31"). Si aparece en las líneas de potencia, cópialo.
-11. CONSUMO. consumoFacturadoKwh SIEMPRE se rellena con los kWh de las líneas de energía por periodo (P1..P6), aunque vengan en tablas de "Término Energía" o "Energía activa".
-12. POTENCIA. Incluye en potenciaLineas TODAS las líneas de potencia (peajes, cargos y término de potencia). importes.potencia es la suma de todas ellas.
-13. Sé breve: nada de texto fuera del JSON.`;
+1. NÚMEROS. Formato español: "27.263" = 27263; "0,121637" = 0.121637; "3.316,19" = 3316.19; "49,000 kW" = 49. Devuelve números JSON, nunca texto.
+2. FECHAS. Formato ISO AAAA-MM-DD. "periodoConsumo" es el periodo de facturación o de consumo (desde–hasta); "fechaEmision" es la fecha en que se emite la factura. El nombre del archivo NO es un dato. Ejemplo: "Periodo 01/07/2025 a 31/07/2025, fecha factura 18/08/2025" → desde 2025-07-01, hasta 2025-07-31, emisión 2025-08-18.
+3. DÍAS. "diasFacturados" es el número de días impreso en las líneas del término de potencia o del alquiler (p. ej. "280 kW x 31 días" → 31). Si no hay ningún número de días impreso, null.
+4. TARIFA. "tarifaAcceso" es el peaje de acceso impreso ("Peaje de acceso", "Tarifa ATR", "Tarifa"): 2.0TD, 3.0TD o 6.1TD.
+5. POTENCIA CONTRATADA. Seis valores en kW, uno por periodo P1–P6, tal como figuran en "Potencia contratada" (PC1…PC6, Pot. P1…P6). Pueden ser distintos entre sí: copia cada uno en su posición. No uses los maxímetros ni la potencia máxima demandada.
+6. CONSUMO FACTURADO. "consumoFacturadoKwh" son los kWh de energía ACTIVA que se cobran en cada periodo P1–P6: los de las líneas de energía del detalle o la fila "Consumo en el periodo". La misma cifra de kWh suele repetirse en varias líneas (energía, peajes, cargos, término de acceso): cópiala UNA sola vez por periodo, no la sumes. Un periodo con 0 kWh o que no aparece en las líneas de energía es 0. No uses las lecturas acumuladas del contador, ni la energía reactiva (kVArh), ni los maxímetros, ni los consumos de otros meses del gráfico.
+7. CONSUMO TOTAL. "consumoTotalKwh" solo si la factura imprime el total de kWh del periodo facturado; si no, null. No lo sumes tú y no uses el consumo acumulado anual.
+8. IMPORTES (en euros, sin IVA, tal como están impresos; null si el concepto no aparece):
+   - "excesosPotencia": importe de excesos de potencia.
+   - "reactiva": importe TOTAL de energía reactiva (el total, no una línea suelta).
+   - "bonoSocial": importe de la financiación del bono social.
+   - "alquilerEquipos": importe del alquiler de equipos de medida o contador.
+   - "otrosServicios": importe de servicios ajenos al suministro eléctrico (mantenimientos, seguros, servicios de valor añadido) que aparezcan como línea propia del detalle. El alquiler del contador NO va aquí. NUNCA es la base imponible ni un subtotal: si una línea del resumen (p. ej. "Servicios de Gestión Energética") coincide con la base del IVA o engloba la potencia y la energía, es el suministro entero, no un servicio aparte → null. Si no hay, null.
+   - "baseIVA": base imponible sobre la que se aplica el IVA o IGIC.
+   - "tipoIVAPct": PORCENTAJE de IVA o IGIC impreso (21 → 21; 10 → 10). Nunca el importe en euros ni un decimal como 0.21.
+   - "iva": importe del IVA o IGIC en euros.
+   - "total": TOTAL IMPORTE FACTURA, el importe final a pagar con impuestos.
+9. No confundas el impuesto sobre la electricidad (5,11269632 %) con el IVA.
+10. AUTOCONSUMO. "kwhExcedentes" son los kWh de excedentes vertidos a la red que la factura compensa; si no hay autoconsumo, null.
+11. CUPS. Empieza por "ES" seguido de 16 dígitos y termina en dos letras, a veces con un dígito y una letra más (20 o 22 caracteres). Tras "ES" solo hay dígitos hasta la posición 18: ahí un "0" nunca es la letra "O". Quita espacios.
+12. Nada de texto fuera del JSON.`;
 
 /* ══════════════════════════ Normalización ══════════════════════════ */
 

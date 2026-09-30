@@ -48,8 +48,12 @@ const POTENCIA_61TD = [
  * aplicar descuentos.
  *
  * `periodosOpen` = periodos que se facturan a precio Open (criterio comercial del
- * responsable, 18/09/2026): Plana todos; Día y Laboral P1–P5; Fin de Semana y
- * Noche solo P6. El resto de periodos va a precio "Horas No Open".
+ * responsable): Plana todos; Día y Laboral P1–P5; Fin de Semana y Noche solo P6.
+ * El resto de periodos va a precio "Horas No Open".
+ * `periodosMitadOpen` (30/09/2026) = periodos cuyo consumo se reparte a partes
+ * iguales entre precio Open y No Open: en Día, la mitad del P6 va a precio Open.
+ * `sinComparativa` (30/09/2026) = la modalidad se muestra en el catálogo pero no se
+ * ofrece en las comparativas: Fin de Semana y Noche, hasta estudiar cómo calcularlas.
  * `ventanas` describe las horas Open de cada modalidad tal y como figuran en el
  * PDF (horas locales, [inicio, fin) en horas enteras; "finde" = sábados,
  * domingos y festivos nacionales).
@@ -72,13 +76,13 @@ export const OPEN_30TD = {
   modalidades: [
     { id: 'plana', periodosOpen: [1, 2, 3, 4, 5, 6],   label: 'Plana',         dto: 12, desc: 'Las 24h del día los 365 días al año',
       ventanas: { laborable: [[0, 24]], finde: [[0, 24]] } },
-    { id: 'dia', periodosOpen: [1, 2, 3, 4, 5],     label: 'Día',           dto: 20, desc: 'De 8h a 24h todos los días del año',
+    { id: 'dia', periodosOpen: [1, 2, 3, 4, 5], periodosMitadOpen: [6], label: 'Día',           dto: 20, desc: 'De 8h a 24h todos los días del año',
       ventanas: { laborable: [[8, 24]], finde: [[8, 24]] } },
     { id: 'laboral', periodosOpen: [1, 2, 3, 4, 5], label: 'Laboral',       dto: 25, desc: 'De 8h a 24h de lunes a viernes (excepto festivos nacionales)',
       ventanas: { laborable: [[8, 24]], finde: [] } },
-    { id: 'finde', periodosOpen: [6],   label: 'Fin de Semana', dto: 45, desc: 'Las 24h del día de sábados, domingos y festivos nacionales',
+    { id: 'finde', periodosOpen: [6], sinComparativa: true, label: 'Fin de Semana', dto: 45, desc: 'Las 24h del día de sábados, domingos y festivos nacionales',
       ventanas: { laborable: [], finde: [[0, 24]] } },
-    { id: 'noche', periodosOpen: [6],   label: 'Noche',         dto: 30, desc: 'De 0h a 8h todos los días del año',
+    { id: 'noche', periodosOpen: [6], sinComparativa: true, label: 'Noche',         dto: 30, desc: 'De 0h a 8h todos los días del año',
       ventanas: { laborable: [[0, 8]], finde: [[0, 8]] } },
   ],
   extraAnyo: 18,
@@ -123,13 +127,13 @@ export const OPEN_61TD = {
   modalidades: [
     { id: 'plana', periodosOpen: [1, 2, 3, 4, 5, 6],   label: 'Plana',         dto: 12, desc: 'Las 24h del día los 365 días al año',
       ventanas: { laborable: [[0, 24]], finde: [[0, 24]] } },
-    { id: 'dia', periodosOpen: [1, 2, 3, 4, 5],     label: 'Día',           dto: 20, desc: 'De 8h a 24h (L–V) y de 18h a 24h (S, D y festivos nacionales)',
+    { id: 'dia', periodosOpen: [1, 2, 3, 4, 5], periodosMitadOpen: [6], label: 'Día',           dto: 20, desc: 'De 8h a 24h (L–V) y de 18h a 24h (S, D y festivos nacionales)',
       ventanas: { laborable: [[8, 24]], finde: [[18, 24]] } },
     { id: 'laboral', periodosOpen: [1, 2, 3, 4, 5], label: 'Laboral',       dto: 25, desc: 'De 8h a 24h de lunes a viernes (excepto festivos nacionales)',
       ventanas: { laborable: [[8, 24]], finde: [] } },
-    { id: 'finde', periodosOpen: [6],   label: 'Fin de Semana', dto: 45, desc: 'Las 24h del día de sábados, domingos y festivos nacionales',
+    { id: 'finde', periodosOpen: [6], sinComparativa: true, label: 'Fin de Semana', dto: 45, desc: 'Las 24h del día de sábados, domingos y festivos nacionales',
       ventanas: { laborable: [], finde: [[0, 24]] } },
-    { id: 'noche', periodosOpen: [6],   label: 'Noche',         dto: 30, desc: 'De 0h a 8h (L–V) y de 0h a 18h (S, D y festivos nacionales)',
+    { id: 'noche', periodosOpen: [6], sinComparativa: true, label: 'Noche',         dto: 30, desc: 'De 0h a 8h (L–V) y de 0h a 18h (S, D y festivos nacionales)',
       ventanas: { laborable: [[0, 8]], finde: [[0, 18]] } },
   ],
   extraAnyo: 18,

@@ -13,8 +13,8 @@
  *    como "mantenido de la factura actual (no recalculado)". Así no se infla el
  *    ahorro omitiéndolos.
  *  - Open: energía = kWh horas Open × precio Open + kWh resto × precio No Open.
- *    Si los datos no permiten separar las horas Open, la modalidad queda como
- *    "datos insuficientes": no se inventa ningún reparto.
+ *    El reparto es por periodos (ver `periodosOpen` y `periodosMitadOpen` en
+ *    src/data/tarifasB2B.js).
  */
 
 import { periodo6, esHoraOpen, viernesSantoEnRango, rangoFechas } from './calendario.js';
@@ -202,14 +202,23 @@ export function repartirOpen({ modalidad, kwhPeriodo, desgloseP6, curva, periodo
   }
 
   // Por defecto: reparto por PERIODOS (criterio comercial). Los periodos de
-  // `periodosOpen` van a precio Open y el resto a precio No Open.
+  // `periodosOpen` van a precio Open, los de `periodosMitadOpen` mitad a precio Open
+  // y mitad a No Open, y el resto a precio No Open.
   const per = modalidad.periodosOpen || [1, 2, 3, 4, 5, 6];
+  const mitad = modalidad.periodosMitadOpen || [];
   let kOpen = 0, kNo = 0;
-  const porPeriodo = kwh.map((k, i) => ({ periodo: i + 1, kwh: k, open: per.includes(i + 1) }));
-  kwh.forEach((k, i) => { if (per.includes(i + 1)) kOpen += k; else kNo += k; });
-  if (modalidad.id !== 'plana') {
-    avisos.push(`Modalidad ${modalidad.label}: precio Open aplicado a ${per.map(x => 'P' + x).join(', ')} y precio No Open al resto (reparto por periodos). Para el cálculo hora a hora exacto, carga la curva horaria.`);
-  }
+  const porPeriodo = [];
+  kwh.forEach((k, i) => {
+    const periodo = i + 1;
+    if (mitad.includes(periodo)) {
+      porPeriodo.push({ periodo, kwh: k / 2, open: true }, { periodo, kwh: k / 2, open: false });
+      kOpen += k / 2; kNo += k / 2;
+    } else {
+      const open = per.includes(periodo);
+      porPeriodo.push({ periodo, kwh: k, open });
+      if (open) kOpen += k; else kNo += k;
+    }
+  });
   return { ok: true, kOpen, kNo, metodo: 'periodos', avisos, porPeriodo };
 }
 
@@ -312,7 +321,7 @@ export function calcularOfertaLuz(i) {
       rep.porPeriodo.filter(x => x.kwh > 0).forEach(x => {
         const pr = x.open ? pOpen : pNo;
         const et = modalidad.id === 'plana' ? `P${x.periodo}` : `P${x.periodo} (${x.open ? 'horas Open' : 'horas No Open'})`;
-        detalleEnergia.push({ etiqueta: et, kwh: x.kwh, precio: pr, importe: x.kwh * pr });
+        detalleEnergia.push({ etiqueta: et, periodo: `P${x.periodo}`, kwh: x.kwh, precio: pr, importe: x.kwh * pr });
       });
     } else {
       detalleEnergia.push({ etiqueta: 'Horas Open', kwh: rep.kOpen, precio: pOpen, importe: eOpen });
@@ -335,7 +344,7 @@ export function calcularOfertaLuz(i) {
       if (!kwh[idx]) return;
       const imp = kwh[idx] * pr;
       energia += imp;
-      detalleEnergia.push({ etiqueta: `P${idx + 1}`, kwh: kwh[idx], precio: pr, importe: imp });
+      detalleEnergia.push({ etiqueta: `P${idx + 1}`, periodo: `P${idx + 1}`, kwh: kwh[idx], precio: pr, importe: imp });
       lineas.push({ concepto: `Energía P${idx + 1}`, detalle: `${kwh[idx]} kWh × ${es6(pr)} €/kWh`, importe: imp, origen: 'oferta' });
     });
   } else if (p.energiaA) {
@@ -346,7 +355,7 @@ export function calcularOfertaLuz(i) {
       const pr = p.energiaA[k] + p.energiaB[k] * omie;
       const imp = kwh[idx] * pr;
       energia += imp;
-      detalleEnergia.push({ etiqueta: k.toUpperCase(), kwh: kwh[idx], precio: pr, importe: imp });
+      detalleEnergia.push({ etiqueta: k.toUpperCase(), periodo: k.toUpperCase(), kwh: kwh[idx], precio: pr, importe: imp });
       lineas.push({ concepto: `Energía ${k.toUpperCase()} (A + B × OMIE)`, detalle: `${kwh[idx]} kWh × ${es6(pr)} €/kWh`, importe: imp, origen: 'oferta' });
     });
     avisos.push('Indexada: el precio depende del OMIE real de cada hora/mes; el valor introducido es una hipótesis.');

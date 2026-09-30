@@ -1,20 +1,18 @@
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Upload, FileText, Printer, Download, X, AlertTriangle, Loader2, Factory, Info, CheckCircle2, Ban } from 'lucide-react';
-import { saveAs } from 'file-saver';
-import { slugifyFilename } from '../lib/exportPdf';
-import { construirInforme, generarPdfInforme, eurES, numES } from '../lib/energia/informe';
+import { Upload, FileText, Printer, Download, X, Loader2, Factory, Info, CheckCircle2, Ban } from 'lucide-react';
+import { exportElementToPdf, slugifyFilename } from '../lib/exportPdf';
+import { construirInforme, eurES, numES } from '../lib/energia/informe';
 import { OPEN_30TD, OPEN_61TD, SIMPLY_30TD, SIMPLY_61TD, INDEXADA_30TD, INDEXADA_61TD } from '../data/tarifasB2B';
-import { calcularOfertaLuz, ESTADO, FRANJAS_P6, tramosPorPotencia } from '../lib/energia/motor';
+import { calcularOfertaLuz, ESTADO, tramosPorPotencia } from '../lib/energia/motor';
 import { PROMPT_EXTRACCION_LUZ, validarExtraccion, parsearRespuestaModelo } from '../lib/energia/extraccion';
-import { parsearCurvaCSV } from '../lib/energia/curva';
 import { extraerFactura, ExtraccionTimeout, ESPERA_MAX_MS } from '../lib/energia/geminiCliente';
 import { hoyMadridISO } from '../lib/energia/vigencia';
 
 /* ── Constantes ──────────────────────────────────────────────────────────────── */
 
-/* Gemini 2.5 Pro con thinkingBudget 128: 17–22 s en facturas reales de 3–4 páginas
-   (25/25 campos correctos). Espera máxima 45 s (ver geminiCliente.js). */
+/* Gemini 3.8 Flash con thinkingBudget 128: 2–6 s en facturas reales de 3–5 páginas
+   (27/27 campos correctos). Espera máxima 16 s (ver geminiCliente.js). */
 const PERIODS = [1, 2, 3, 4, 5, 6];
 
 const CATALOGO = {
@@ -32,7 +30,7 @@ const PRODUCTOS = [
 ];
 
 function estimateExtractionSeconds(bytes) {
-  return Math.min(40, Math.round(20 + (bytes / (500 * 1024)) * 2));
+  return Math.min(10, Math.round(3 + bytes / (500 * 1024)));
 }
 
 function n(v, fb = 0) {
@@ -46,34 +44,26 @@ function n(v, fb = 0) {
   return isNaN(x) ? fb : x;
 }
 const eur = (v) => (v == null ? '—' : v.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €');
-const kwhFmt = (v) => v.toLocaleString('es-ES', { maximumFractionDigits: 2 }) + ' kWh';
 
 function PBadge({ p }) {
   const colors = { P1: 'bg-blue-600', P2: 'bg-blue-500', P3: 'bg-blue-400', P4: 'bg-blue-300', P5: 'bg-blue-200 !text-blue-700', P6: 'bg-blue-100 !text-blue-700' };
   return <span className={`text-[10px] font-bold text-white rounded px-1.5 py-0.5 leading-none ${colors[p] || 'bg-gray-400'}`}>{p}</span>;
 }
 
-function SeccionInforme({ titulo, filas, subtotal }) {
+function FilaInforme({ detalle, importe }) {
   return (
-    <div className="px-6 pt-5 pb-4">
-      <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-3">{titulo}</p>
-      <div className="space-y-1.5">
-        {filas.map((f, k) => (
-          <div key={k} className="flex justify-between items-baseline text-sm gap-4">
-            <span className="text-google-gray">
-              <span className="text-google-dark">{f.concepto}</span>
-              {f.detalle && <span className="ml-2 text-[12px]">{f.detalle}</span>}
-            </span>
-            <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap">{eurES(f.importe)}</span>
-          </div>
-        ))}
-        {subtotal && (
-          <div className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-2 mt-1">
-            <span className="text-xs font-semibold text-google-dark">{subtotal[0]}</span>
-            <span className="text-sm font-bold text-google-dark tabular-nums">{eurES(subtotal[1])}</span>
-          </div>
-        )}
-      </div>
+    <div className="flex justify-between items-baseline text-sm">
+      <span className="text-google-gray">{detalle}</span>
+      <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eurES(importe)}</span>
+    </div>
+  );
+}
+
+function SubtotalInforme({ titulo, importe }) {
+  return (
+    <div className="flex justify-between items-center bg-gray-50 rounded-lg px-3 py-2 mt-1">
+      <span className="text-xs font-semibold text-google-dark">{titulo}</span>
+      <span className="text-sm font-bold text-google-dark tabular-nums">{eurES(importe)}</span>
     </div>
   );
 }
@@ -93,8 +83,7 @@ const INIT = Object.assign(
     facturaActual: '', otrosNoComparables: '0', iva: '0.21',
     excedentesKwh: '0', omie: '',
   },
-  ...PERIODS.map(i => ({ [`kwhP${i}`]: '', [`kwPotP${i}`]: '', [`kwMaxP${i}`]: '' })),
-  ...FRANJAS_P6.map(f => ({ [`p6_${f.id}`]: '' })),
+  ...PERIODS.map(i => ({ [`kwhP${i}`]: '', [`kwPotP${i}`]: '' })),
 );
 
 /* ══════════════════════════════════════════════════════════════════════════════ */
@@ -109,7 +98,6 @@ export default function EstudioComparativoB2B() {
   // Tramo comercial elegido por el comercial, por nivel. Independiente de las potencias P1–P6.
   const [tramoSel, setTramoSel] = useState({ '30': null, '61': null });
   const [form, setForm] = useState(INIT);
-  const [curvaInfo, setCurvaInfo] = useState(null); // { nombre, curva, errores }
   const [incidencias, setIncidencias] = useState([]);
   const [dragging, setDragging] = useState(false);
   const [dropped, setDropped] = useState(null);
@@ -121,7 +109,6 @@ export default function EstudioComparativoB2B() {
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [pdfError, setPdfError] = useState('');
   const fileRef = useRef(null);
-  const curvaRef = useRef(null);
   const countdownRef = useRef(null);
 
   const set = k => e => {
@@ -162,7 +149,6 @@ export default function EstudioComparativoB2B() {
         PERIODS.forEach((p, i) => {
           next[`kwhP${p}`] = d.kwhPeriodo[i] != null ? String(d.kwhPeriodo[i]) : '0';
           next[`kwPotP${p}`] = d.potenciasKw[i] != null ? String(d.potenciasKw[i]) : '';
-          next[`kwMaxP${p}`] = d.maximetrosKw[i] != null ? String(d.maximetrosKw[i]) : '';
         });
         next.cliente = d.titular || f.cliente;
         next.cups = d.cups || f.cups;
@@ -178,12 +164,10 @@ export default function EstudioComparativoB2B() {
         next.otrosNoComparables = '0'; // se compara la factura completa; solo el comercial puede excluir algo expresamente
         next.iva = String(ivaRate);
         next.excedentesKwh = String(d.excedentesKwh ?? 0);
-        FRANJAS_P6.forEach(fr => { next[`p6_${fr.id}`] = ''; });
         return next;
       });
       if ((d.excedentesKwh || 0) > 0) setAutoconsumo(true);
       setTramoSel({ '30': null, '61': null }); // tramo automático por Pc = máx(P1–P6)
-      setCurvaInfo(null);
       setExtractionDone(true);
     } catch (err) {
       if (err instanceof ExtraccionTimeout) {
@@ -208,21 +192,13 @@ export default function EstudioComparativoB2B() {
   const onDragLeave = useCallback(() => setDragging(false), []);
   const onDrop = e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFileUpload(f); };
 
-  async function handleCurva(file) {
-    if (!file) return;
-    const texto = await file.text();
-    const r = parsearCurvaCSV(texto, { desde: form.desde || undefined, hasta: form.hasta || undefined });
-    setCurvaInfo({ nombre: file.name, ...r });
-  }
-
   async function handleDownloadPdf() {
     if (!informe) return;
     setIsExportingPdf(true);
     setPdfError('');
     try {
-      const blob = await generarPdfInforme(informe);
       const fechaCorta = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }).replace(/\//g, '-');
-      saveAs(blob, `Comparativa_${slugifyFilename(form.cliente.trim() || 'informe')}_${fechaCorta}.pdf`);
+      await exportElementToPdf('ecb2b-informe', `Comparativa_${slugifyFilename(form.cliente.trim() || 'informe')}_${fechaCorta}.pdf`);
     } catch {
       setPdfError('No se pudo generar el PDF. Prueba de nuevo o usa "Imprimir informe".');
     } finally {
@@ -236,13 +212,10 @@ export default function EstudioComparativoB2B() {
   const hoy = hoyMadridISO();
   const kwhPeriodo = PERIODS.map(i => n(form[`kwhP${i}`]));
   const potenciasKw = PERIODS.map(i => n(form[`kwPotP${i}`]));
-  const desgloseLleno = FRANJAS_P6.every(f => form[`p6_${f.id}`] !== '');
-  const desgloseP6 = desgloseLleno ? Object.fromEntries(FRANJAS_P6.map(f => [f.id, n(form[`p6_${f.id}`])])) : undefined;
-  const curva = curvaInfo?.curva?.length && !curvaInfo.errores.length ? curvaInfo.curva : undefined;
   const periodo = form.desde && form.hasta ? { desde: form.desde, hasta: form.hasta } : undefined;
 
   const entrada = {
-    potenciasKw, dias: n(form.dias), periodo, kwhPeriodo, desgloseP6, curva,
+    potenciasKw, dias: n(form.dias), periodo, kwhPeriodo,
     omie: form.omie === '' ? null : n(form.omie),
     tieneAutoconsumo: autoconsumo, excedentesKwh: n(form.excedentesKwh),
     mantenidos: { excesos: n(form.excesos), reactiva: n(form.reactiva), alquiler: n(form.alquiler), bonoSocial: n(form.bonoSocial) },
@@ -251,7 +224,7 @@ export default function EstudioComparativoB2B() {
 
   const resultadosModalidad = useMemo(() => {
     if (!producto.modalidades) return null;
-    return producto.modalidades.map(m => ({ modalidad: m, r: calcularOfertaLuz({ ...entrada, producto, modalidadId: m.id, tramoIdx: tramoSel[nivel] }) }));
+    return producto.modalidades.filter(m => !m.sinComparativa).map(m => ({ modalidad: m, r: calcularOfertaLuz({ ...entrada, producto, modalidadId: m.id, tramoIdx: tramoSel[nivel] }) }));
   }, [JSON.stringify(entrada), productoId, nivel, tramoSel[nivel]]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const resultado = producto.modalidades
@@ -268,24 +241,16 @@ export default function EstudioComparativoB2B() {
   const isReady = factActual > 0 && entrada.dias > 0 && kwhPeriodo.some(x => x > 0) && potenciasKw.some(x => x > 0);
 
   const modalidadSel = producto.modalidades?.find(m => m.id === modalidadId);
+  // Si la modalidad elegida deja de ofrecerse en comparativas, se vuelve a Plana.
+  useEffect(() => { if (modalidadSel?.sinComparativa) setModalidadId('plana'); }, [modalidadSel]);
   const asesorDisplay = form.asesor === '__otro__' ? form.asesorLibre : form.asesor;
   const today = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
   const tituloOferta = producto.modalidades ? `${producto.nombre} — ${modalidadSel?.label}` : producto.nombre;
   const incidenciasVisibles = incidencias.filter(i => i.nivel !== 'info');
 
-  // Limitaciones materiales que deben constar brevemente en el informe.
-  const limitaciones = [];
-  if (ok) {
-    const nota450 = resultado.avisos.find(a => a.startsWith('Simulación con precios del tramo'));
-    if (nota450) limitaciones.push(nota450);
-    const manual = resultado.avisos.find(a => a.includes('elegido manualmente'));
-    if (manual) limitaciones.push(manual);
-    if (producto.energiaA) limitaciones.push('Precio de energía indexado calculado con el valor OMIE introducido.');
-  }
   const informe = ok && isReady ? construirInforme({
     resultado, oferta: tituloOferta, cliente: form.cliente, cups: form.cups, asesor: asesorDisplay,
-    fechaInforme: today, periodo, dias: entrada.dias, fechaEmision: form.fechaEmision,
-    facturaOriginal: factActual, otrosExcluidos: otros, limitaciones,
+    fechaInforme: today, dias: entrada.dias, facturaOriginal: factActual, otrosExcluidos: otros,
   }) : null;
   const incidenciasInfo = incidencias.filter(i => i.nivel === 'info');
 
@@ -398,7 +363,7 @@ export default function EstudioComparativoB2B() {
               <div>
                 <label className="text-[10px] font-medium text-google-gray mb-1.5 block">Producto</label>
                 <select value={productoId} onChange={e => setProductoId(e.target.value)} className="input-field text-sm" id="ecb2b-producto">
-                  {PRODUCTOS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                  {PRODUCTOS.map(p => <option key={p.id} value={p.id} disabled={!!CATALOGO[nivel][p.id].precioSinActualizar}>{p.label}</option>)}
                 </select>
               </div>
             </div>
@@ -407,14 +372,14 @@ export default function EstudioComparativoB2B() {
                 <p className="text-[10px] font-medium text-google-gray mb-1.5">Modalidad Open</p>
                 <div className="flex flex-wrap gap-2">
                   {producto.modalidades.map(m => (
-                    <button key={m.id} type="button" onClick={() => setModalidadId(m.id)} title={m.desc}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${modalidadId === m.id ? 'bg-google-blue text-white border-google-blue' : 'bg-gray-50 text-google-gray border-google-border hover:border-google-blue'}`}>
+                    <button key={m.id} type="button" onClick={() => setModalidadId(m.id)} title={m.desc} disabled={m.sinComparativa}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${m.sinComparativa ? 'bg-gray-50 text-google-gray border-google-border opacity-50 cursor-not-allowed' : modalidadId === m.id ? 'bg-google-blue text-white border-google-blue' : 'bg-gray-50 text-google-gray border-google-border hover:border-google-blue'}`}>
                       {m.label} <span className="opacity-75">({m.dto}% + {producto.extraAnyo}%)</span>
                     </button>
                   ))}
                 </div>
                 <p className="text-[11px] text-google-gray mt-2">
-                  {modalidadSel?.label}: precio Open en {modalidadSel?.periodosOpen.map(x => 'P' + x).join(', ')}{modalidadSel?.periodosOpen.length < 6 ? '; resto de periodos a precio No Open' : ''}.
+                  {modalidadSel?.label}: precio Open en {modalidadSel?.periodosOpen.map(x => 'P' + x).join(', ')}{modalidadSel?.periodosMitadOpen ? ` y en la mitad del ${modalidadSel.periodosMitadOpen.map(x => 'P' + x).join(', ')}` : ''}{modalidadSel?.periodosOpen.length < 6 ? '; resto a precio No Open' : ''}.
                 </p>
                 {ok && resultado.tramo && (
                   <p className="text-[11px] text-google-dark mt-1">
@@ -467,7 +432,6 @@ export default function EstudioComparativoB2B() {
                 <strong>Fuera del ámbito de esta oferta.</strong> {resultado.motivos[0]} Puedes seguir comparando con otro producto o tarifa de acceso.
               </p>
             )}
-            <p className="text-[10px] text-gray-400">Contratación: {producto.validez} · Fuente: {producto.contratacion?.fuente}</p>
           </section>
 
           {/* 3 · Consumo y potencia */}
@@ -485,7 +449,6 @@ export default function EstudioComparativoB2B() {
                     <th className="text-left px-1 py-1 font-medium">Periodo</th>
                     <th className="text-left px-1 py-1 font-medium">kWh facturados</th>
                     <th className="text-left px-1 py-1 font-medium">Pot. contratada (kW)</th>
-                    <th className="text-left px-1 py-1 font-medium">Maxímetro (kW)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -494,54 +457,16 @@ export default function EstudioComparativoB2B() {
                       <td className="px-1 py-1.5"><PBadge p={`P${i}`} /></td>
                       <td className="px-1 py-1.5"><input id={`ecb2b-kwh${i}`} type="text" inputMode="decimal" value={form[`kwhP${i}`]} onChange={set(`kwhP${i}`)} className="input-field text-xs py-1.5" /></td>
                       <td className="px-1 py-1.5"><input id={`ecb2b-pot${i}`} type="text" inputMode="decimal" value={form[`kwPotP${i}`]} onChange={set(`kwPotP${i}`)} className="input-field text-xs py-1.5" /></td>
-                      <td className="px-1 py-1.5"><input id={`ecb2b-max${i}`} type="text" inputMode="decimal" value={form[`kwMaxP${i}`]} onChange={set(`kwMaxP${i}`)} className="input-field text-xs py-1.5" /></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <p className="text-[10px] text-gray-400 mt-2">El maxímetro es informativo (del periodo facturado, no del año móvil). Los excesos de potencia se trasladan desde la factura (sección 5).</p>
           </section>
 
-          {/* 4 · Horas Open */}
-          {producto.modalidades && (
-            <section className="bg-white border border-google-border rounded-xl shadow-sm p-5 space-y-3">
-              <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider">4 · Reparto horas Open / No Open</p>
-              <p className="text-[11px] text-google-gray leading-snug">
-                Por defecto el reparto es por periodos: Plana, todos a precio Open; Día y Laboral, P1–P5 a precio Open
-                y P6 a No Open; Fin de Semana y Noche, P6 a precio Open y P1–P5 a No Open. Opcional: con la curva
-                horaria o el desglose del P6 se calcula hora a hora según las franjas del PDF.
-              </p>
-              <div>
-                <input ref={curvaRef} id="ecb2b-curva" type="file" accept=".csv,.txt" className="hidden" onChange={e => { handleCurva(e.target.files[0]); e.target.value = ''; }} />
-                <button type="button" onClick={() => curvaRef.current?.click()} className="text-xs font-medium text-google-blue border border-blue-200 bg-blue-50 rounded-lg px-3 py-1.5 hover:bg-blue-100">
-                  Cargar curva horaria (CSV Datadis / distribuidora)
-                </button>
-                {curvaInfo && (
-                  <div className="mt-2 text-[11px]">
-                    <p className="text-google-dark">{curvaInfo.nombre}: {curvaInfo.curva.length} horas dentro del periodo.
-                      <button type="button" className="ml-2 text-red-500" onClick={() => setCurvaInfo(null)}>Quitar</button></p>
-                    {curvaInfo.errores.slice(0, 3).map((e, k) => <p key={k} className="text-red-700">{e}</p>)}
-                  </div>
-                )}
-              </div>
-              <div>
-                <p className="text-[10px] font-medium text-google-gray mb-1.5">…o desglose del P6 (opcional, cálculo hora a hora) · P6 facturado: ({kwhFmt(kwhPeriodo[5])})</p>
-                <div className="grid grid-cols-2 gap-2">
-                  {FRANJAS_P6.map(f => (
-                    <div key={f.id}>
-                      <label htmlFor={`ecb2b-p6-${f.id}`} className="text-[10px] text-google-gray block mb-0.5">{f.label} (kWh)</label>
-                      <input id={`ecb2b-p6-${f.id}`} type="text" inputMode="decimal" value={form[`p6_${f.id}`]} onChange={set(`p6_${f.id}`)} className="input-field text-xs py-1.5" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </section>
-          )}
-
-          {/* 5 · Importes de la factura actual */}
+          {/* 4 · Importes de la factura actual */}
           <section className="bg-white border border-google-border rounded-xl shadow-sm p-5 space-y-3">
-            <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider">5 · Factura actual y conceptos que se mantienen</p>
+            <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider">4 · Factura actual y conceptos que se mantienen</p>
             <div className="grid grid-cols-2 gap-3">
               <div><label htmlFor="ecb2b-total" className="text-[10px] font-medium text-google-gray mb-1 block">Total factura actual (€) *</label><input id="ecb2b-total" type="text" inputMode="decimal" value={form.facturaActual} onChange={set('facturaActual')} className="input-field text-sm" /></div>
               <div><label htmlFor="ecb2b-otros" className="text-[10px] font-medium text-google-gray mb-1 block">Conceptos no energéticos en el total (€, IVA incl.)</label><input id="ecb2b-otros" type="text" inputMode="decimal" value={form.otrosNoComparables} onChange={set('otrosNoComparables')} className="input-field text-sm" /></div>
@@ -577,7 +502,7 @@ export default function EstudioComparativoB2B() {
               </div>
               <div><label htmlFor="ecb2b-notas" className="text-[10px] font-medium text-google-gray mb-1 block">Notas</label><input id="ecb2b-notas" type="text" value={form.notas} onChange={set('notas')} className="input-field text-sm" /></div>
             </div>
-            <button type="button" onClick={() => { setForm(INIT); setDropped(null); setExtractionDone(false); setExtractionError(''); setIncidencias([]); setCurvaInfo(null); setAutoconsumo(false); }} className="text-xs text-google-gray hover:text-red-500">Limpiar formulario</button>
+            <button type="button" onClick={() => { setForm(INIT); setDropped(null); setExtractionDone(false); setExtractionError(''); setIncidencias([]); setAutoconsumo(false); }} className="text-xs text-google-gray hover:text-red-500">Limpiar formulario</button>
           </section>
         </div>
 
@@ -600,86 +525,97 @@ export default function EstudioComparativoB2B() {
                 </div>
               ) : (
                 <div id="ecb2b-informe" className="bg-white border border-google-border rounded-xl shadow-sm overflow-hidden print:border-0 print:shadow-none print:rounded-none">
-                  {/* Cabecera (estilo del informe original) */}
-                  <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-8 pt-8 pb-7 text-white relative">
+                  {/* Cabecera azul (mismo formato que la comparativa 2.0) */}
+                  <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-8 pt-8 pb-7 text-white relative">
                     <div className="flex items-start justify-between gap-4 mb-4">
                       <div className="flex-1 min-w-0">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-300 mb-1.5">GRUPO AVEDIE · COMPARATIVA DE SUMINISTRO ELÉCTRICO</p>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-blue-200 mb-1.5">GRUPO AVEDIE · COMPARATIVA ENERGÉTICA</p>
                         <h3 className="text-xl font-bold leading-tight">{informe.cliente}</h3>
-                        {informe.cups && <p className="text-xs text-gray-300 font-mono mt-1">{informe.cups}</p>}
+                        {informe.cups && <p className="text-xs text-blue-200 font-mono mt-1">{informe.cups}</p>}
                       </div>
                       <div className="flex-shrink-0">
                         <div className="bg-white rounded-xl px-4 py-3">
-                          <img src="/endesa-logo.png" alt="Endesa" className="h-14 w-auto object-contain" />
+                          <img src="/endesa-logo.png" alt="Endesa" className="h-16 w-auto object-contain" />
                         </div>
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2.5 pr-40">
                       <span className="inline-flex items-center bg-white/20 text-white text-[11px] font-semibold leading-none px-3 py-1.5 rounded-full">{informe.oferta}</span>
-                      {informe.tramo && <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">Tramo {informe.tramo}</span>}
-                      {informe.consumo && <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">Consumo {informe.consumo}</span>}
                       <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">{informe.dias} días</span>
                     </div>
                     <div className="absolute bottom-6 right-8 text-right text-xs">
                       <p className="font-semibold text-white">{informe.fechaInforme}</p>
-                      {informe.asesor && <p className="text-gray-300 mt-0.5">{informe.asesor}</p>}
+                      {informe.asesor && <p className="text-blue-200 mt-0.5">{informe.asesor}</p>}
                     </div>
                   </div>
 
-                  <SeccionInforme titulo="Término de Potencia" filas={informe.potencia} subtotal={['Subtotal Potencia', informe.subtotalPotencia]} />
-                  <div className="border-t border-gray-100 mx-6" />
-                  <SeccionInforme titulo="Término de Energía" filas={[
-                    ...informe.energia,
-                    ...(informe.excedentes ? [{ concepto: 'Compensación de excedentes de autoconsumo', detalle: '', importe: -informe.excedentes }] : []),
-                  ]} subtotal={['Subtotal Energía', informe.subtotalEnergia - (informe.excedentes || 0)]} />
-                  {informe.adicionales.length > 0 && (
-                    <>
-                      <div className="border-t border-gray-100 mx-6" />
-                      <SeccionInforme titulo="Otros conceptos de la factura" filas={informe.adicionales} />
-                    </>
-                  )}
-                  <div className="border-t border-gray-100 mx-6" />
-                  <SeccionInforme titulo="Impuestos y alquiler" filas={informe.impuestos} />
-
-                  <div className="border-t-2 border-gray-200 mx-6" />
-                  <div className="px-6 py-4 flex justify-between items-center">
-                    <span className="font-bold text-google-dark text-base">TOTAL SIMULADO CON ENDESA</span>
-                    <span className="text-2xl font-bold text-google-blue tabular-nums">{eurES(informe.totalOferta)}</span>
+                  {/* Potencia */}
+                  <div className="px-6 pt-5 pb-4">
+                    <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-3">Término de Potencia</p>
+                    <div className="space-y-1.5">
+                      {informe.potencia.map((f, k) => <FilaInforme key={k} {...f} />)}
+                      <SubtotalInforme titulo="Subtotal Potencia" importe={informe.subtotalPotencia} />
+                    </div>
                   </div>
 
-                  {/* Conclusiones (estilo original) */}
-                  <div className="mx-4 mb-4 rounded-xl overflow-hidden border border-green-200">
-                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 px-5 pt-4 pb-4">
+                  <div className="border-t border-gray-100 mx-6" />
+
+                  {/* Energía */}
+                  <div className="px-6 py-4">
+                    <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-3">Término de Energía</p>
+                    <div className="space-y-1.5">
+                      {informe.energia.map((f, k) => <FilaInforme key={k} {...f} />)}
+                      <SubtotalInforme titulo="Subtotal Energía" importe={informe.subtotalEnergia} />
+                    </div>
+                  </div>
+
+                  <div className="border-t border-gray-100 mx-6" />
+
+                  {/* Otros conceptos e impuestos */}
+                  <div className="px-6 py-4 space-y-2">
+                    {informe.otros.map((f, k) => <FilaInforme key={k} {...f} />)}
+                  </div>
+
+                  <div className="border-t-2 border-gray-200 mx-6" />
+
+                  {/* Total */}
+                  <div className="px-6 py-4 flex justify-between items-center">
+                    <span className="font-bold text-google-dark text-base">TOTAL ESTIMADO CON ENDESA</span>
+                    <span className="text-2xl font-bold text-google-blue tabular-nums whitespace-nowrap ml-4">{eurES(informe.totalOferta)}</span>
+                  </div>
+
+                  {/* Conclusiones */}
+                  <div className="mx-4 mb-5 rounded-xl overflow-hidden border border-green-200">
+                    <div className="bg-gradient-to-br from-green-50 to-emerald-50 px-5 pt-4 pb-3">
                       <p className="text-[10px] font-bold text-green-700 uppercase tracking-wider mb-4">Conclusiones del Estudio</p>
                       <div className="grid grid-cols-2 gap-3 mb-4">
                         <div className="bg-white rounded-xl p-3 text-center border border-green-100">
-                          <p className="text-[10px] text-google-gray mb-1">Factura original</p>
-                          <p className="text-xl font-bold text-google-dark tabular-nums">{eurES(informe.facturaOriginal)}</p>
+                          <p className="text-[10px] text-google-gray mb-1">Factura actual</p>
+                          <p className="text-xl font-bold text-google-dark tabular-nums">{eurES(informe.comparable)}</p>
+                          {informe.otrosExcluidos > 0 && (
+                            <p className="text-[9px] text-google-gray mt-0.5 leading-tight">Sin {eurES(informe.otrosExcluidos)} de servicios ajenos al suministro</p>
+                          )}
                         </div>
                         <div className="bg-white rounded-xl p-3 text-center border border-blue-200">
-                          <p className="text-[10px] text-google-blue font-medium mb-1">Con Endesa (simulado)</p>
+                          <p className="text-[10px] text-google-blue font-medium mb-1">Con Endesa</p>
                           <p className="text-xl font-bold text-google-blue tabular-nums">{eurES(informe.totalOferta)}</p>
                         </div>
                       </div>
-                      {informe.otrosExcluidos > 0 && (
-                        <p className="text-[11px] text-google-gray mb-3">Comparación sobre {eurES(informe.comparable)}: se excluyen {eurES(informe.otrosExcluidos)} de servicios ajenos al suministro.</p>
-                      )}
-                      <div className={`rounded-xl px-5 py-4 text-center ${informe.ahorroEur >= 0 ? 'bg-green-500' : 'bg-red-500'}`}>
-                        <p className="text-[10px] font-bold text-white/80 uppercase tracking-widest mb-1">
-                          {informe.ahorroEur >= 0 ? 'Ahorro en este período facturado' : 'Sobrecoste en este período facturado'}
-                        </p>
-                        <p className="text-4xl font-bold text-white tabular-nums">{eurES(Math.abs(informe.ahorroEur))}</p>
+                      <div className={`rounded-xl px-5 py-5 text-center mb-3 ${informe.ahorroEur >= 0 ? 'bg-green-500' : 'bg-red-500'}`}>
+                        <p className="text-[10px] font-bold text-white/80 uppercase tracking-widest mb-1">{informe.ahorroEur >= 0 ? 'Ahorro anual estimado' : 'Sobrecoste anual estimado'}</p>
+                        <p className="text-4xl font-bold text-white tabular-nums">{eurES(Math.abs(informe.ahorroAnual))}</p>
                         {informe.ahorroPct != null && (
-                          <p className="text-sm font-medium text-white/90 mt-2">
-                            {numES(Math.abs(informe.ahorroPct), 2)} % {informe.ahorroEur >= 0 ? 'menos' : 'más'} que la factura original
+                          <p className="text-sm font-medium text-white/90 mt-3 leading-snug">
+                            Un <span className="text-3xl font-extrabold text-white align-middle">{numES(informe.ahorroPct, 1)}%</span> {informe.ahorroEur >= 0 ? 'más barato' : 'más caro'} que el precio actual
                           </p>
                         )}
                       </div>
+                      <div className="bg-white rounded-lg p-3 text-center">
+                        <p className="text-[10px] text-google-gray mb-0.5">{informe.ahorroEur >= 0 ? 'Ahorro en factura' : 'Sobrecoste en factura'}</p>
+                        <p className={`text-base font-bold tabular-nums ${informe.ahorroEur >= 0 ? 'text-green-600' : 'text-red-600'}`}>{eurES(Math.abs(informe.ahorroEur))}</p>
+                      </div>
+                      {form.notas && <p className="text-[11px] text-green-800 mt-3 pt-3 border-t border-green-200"><span className="font-semibold">Nota:</span> {form.notas}</p>}
                     </div>
-                  </div>
-
-                  <div className="px-6 pb-5 space-y-1">
-                    {informe.notas.map((n, k) => <p key={k} className="text-[11px] text-google-gray">{n}</p>)}
                   </div>
                 </div>
               )}

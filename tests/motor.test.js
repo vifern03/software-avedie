@@ -23,13 +23,17 @@ const APOLO = {
 };
 const DESGLOSE_APOLO = { lab0_8: 4000, d0_8: 2000, d8_18: 2500, d18_24: 1428 };
 
-test('Open 3.0TD por periodos (factura B): Plana todos; Día/Laboral P1–P5; Fin de Semana/Noche solo P6', () => {
+test('Open 3.0TD por periodos (factura B): Plana todos; Día P1–P5 y medio P6; Laboral P1–P5; Fin de Semana/Noche solo P6', () => {
   const t = (m) => calcularOfertaLuz({ ...APOLO, modalidadId: m });
   const plana = t('plana');
   assert.equal(plana.estado, ESTADO.OK);
   near(plana.total, 5086.13);
   near(plana.energia / 22254, 0.159909, 1e-9); // precio publicado, sin re-descontar
-  near(t('dia').total, 5145.78);
+  // Día: P1–P5 (12.326 kWh) y la mitad del P6 (4.964 kWh) a precio Open; la otra mitad a No Open
+  near(t('dia').total, 4857.33);
+  near(t('dia').kwhOpen, 12326 + 4964, 1e-9);
+  near(t('dia').kwhNoOpen, 4964, 1e-9);
+  near(t('dia').energia, 17290 * 0.141634 + 4964 * 0.187322, 1e-6);
   near(t('laboral').total, 4966.71);
   near(t('finde').total, 4563.99);
   near(t('noche').total, 4996.66);

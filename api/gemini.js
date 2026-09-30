@@ -12,6 +12,16 @@ const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models/";
 //   gemini-2.5-pro         100% campos · 5,3 s · $0,0081  (lo que se usaba antes)
 // El precio de 3.8-flash es promocional hasta el 31/12/2026; en enero se dobla y se
 // igualaría con 3.5-flash, momento de revisar esta elección.
+// Comparativa 3.0TD / 6.1TD (estudio de 30/09/2026 sobre 3 facturas reales, 15 tandas
+// por modelo, con el prompt acotado de extraccion.js):
+//   gemini-3.8-flash       100% campos · 3,3 s · $0,0042  ← elegido
+//   gemini-3.5-flash       100% campos · 2,8 s · $0,0090  (el doble de caro, igual resultado)
+//   gemini-3.1-flash-lite  100% campos · 3,6 s · $0,0015  (solo tras endurecer el prompt)
+//   gemini-3.5-flash-lite  toma la base imponible por "otros servicios" · $0,0021
+//   gemini-2.5-flash       lee una O por un 0 en el CUPS · 4,3 s · $0,0021
+//   gemini-2.5-pro         mismos dos fallos · 7,5 s · $0,0079  (lo que se usaba antes)
+// Con cualquier modelo, 1 de cada 6 llamadas tarda más de 7 s y alguna se queda sin
+// responder: de ahí la llamada de relevo (relevoMs).
 const MODELOS = { pro: "gemini-2.5-pro", flash: "gemini-3.8-flash" };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -79,6 +89,51 @@ async function callGeminiWithRetry(apiKey, body, maxAttempts = 3, url = GEMINI_B
   throw lastError;
 }
 
+/**
+ * Llamada con relevo: si la primera petición no ha contestado en `relevoMs`, se lanza
+ * una segunda en paralelo y se devuelve la primera que responda bien. Acota la espera
+ * cuando una llamada sale lenta o se queda colgada, a cambio de pagar dos llamadas
+ * en esos casos. Si la primera falla antes, el relevo sale de inmediato.
+ */
+async function callGeminiConRelevo(apiKey, body, url, presupuestoMs, relevoMs) {
+  const fin = Date.now() + presupuestoMs;
+  const controllers = [];
+  const intento = async () => {
+    const controller = new AbortController();
+    controllers.push(controller);
+    const timeout = setTimeout(() => controller.abort(), Math.max(0, fin - Date.now()));
+    try {
+      const response = await fetch(`${url}?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`Gemini error ${response.status}`);
+      return await response.json();
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  const primera = intento();
+  let lanzarRelevo;
+  const relevo = new Promise((resolve, reject) => {
+    lanzarRelevo = () => { lanzarRelevo = () => {}; intento().then(resolve, reject); };
+  });
+  const timer = setTimeout(() => lanzarRelevo(), relevoMs);
+  primera.catch(() => lanzarRelevo());
+  try {
+    return await Promise.any([primera, relevo]);
+  } catch (err) {
+    const e = err.errors?.[0] || err;
+    throw e.name === "AbortError" ? new Error("Tiempo agotado con relevo") : e;
+  } finally {
+    clearTimeout(timer);
+    controllers.forEach((c) => c.abort()); // corta la petición que ya no hace falta
+  }
+}
+
 // Sube el límite de body a 10 MB (Vercel/Next.js API routes)
 export const config = {
   api: {
@@ -99,7 +154,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { text, history = [], file, json = false, modelo = "pro", thinkingBudget, presupuestoMs } = req.body;
+    const { text, history = [], file, json = false, modelo = "pro", thinkingBudget, presupuestoMs, relevoMs } = req.body;
 
     const contents = history.map((msg) => {
       if (msg.parts) return msg;
@@ -132,7 +187,9 @@ export default async function handler(req, res) {
     const url = GEMINI_BASE + (MODELOS[modelo] || MODELOS.pro) + ":generateContent";
 
     const presupuesto = Number.isFinite(presupuestoMs) ? Math.max(8000, Math.min(presupuestoMs, 165000)) : 165000;
-    const data = await callGeminiWithRetry(apiKey, geminiBody, 3, url, presupuesto);
+    const data = Number.isFinite(relevoMs)
+      ? await callGeminiConRelevo(apiKey, geminiBody, url, presupuesto, Math.max(1000, relevoMs))
+      : await callGeminiWithRetry(apiKey, geminiBody, 3, url, presupuesto);
 
     // Gemini 2.5 Pro devuelve partes de "thinking" con { thought: true }.
     // Tomamos la primera parte que NO sea thinking para obtener el texto real.

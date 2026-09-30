@@ -42,18 +42,23 @@ fecha de emisión ni el mes actual.
 `energía = kWh a precio Open + kWh a precio No Open`, con los precios de la matriz
 publicada (ya incluyen descuentos; No Open = base × 0,82, no el precio base).
 
-Criterio comercial (responsable, 18/09/2026), por periodos:
+Criterio comercial (responsable, 30/09/2026), por periodos:
 
-| Modalidad | Precio Open en | Precio No Open en |
-|---|---|---|
-| Plana | P1–P6 | — |
-| Día | P1–P5 | P6 |
-| Laboral | P1–P5 | P6 |
-| Fin de Semana | P6 | P1–P5 |
-| Noche | P6 | P1–P5 |
+| Modalidad | Precio Open en | Precio No Open en | En comparativas |
+|---|---|---|---|
+| Plana | P1–P6 | — | Sí |
+| Día | P1–P5 y la mitad del P6 | la otra mitad del P6 | Sí |
+| Laboral | P1–P5 | P6 | Sí |
+| Fin de Semana | P6 | P1–P5 | No (`sinComparativa`) |
+| Noche | P6 | P1–P5 | No (`sinComparativa`) |
 
-Opcional: con curva horaria (CSV) o desglose del P6 en 4 franjas se calcula hora a hora con
-las franjas exactas del PDF (p. ej. Noche 3.0TD = 0–8 h todos los días).
+La mitad del P6 en Día es una aproximación: el informe la desglosa en dos líneas del P6, una
+a cada precio, sin más explicación. Fin de Semana y Noche no se ofrecen en las comparativas
+hasta estudiar cómo calcularlas. El formulario ya no pide curva horaria ni desglose del P6
+(el motor conserva ese cálculo hora a hora, sin uso desde la interfaz).
+
+Simply e Indexada tampoco se ofrecen mientras su precio esté sin actualizar
+(`precioSinActualizar`).
 
 Tramo comercial de potencia: los PDF solo dicen "Potencia contratada (Pc)" con estos
 intervalos y **no documentan qué potencia P1–P6 lo determina** cuando son distintas:
@@ -66,15 +71,15 @@ automáticamente el tramo y sus precios de energía para toda la oferta (p. ej. 
 63, 63] kW → Pc = 63 kW → 50 < Pc ≤ 100 kW). Potencias distintas por periodo no bloquean la
 comparativa. El término de potencia se cobra con los kW contratados en cada periodo (P1 sigue
 con 49 kW). El tramo se recalcula al cargar la factura y al editar potencias; si el comercial
-elige otro tramo a mano, el informe lo indica.
+elige otro tramo a mano, lo indica el panel interno del comercial (no el informe).
 
 Por encima del límite documental de Open 6.1TD (450 kW), por instrucción del responsable
 (18/09/2026): **se simula** con los precios del tramo que corresponde por potencia
 (Pc > 100 kW → 100 < Pc ≤ 450 kW) y con las **potencias reales** (p. ej. P1–P5 = 280 kW y
 P6 = 451 kW en el término de potencia). La condición documental (hasta 450 kW) no cambia:
-el informe y la pantalla muestran "Simulación con precios del tramo hasta 450 kW para
-suministro de N kW; contratación sujeta a confirmación". Simular no equivale a elegibilidad
-contractual ni a confirmación de Endesa.
+el panel interno del comercial muestra "Simulación con precios del tramo hasta 450 kW para
+suministro de N kW; contratación sujeta a confirmación" (el informe del cliente no lleva
+notas). Simular no equivale a elegibilidad contractual ni a confirmación de Endesa.
 
 ## Qué entra en la comparación
 
@@ -86,32 +91,39 @@ contractual ni a confirmación de Endesa.
 - Total de energía de la factura actual: si la IA devuelve un total que no coincide con la
   suma de las líneas impresas (p. ej. 9.938,05 € frente a 9.938,14 € en la factura A: suma
   propia del modelo con error de 0,09 €), se usa la suma de las líneas impresas y se avisa.
-- `ahorro € = coste actual comparable − coste ofertado`; `ahorro % = ahorro € / coste actual`.
-  Puede ser negativo; con coste actual 0 no hay porcentaje.
-- La anualización es una extrapolación lineal de un único periodo y se rotula como tal.
+- `ahorro € = coste actual comparable − coste ofertado`. Puede ser negativo.
+- Informe: el porcentaje de ahorro se mide sobre el total con Endesa (criterio de las
+  comparativas entregadas); si sale sobrecoste, sobre la factura actual.
+- El "ahorro anual estimado" es una extrapolación lineal del periodo facturado a 365 días.
+- Informe 3.0TD/6.1TD: mismo formato que el de 2.0. El PDF es una captura de ese bloque,
+  escalada para caber siempre en una página A4.
 
 ## Extracción con Gemini
 
-Modelo: `gemini-2.5-pro` (estable; https://ai.google.dev/gemini-api/docs/models, consultado
-18/09/2026) con `thinkingBudget: 128` y salida JSON. Medido con la integración real: 17–22 s
-por factura, 25/25 campos correctos en las 3 facturas, en dos tandas.
+Modelo: `gemini-3.8-flash` (https://ai.google.dev/gemini-api/docs/models, consultado
+30/09/2026) con `thinkingBudget: 128` y salida JSON. Estudio de 30/09/2026 sobre las 3
+facturas de referencia (27 campos cada una, 15 tandas por modelo): 100 % de campos, 3,3 s de
+media y 0,0042 $ por factura (precio promocional hasta el 31/12/2026; después, el doble).
+La tabla completa de modelos está en `api/gemini.js`.
 
-Tiempos: el servidor tiene un presupuesto de 40 s para los reintentos y el navegador corta a
-los 45 s ofreciendo reintentar o introducir los datos a mano (un corte no cuenta como
-extracción). Una sola llamada por factura: cambiar tramo, modalidad, potencia o exportar no
+Tiempos: lo normal son 2–4 s. Si a los 4,5 s no hay respuesta, el servidor lanza una segunda
+llamada en paralelo y se queda con la primera que llegue (presupuesto total 14 s); el
+navegador corta a los 16 s ofreciendo reintentar o introducir los datos a mano (un corte no
+cuenta como extracción). Medido con relevo: 23 de 24 extracciones en menos de 8 s.
+Una sola llamada por factura: cambiar tramo, modalidad, potencia o exportar no
 llama a la IA. Caché en memoria de la pestaña (no en disco: contiene datos personales) con
 clave SHA-256 del documento + `EXTRACTOR_VERSION` (`src/lib/energia/geminiCliente.js`).
 Las tarifas no se envían a la IA: están estructuradas en `src/data/`.
 
 No implementado: extracción local de texto del PDF antes de la IA (necesitaría una
-dependencia nueva, pdf.js). Con Pro acotado ya se cumple el objetivo de tiempo sin
-renunciar a la lectura visual de tablas.
+dependencia nueva, pdf.js).
 
-`src/lib/energia/extraccion.js`. Gemini solo transcribe valores y unidades impresos
-(fechas de emisión y de consumo por separado, lecturas y consumo facturado por separado,
-maxímetros del periodo y del año móvil por separado, cada componente de energía). El
-código convierte unidades (c€ → €, W → kW, €/kW·año → €/kW·día), comprueba sumas e
-impuestos y devuelve incidencias. No es un entrenamiento del modelo.
+`src/lib/energia/extraccion.js`. Gemini solo transcribe los campos que usa la comparativa
+(titular, CUPS, tarifa, fechas, días, potencias y consumo por periodo, excesos, reactiva,
+bono social, alquiler, IVA y total). El prompt anterior pedía además lecturas, maxímetros y
+cada línea de energía y potencia: triple de coste y 9 s de media sin mejorar esos campos.
+El código comprueba sumas, días e impuestos y devuelve incidencias. No es un entrenamiento
+del modelo.
 
 Evaluación con la integración real: `node scripts/eval_gemini_facturas.mjs <carpeta> <salida>`
 (carpeta y salida fuera del repositorio; `casos.json` en la carpeta de facturas).
