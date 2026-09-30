@@ -397,7 +397,7 @@ export default function EstudioComparativo() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          json: true, modelo: 'pro', thinkingBudget: 128, presupuestoMs: 40000,
+          json: true, modelo: 'flash', thinkingBudget: 128, presupuestoMs: 40000,
           text: EXTRACTION_PROMPT,
           history: [
             { role: 'user',  parts: [{ text: 'Actúa como experto en el mercado eléctrico español. Extrae datos estructurados de facturas eléctricas y devuelve JSON válido. Aplica correctamente las reglas de IVA españolas del sector eléctrico.' }] },

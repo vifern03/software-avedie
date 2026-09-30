@@ -15,6 +15,10 @@ const PROXY_URL  = '/api/gemini';
    tarjetas informativas de Tarifas.jsx (src/data/tarifasGas.js). */
 const GAS_ALL = [...GAS, ...GAS_EMPRESA];
 
+/* Ninguna tarifa de gas tiene todavía documento de precios nuevo: la comparativa
+   queda bloqueada hasta que se actualicen. */
+const COMPARATIVA_BLOQUEADA = true;
+
 /* Timeout de seguridad: si Gemini no responde en este tiempo, se aborta la petición
    y se muestra un error en vez de dejar la carga colgada indefinidamente. */
 const EXTRACTION_TIMEOUT_MS = 45000; // espera máxima; el servidor recibe 40 s de presupuesto
@@ -197,7 +201,7 @@ export default function EstudioComparativoGas() {
   const ahorroAnual   = extrapolarAnual(dif, dias) ?? 0;
   const dto = 0;
 
-  const isReady = kwhGas > 0 && dias > 0 && factActual > 0 && gasOk;
+  const isReady = !COMPARATIVA_BLOQUEADA && kwhGas > 0 && dias > 0 && factActual > 0 && gasOk;
 
   /* ════════════ PRINT TITLE ════════════ */
 
@@ -239,7 +243,7 @@ export default function EstudioComparativoGas() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          json: true, modelo: 'pro', thinkingBudget: 128, presupuestoMs: 40000,
+          json: true, modelo: 'flash', thinkingBudget: 128, presupuestoMs: 40000,
           text: GAS_EXTRACTION_PROMPT,
           history: [
             { role: 'user',  parts: [{ text: 'Actúa como experto en el mercado gasista español. Extrae datos estructurados de facturas de gas natural y devuelve JSON válido, aplicando correctamente las reglas de IVA y término fijo del sector del gas en España.' }] },
@@ -397,17 +401,26 @@ export default function EstudioComparativoGas() {
             <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-3">
               1 · Tarifa Endesa Gas a comparar <span className="text-red-400">*</span>
             </p>
+            {COMPARATIVA_BLOQUEADA && (
+              <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-300 rounded-lg px-3 py-2 mb-3">
+                <strong>Comparativas de gas bloqueadas.</strong> Se reactivarán cuando se actualicen los precios de las tarifas de gas.
+              </p>
+            )}
             <div className="space-y-2 mb-4">
               {GAS_ALL.map(t => {
                 const precio = mant ? t.conMant.promo : t.sinMant.promo;
                 return (
                   <label
                     key={t.id}
-                    className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                      tarifaGasId === t.id ? 'border-orange-400 bg-orange-50' : 'border-google-border hover:border-orange-200'
+                    className={`flex items-start gap-3 p-3 rounded-xl border transition-all ${
+                      COMPARATIVA_BLOQUEADA
+                        ? 'border-google-border bg-gray-50 opacity-50 cursor-not-allowed'
+                        : tarifaGasId === t.id
+                          ? 'border-orange-400 bg-orange-50 cursor-pointer'
+                          : 'border-google-border hover:border-orange-200 cursor-pointer'
                     }`}
                   >
-                    <input type="radio" name="tarifaGas" value={t.id} checked={tarifaGasId === t.id} onChange={() => setTarifaGasId(t.id)} className="accent-orange-500 mt-0.5" />
+                    <input type="radio" name="tarifaGas" value={t.id} checked={tarifaGasId === t.id} disabled={COMPARATIVA_BLOQUEADA} onChange={() => setTarifaGasId(t.id)} className="accent-orange-500 mt-0.5 disabled:cursor-not-allowed" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium text-google-dark">{t.title}</span>

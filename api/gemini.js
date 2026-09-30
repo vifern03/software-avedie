@@ -1,8 +1,10 @@
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models/";
-// Modelos estables (https://ai.google.dev/gemini-api/docs/models, consultado 18/09/2026).
-// Extracción de facturas: gemini-2.5-pro con thinkingBudget 128 → 17–22 s y 25/25 campos
-// en las facturas de prueba. "flash" solo se usa si el llamante lo pide expresamente.
-const MODELOS = { pro: "gemini-2.5-pro", flash: "gemini-2.5-flash" };
+// Modelos estables (https://ai.google.dev/gemini-api/docs/models, consultado 30/09/2026).
+// Extracción de facturas: gemini-3.5-flash con thinkingBudget 128 resuelve una factura
+// en 1,3–1,9 s sin fallar ningún campo, frente a los 16–22 s de gemini-2.5-pro.
+// Se descarta gemini-3-flash-preview: mismo resultado y un tercio del coste, pero es
+// preview y sin límite de razonamiento se dispara a 88 s y 31.000 tokens de "thinking".
+const MODELOS = { pro: "gemini-2.5-pro", flash: "gemini-3.5-flash" };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
