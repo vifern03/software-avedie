@@ -39,6 +39,23 @@ export const HISTORICO_TARIFAS = [
     },
   },
   {
+    producto: 'Open 3.0TD',
+    vigencia: { desde: '2026-09-17', hasta: '2026-09-27' },
+    fuente: '20260917 3.0TD_OPEN_18_V1.pdf',
+    datos: {
+      baseEnergia: [0.228942, 0.228942, 0.228442, 0.228442],
+      extraAnyo: 18,
+      dtoModalidad: { plana: 15, dia: 20, laboral: 25, finde: 45, noche: 55 },
+      matrix: [
+        [0.153391, 0.141944, 0.130497, 0.084709, 0.061814],
+        [0.153391, 0.141944, 0.130497, 0.084709, 0.061814],
+        [0.153056, 0.141634, 0.130212, 0.084524, 0.061679],
+        [0.153056, 0.141634, 0.130212, 0.084524, 0.061679],
+      ],
+      horasNoOpen: [0.187732, 0.187732, 0.187322, 0.187322],
+    },
+  },
+  {
     producto: 'Open 6.1TD',
     vigencia: { desde: '2026-09-17', hasta: '2026-09-27' },
     fuente: '20260917 6.1TD_OPEN_18_V1.pdf',

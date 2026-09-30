@@ -10,7 +10,7 @@ const near = (a, b, tol = 0.01) => assert.ok(Math.abs(a - b) <= tol, `${a} ≠ $
 const r = calcularOfertaLuz({
   producto: OPEN_30TD, modalidadId: 'plana', potenciasKw: [49, 63, 63, 63, 63, 63], dias: 31,
   periodo: { desde: '2026-07-01', hasta: '2026-07-31' }, kwhPeriodo: [7170, 5156, 0, 0, 0, 9928],
-  mantenidos: { excesos: 53.33, reactiva: 124.56, alquiler: 8.15, bonoSocial: 0.77 }, ivaRate: 0.21, fechaOferta: '2026-09-18',
+  mantenidos: { excesos: 53.33, reactiva: 124.56, alquiler: 8.15, bonoSocial: 0.77 }, ivaRate: 0.21, fechaOferta: '2026-09-30',
 });
 const m = construirInforme({
   resultado: r, oferta: 'Open 3.0TD — Plana', cliente: 'CLIENTE', cups: 'ES00',
@@ -19,9 +19,9 @@ const m = construirInforme({
 });
 
 test('informe Apolo: factura completa frente a oferta Plana', () => {
-  near(m.totalOferta, 4892.16);
-  near(m.ahorroEur, 1480.60);
-  assert.equal(m.ahorroPct, 23.23);
+  near(m.totalOferta, 5086.13);
+  near(m.ahorroEur, 1286.63);
+  assert.equal(m.ahorroPct, 20.19);
   assert.equal(m.facturaOriginal, 6372.76);
   assert.equal(m.comparable, 6372.76); // no se excluye nada por defecto
 });
@@ -31,7 +31,7 @@ test('informe: conceptos adicionales mantenidos; IE e IVA recalculados sobre sus
     ['Excesos de potencia', 53.33], ['Energía reactiva', 124.56], ['Financiación del bono social', 0.77],
   ]);
   const ie = m.impuestos.find(i => i.concepto === 'Impuesto sobre la electricidad');
-  near(ie.importe, (253.93 + 3406.11 + 53.33 + 124.56 + 0.77) * 0.0511269632);
+  near(ie.importe, (253.93 + 3558.61 + 53.33 + 124.56 + 0.77) * 0.0511269632);
   assert.notEqual(ie.importe.toFixed(2), '255.78'); // no se copia el importe antiguo
   const iva = m.impuestos.find(i => i.concepto.startsWith('IVA'));
   near(iva.importe, r.baseIVA * 0.21, 1e-9);

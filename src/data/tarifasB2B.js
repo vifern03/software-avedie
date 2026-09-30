@@ -4,8 +4,8 @@
  * historicoTarifas.js.
  *
  * Documentos de origen (carpeta "nuevas tarifas", fechados 17/09/2026, salvo
- * Open 6.1TD, que ya usa el anexo del 25/09/2026):
- *   20260917 3.0TD_OPEN_18_V1.pdf · 20260925 6.1TD_OPENX_18_V1.pdf
+ * Open 3.0TD y Open 6.1TD, que ya usan los anexos del 25/09/2026):
+ *   20260925 3.0TD_OPENX_18_V1.pdf · 20260925 6.1TD_OPENX_18_V1.pdf
  *   20260917 AUT_3.0TD_SIMPLY_V1.pdf · 20260917 AUT_6.1TD_SIMPLY_V1.pdf
  *   20260917 2.0TD_TEMPO24H_28_V1.pdf
  *
@@ -19,7 +19,7 @@
  * peajes/cargos aparte sobre estos precios.
  */
 
-const DOC_OPEN_30 = '20260917 3.0TD_OPEN_18_V1.pdf';
+const DOC_OPEN_30 = '20260925 3.0TD_OPENX_18_V1.pdf';
 const DOC_OPEN_61 = '20260925 6.1TD_OPENX_18_V1.pdf';
 
 /* Términos de potencia 3.0TD y 6.1TD (sin descuento; iguales en Open y Simply). */
@@ -56,7 +56,6 @@ const POTENCIA_61TD = [
  */
 export const OPEN_30TD = {
   id: 'open30',
-  precioSinActualizar: true,
   nombre: 'Open 3.0TD',
   nivel: '30',
   fuente: DOC_OPEN_30,
@@ -71,7 +70,7 @@ export const OPEN_30TD = {
   potencias: ['15 < Pc ≤ 30 kW', '30 < Pc ≤ 50 kW', '50 < Pc ≤ 100 kW', 'Pc > 100 kW'],
   baseEnergia: [0.228942, 0.228942, 0.228442, 0.228442],
   modalidades: [
-    { id: 'plana', periodosOpen: [1, 2, 3, 4, 5, 6],   label: 'Plana',         dto: 15, desc: 'Las 24h del día los 365 días al año',
+    { id: 'plana', periodosOpen: [1, 2, 3, 4, 5, 6],   label: 'Plana',         dto: 12, desc: 'Las 24h del día los 365 días al año',
       ventanas: { laborable: [[0, 24]], finde: [[0, 24]] } },
     { id: 'dia', periodosOpen: [1, 2, 3, 4, 5],     label: 'Día',           dto: 20, desc: 'De 8h a 24h todos los días del año',
       ventanas: { laborable: [[8, 24]], finde: [[8, 24]] } },
@@ -79,25 +78,25 @@ export const OPEN_30TD = {
       ventanas: { laborable: [[8, 24]], finde: [] } },
     { id: 'finde', periodosOpen: [6],   label: 'Fin de Semana', dto: 45, desc: 'Las 24h del día de sábados, domingos y festivos nacionales',
       ventanas: { laborable: [], finde: [[0, 24]] } },
-    { id: 'noche', periodosOpen: [6],   label: 'Noche',         dto: 55, desc: 'De 0h a 8h todos los días del año',
+    { id: 'noche', periodosOpen: [6],   label: 'Noche',         dto: 30, desc: 'De 0h a 8h todos los días del año',
       ventanas: { laborable: [[0, 8]], finde: [[0, 8]] } },
   ],
   extraAnyo: 18,
   // Precios con descuentos incluidos: [tramo][modalidad]
   matrix: [
-    [0.153391, 0.141944, 0.130497, 0.084709, 0.061814],
-    [0.153391, 0.141944, 0.130497, 0.084709, 0.061814],
-    [0.153056, 0.141634, 0.130212, 0.084524, 0.061679],
-    [0.153056, 0.141634, 0.130212, 0.084524, 0.061679],
+    [0.160259, 0.141944, 0.130497, 0.084709, 0.119050],
+    [0.160259, 0.141944, 0.130497, 0.084709, 0.119050],
+    [0.159909, 0.141634, 0.130212, 0.084524, 0.118790],
+    [0.159909, 0.141634, 0.130212, 0.084524, 0.118790],
   ],
   horasNoOpen: [0.187732, 0.187732, 0.187322, 0.187322],
   potenciaTerminos: POTENCIA_30TD,
   penalizacion: '20% de la energía estimada pendiente de suministrar hasta fin del primer año, al precio sin descuentos',
-  contratacion: { desde: '2026-09-17', hasta: '2026-09-27', fuente: DOC_OPEN_30 },
+  contratacion: { desde: '2026-09-28', hasta: '2026-10-02', fuente: DOC_OPEN_30 },
   duracionContrato: '1 año con permanencia',
   duracionDescuento: '18% adicional durante 1 año; el documento no fija plazo para el descuento de modalidad',
   cambioModalidad: 'Una vez al mes; afecta a todo el ciclo de facturación en curso y siguientes',
-  validez: 'del 17/09/2026 hasta el 27/09/2026',
+  validez: 'del 28/09/2026 hasta el 02/10/2026',
 };
 
 export const OPEN_61TD = {
