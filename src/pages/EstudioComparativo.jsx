@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Calculator, Upload, FileText, Printer, Download, X, AlertTriangle, Loader2 } from 'lucide-react';
+import { Calculator, Upload, FileText, Printer, Download, X, AlertTriangle, Loader2, SlidersHorizontal } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import { exportElementToPdf, slugifyFilename } from '../lib/exportPdf';
 import { LUZ, LUZ_SOLAR, INDEXADA_2_0TD } from '../data/tarifasB2C';
 import { TEMPO_2_0TD } from '../data/tarifasB2B';
@@ -22,9 +23,11 @@ function estimateExtractionSeconds(fileSizeBytes) {
 const [LUZ_DIRECTO, LUZ_PRESCRIPTOR, LUZ_TOC] = LUZ;
 
 /* Tu Otra Casa 50: sin curva horaria, se estima que el 35% del consumo cae en las
-   horas promo (precio "Horas Promo") y el 65% restante a precio "Resto h.". */
+   horas promo (precio "Horas Promo") y el resto a precio "Resto h.". Los
+   administradores pueden cambiar el porcentaje (configuracion.toc_pct_promo). */
 const TOC_PCT_PROMO = 0.35;
-const tocPrecioMedio = p => TOC_PCT_PROMO * p.promoH + (1 - TOC_PCT_PROMO) * p.restoH;
+const TOC_PCT_CLAVE = 'toc_pct_promo';
+const tocPrecioMedio = (p, pctPromo) => pctPromo * p.promoH + (1 - pctPromo) * p.restoH;
 const [SOLAR_BASIC, SOLAR_PLUS, SOLAR_BATERIA] = LUZ_SOLAR;
 
 const TARIFAS = [
@@ -35,8 +38,8 @@ const TARIFAS = [
     sinMant: LUZ_PRESCRIPTOR.sinMant.promo, conMant: LUZ_PRESCRIPTOR.conMant.promo, potPunta: LUZ_PRESCRIPTOR.potPunta, potValle: LUZ_PRESCRIPTOR.potValle,
     validez: LUZ_PRESCRIPTOR.validez, contratacion: LUZ_PRESCRIPTOR.contratacion },
   { id: 'toc', label: 'Tu Otra Casa 50 (2.0TD)', shortLabel: 'Tu Otra Casa 50', tag: '2.0TD', tagClass: 'bg-emerald-100 text-emerald-700',
-    isToc: true, pctPromo: TOC_PCT_PROMO, preciosSinMant: LUZ_TOC.sinMant, preciosConMant: LUZ_TOC.conMant,
-    sinMant: tocPrecioMedio(LUZ_TOC.sinMant), conMant: tocPrecioMedio(LUZ_TOC.conMant), potPunta: LUZ_TOC.potPunta, potValle: LUZ_TOC.potValle,
+    isToc: true, preciosSinMant: LUZ_TOC.sinMant, preciosConMant: LUZ_TOC.conMant,
+    potPunta: LUZ_TOC.potPunta, potValle: LUZ_TOC.potValle,
     validez: LUZ_TOC.validez, contratacion: LUZ_TOC.contratacion },
   { id: 'tempo', bloqueada: true, label: 'TEMPO 2.0TD — Precio Único 24H (B2B ≤ 15 kW)', shortLabel: 'TEMPO 2.0TD', tag: 'Tempo', tagClass: 'bg-amber-100 text-amber-700',
     sinMant: TEMPO_2_0TD.energia.promo, conMant: TEMPO_2_0TD.energia.promo,
@@ -243,6 +246,87 @@ function MiniToggle({ on, onToggle }) {
   );
 }
 
+/* ── Ajuste del % de consumo en las 50 h (Tu Otra Casa 50, solo administradores) ── */
+
+function TocPctModal({ pctActual, pctGeneral, precios, onAplicarFactura, onAplicarTodas, onClose }) {
+  const [valor, setValor]         = useState(String(Math.round(pctActual * 1000) / 10).replace('.', ','));
+  const [guardando, setGuardando] = useState(false);
+  const [error, setError]         = useState('');
+
+  useEffect(() => {
+    const onKey = e => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const num      = parseFloat(valor.replace(',', '.'));
+  const valido   = Number.isFinite(num) && num >= 0 && num <= 100;
+  const pctNuevo = valido ? num / 100 : null;
+
+  async function aplicarTodas() {
+    setGuardando(true); setError('');
+    const ok = await onAplicarTodas(pctNuevo);
+    setGuardando(false);
+    if (!ok) setError('No se ha podido guardar. Inténtalo de nuevo.');
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-google w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-gray-100">
+          <div>
+            <p className="text-[10px] font-semibold text-emerald-600 uppercase tracking-wider mb-1">Tu Otra Casa 50</p>
+            <h3 className="text-base font-semibold text-google-dark leading-tight">Consumo en las 50 h de mayor consumo</h3>
+          </div>
+          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 text-google-gray"><X size={16} /></button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3">
+            <p className="text-xs text-emerald-800">Porcentaje actual estimado</p>
+            <p className="text-2xl font-bold text-emerald-700 leading-tight">{pct(pctActual, 0)}</p>
+            {pctActual !== pctGeneral && (
+              <p className="text-[11px] text-emerald-700 mt-0.5">Solo para esta factura · el general es {pct(pctGeneral, 0)}</p>
+            )}
+          </div>
+
+          <p className="text-xs text-google-gray leading-relaxed">
+            Endesa aplica un 50% de descuento en las 50 horas de mayor consumo de cada mes. La factura no trae
+            el consumo hora a hora, así que el comparador estima qué parte de los kWh cae en esas horas: ese
+            porcentaje se cobra a <strong className="text-google-dark">{precios.promoH.toFixed(6)} €/kWh</strong> y
+            el resto a <strong className="text-google-dark">{precios.restoH.toFixed(6)} €/kWh</strong>.
+            Súbelo si el cliente concentra mucho consumo en pocas horas (climatización, coche eléctrico…) y
+            bájalo si su consumo está muy repartido a lo largo del día.
+          </p>
+
+          <div>
+            <label className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-1.5 block">Nuevo porcentaje (%)</label>
+            <div className="flex items-center gap-3">
+              <input type="text" inputMode="decimal" value={valor} onChange={e => setValor(e.target.value)} className="input-field text-sm w-28" autoFocus />
+              {valido
+                ? <span className="text-[11px] text-google-gray font-mono">Precio medio: {tocPrecioMedio(precios, pctNuevo).toFixed(6)} €/kWh</span>
+                : <span className="text-[11px] text-red-500">Introduce un valor entre 0 y 100</span>}
+            </div>
+          </div>
+          {error && <p className="text-[11px] text-red-600">{error}</p>}
+        </div>
+
+        <div className="px-6 pb-5 flex flex-col sm:flex-row gap-2">
+          <button type="button" disabled={!valido || guardando} onClick={() => onAplicarFactura(pctNuevo)}
+            className="flex-1 bg-white border border-google-border text-google-dark text-sm font-medium px-4 py-2 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+            Aplicar solo a esta factura
+          </button>
+          <button type="button" disabled={!valido || guardando} onClick={aplicarTodas}
+            className="flex-1 bg-google-blue text-white text-sm font-medium px-4 py-2 rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+            {guardando && <Loader2 size={14} className="animate-spin" />}
+            Aplicar a todas
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Estado inicial ──────────────────────────────────────────────────────────── */
 
 const INIT = {
@@ -269,9 +353,14 @@ const INIT = {
    ══════════════════════════════════════════════════════════════════════════════ */
 
 export default function EstudioComparativo() {
-  const { users } = useAuth();
+  const { users, currentUser } = useAuth();
+  const isAdmin = currentUser?.role === 'admin';
 
   const [tarifaId, setTarifaId]             = useState('directo');
+  // Tu Otra Casa 50: % general (guardado para todos) y % solo para esta factura
+  const [tocPctGeneral, setTocPctGeneral]   = useState(TOC_PCT_PROMO);
+  const [tocPctFactura, setTocPctFactura]   = useState(null);
+  const [showTocPct, setShowTocPct]         = useState(false);
   const [mant, setMant]                     = useState(false);
   const [compExcActiva, setCompExcActiva]   = useState(true);
   const [form, setForm]                     = useState(INIT);
@@ -292,7 +381,10 @@ export default function EstudioComparativo() {
 
   const asesorDisplay = form.asesor === '__otro__' ? (form.asesorLibre || '') : form.asesor;
   const tarifa    = TARIFAS.find(t => t.id === tarifaId);
-  const precioEn  = mant ? tarifa.conMant : tarifa.sinMant;
+  const tocPct    = tocPctFactura ?? tocPctGeneral;
+  const precioEn  = tarifa.isToc
+    ? tocPrecioMedio(mant ? tarifa.preciosConMant : tarifa.preciosSinMant, tocPct)
+    : (mant ? tarifa.conMant : tarifa.sinMant);
 
   const kwhP1    = n(form.kwhP1);
   const kwhP2    = n(form.kwhP2);
@@ -326,7 +418,7 @@ export default function EstudioComparativo() {
 
   // Tu Otra Casa 50: el precio de cada periodo es la media 35% Horas Promo / 65% Resto h.
   const tocPrecios  = tarifa.isToc ? (mant ? tarifa.preciosConMant : tarifa.preciosSinMant) : null;
-  const tocDesglose = tocPrecios ? `${pct(tarifa.pctPromo, 0)} × ${tocPrecios.promoH.toFixed(6)} + ${pct(1 - tarifa.pctPromo, 0)} × ${tocPrecios.restoH.toFixed(6)}` : '';
+  const tocDesglose = tocPrecios ? `${pct(tocPct, 0)} × ${tocPrecios.promoH.toFixed(6)} + ${pct(1 - tocPct, 0)} × ${tocPrecios.restoH.toFixed(6)}` : '';
 
   const precioP1 = precioBaseP1 * (1 - dto);
   const precioP2 = precioBaseP2 * (1 - dto);
@@ -380,6 +472,25 @@ export default function EstudioComparativo() {
     window.addEventListener('afterprint',  onAfter);
     return () => { window.removeEventListener('beforeprint', onBefore); window.removeEventListener('afterprint', onAfter); };
   }, [isReady, form.cliente, todayShort]);
+
+  /* ════════════ TU OTRA CASA 50 · % 50 h ════════════ */
+
+  useEffect(() => {
+    supabase.from('configuracion').select('valor').eq('clave', TOC_PCT_CLAVE).maybeSingle()
+      .then(({ data }) => {
+        const v = parseFloat(data?.valor);
+        if (Number.isFinite(v) && v >= 0 && v <= 1) setTocPctGeneral(v);
+      });
+  }, []);
+
+  async function aplicarTocPctTodas(v) {
+    const { error } = await supabase.from('configuracion').upsert([{ clave: TOC_PCT_CLAVE, valor: String(v) }]);
+    if (error) { console.error('aplicarTocPctTodas:', error); return false; }
+    setTocPctGeneral(v);
+    setTocPctFactura(null);
+    setShowTocPct(false);
+    return true;
+  }
 
   /* ════════════ EXTRACCIÓN IA ════════════ */
 
@@ -554,9 +665,28 @@ export default function EstudioComparativo() {
 
           {/* 1 · Tarifa */}
           <div className="bg-white border border-google-border rounded-xl shadow-sm p-5">
-            <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-3">
-              1 · Tarifa Endesa a comparar <span className="text-red-400">*</span>
-            </p>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider">
+                1 · Tarifa Endesa a comparar <span className="text-red-400">*</span>
+              </p>
+              {tarifa.isToc && isAdmin && (
+                <button type="button" onClick={() => setShowTocPct(true)}
+                  className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg hover:bg-emerald-100 transition-colors">
+                  <SlidersHorizontal size={12} />
+                  Ajustar % 50 h ({pct(tocPct, 0)})
+                </button>
+              )}
+            </div>
+            {showTocPct && (
+              <TocPctModal
+                pctActual={tocPct}
+                pctGeneral={tocPctGeneral}
+                precios={mant ? tarifa.preciosConMant : tarifa.preciosSinMant}
+                onAplicarFactura={v => { setTocPctFactura(v); setShowTocPct(false); }}
+                onAplicarTodas={aplicarTocPctTodas}
+                onClose={() => setShowTocPct(false)}
+              />
+            )}
             <div className="space-y-2 mb-4">
               {TARIFAS.map(t => (
                 <label
@@ -579,7 +709,7 @@ export default function EstudioComparativo() {
                       {t.isIndexada
                         ? <>Precio dinámico OMIE (A + B×OMIE)</>
                         : t.isToc
-                          ? <>{(mant ? t.conMant : t.sinMant).toFixed(6)} €/kWh ({pct(t.pctPromo, 0)} × {(mant ? t.preciosConMant : t.preciosSinMant).promoH.toFixed(6)} + {pct(1 - t.pctPromo, 0)} × {(mant ? t.preciosConMant : t.preciosSinMant).restoH.toFixed(6)})</>
+                          ? <>Mayor consumo 50 h {(mant ? t.preciosConMant : t.preciosSinMant).promoH.toFixed(6)} €/kWh · Resto {(mant ? t.preciosConMant : t.preciosSinMant).restoH.toFixed(6)} €/kWh</>
                           : <>{(mant ? t.conMant : t.sinMant).toFixed(6)} €/kWh</>
                       } · Pot. P {t.potPunta.toFixed(3)} — V {t.potValle.toFixed(3)} €/kW·año
                       {t.isSolar && <> · Comp. excedentes {t.compExcedentes.toFixed(2)} €/kWh</>}
