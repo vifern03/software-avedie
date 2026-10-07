@@ -41,7 +41,7 @@ const TARIFAS = [
     isToc: true, preciosSinMant: LUZ_TOC.sinMant, preciosConMant: LUZ_TOC.conMant,
     potPunta: LUZ_TOC.potPunta, potValle: LUZ_TOC.potValle,
     validez: LUZ_TOC.validez, contratacion: LUZ_TOC.contratacion },
-  { id: 'tempo', bloqueada: true, label: 'TEMPO 2.0TD — Precio Único 24H (B2B ≤ 15 kW)', shortLabel: 'TEMPO 2.0TD', tag: 'Tempo', tagClass: 'bg-amber-100 text-amber-700',
+  { id: 'tempo', label: 'TEMPO 2.0TD — Precio Único 24H (B2B ≤ 15 kW)', shortLabel: 'TEMPO 2.0TD', tag: 'Tempo', tagClass: 'bg-amber-100 text-amber-700',
     sinMant: TEMPO_2_0TD.energia.promo, conMant: TEMPO_2_0TD.energia.promo,
     potPunta: TEMPO_2_0TD.potencia[0].anyo, potValle: TEMPO_2_0TD.potencia[1].anyo,
     validez: TEMPO_2_0TD.validez, contratacion: TEMPO_2_0TD.contratacion,

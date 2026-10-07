@@ -202,22 +202,21 @@ export const SIMPLY_61TD = {
 /* ── TEMPO 2.0TD (producto B2B, ≤ 15 kW) ─────────────────────────────────────── */
 export const TEMPO_2_0TD = {
   id: 'tempo',
-  precioSinActualizar: true,
   nombre: 'TEMPO 2.0TD (24h)',
   nivel: '20',
-  fuente: '20260917 2.0TD_TEMPO24H_28_V1.pdf',
+  fuente: '20261003 2.0TD_TEMPO24H_20_V1.pdf',
   potenciaMaxima: 15,
-  energia: { promo: 0.135449, base: 0.188123 }, // precio único 24h; promo = base × (1 − 28%)
-  descuento: 28,
+  energia: { promo: 0.150498, base: 0.188123 }, // precio único 24h; promo = base × (1 − 20%)
+  descuento: 20,
   potencia: [
     { p: 'P1', anyo: 44.704416, mes: 3.725368, desc: 'Laborables 8h–24h' },
     { p: 'P2', anyo: 17.725428, mes: 1.477119, desc: 'Laborables 0h–8h y 24h de fines de semana, festivos nacionales (sin sustituibles ni sin fecha fija) y 6 de enero' },
   ],
   penalizacion: '20% de la energía estimada pendiente de suministrar hasta fin del primer año, al precio sin descuentos',
-  contratacion: { desde: '2026-09-17', hasta: '2026-09-27', fuente: '20260917 2.0TD_TEMPO24H_28_V1.pdf' },
+  contratacion: { desde: '2026-10-03', hasta: '2026-10-14', fuente: '20261003 2.0TD_TEMPO24H_20_V1.pdf' },
   duracionContrato: '1 año con permanencia',
-  duracionDescuento: '28% en el término de energía durante el primer año',
-  validez: 'del 17/09/2026 hasta el 27/09/2026',
+  duracionDescuento: '20% en el término de energía durante el primer año',
+  validez: 'del 03/10/2026 hasta el 14/10/2026',
 };
 
 /* ── Indexada a OMIE 3.0TD / 6.1TD ───────────────────────────────────────────

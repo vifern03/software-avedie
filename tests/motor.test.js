@@ -266,8 +266,8 @@ test('Simply 6.1TD: pendiente de confirmación → no disponible; con simulació
 });
 
 test('TEMPO 2.0TD: precio único 24 h, potencia P1/P2 propia y límite 15 kW', () => {
-  const b = { producto: TEMPO_2_0TD, potenciasKw: [4.6, 4.6], dias: 30, kwhPeriodo: [100, 80, 120], ivaRate: 0.21, fechaOferta: HOY };
-  near(calcularOfertaLuz(b).total, 81.70);
+  const b = { producto: TEMPO_2_0TD, potenciasKw: [4.6, 4.6], dias: 30, kwhPeriodo: [100, 80, 120], ivaRate: 0.21, fechaOferta: '2026-10-07' };
+  near(calcularOfertaLuz(b).total, 87.44);
   assert.equal(calcularOfertaLuz({ ...b, potenciasKw: [16, 16] }).estado, ESTADO.NO_ELEGIBLE);
 });
 
