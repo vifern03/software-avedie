@@ -18,10 +18,13 @@ function estimateExtractionSeconds(fileSizeBytes) {
 
 /* ── Tarifas Endesa LUZ ──────────────────────────────────────────────────────── */
 
-/* Todas las tarifas salen del catálogo central (src/data/*). Solo 'toc' conserva
-   un precio medio heredado del comparador (no figura como tal en el PDF de Tu Otra
-   Casa 50, que publica precio en las 50 h de mayor consumo y en el resto). */
-const [LUZ_DIRECTO, LUZ_PRESCRIPTOR] = LUZ;
+/* Todas las tarifas salen del catálogo central (src/data/*). */
+const [LUZ_DIRECTO, LUZ_PRESCRIPTOR, LUZ_TOC] = LUZ;
+
+/* Tu Otra Casa 50: sin curva horaria, se estima que el 35% del consumo cae en las
+   horas promo (precio "Horas Promo") y el 65% restante a precio "Resto h.". */
+const TOC_PCT_PROMO = 0.35;
+const tocPrecioMedio = p => TOC_PCT_PROMO * p.promoH + (1 - TOC_PCT_PROMO) * p.restoH;
 const [SOLAR_BASIC, SOLAR_PLUS, SOLAR_BATERIA] = LUZ_SOLAR;
 
 const TARIFAS = [
@@ -31,9 +34,10 @@ const TARIFAS = [
   { id: 'prescriptor', label: 'Luz Fija 24H — Con Prescriptor', shortLabel: 'Luz Fija 24H', tag: 'Con Prescriptor', tagClass: 'bg-violet-100 text-violet-700',
     sinMant: LUZ_PRESCRIPTOR.sinMant.promo, conMant: LUZ_PRESCRIPTOR.conMant.promo, potPunta: LUZ_PRESCRIPTOR.potPunta, potValle: LUZ_PRESCRIPTOR.potValle,
     validez: LUZ_PRESCRIPTOR.validez, contratacion: LUZ_PRESCRIPTOR.contratacion },
-  { id: 'toc', bloqueada: true, label: 'Tu Otra Casa 50 (2.0TD)', shortLabel: 'Tu Otra Casa 50', tag: '2.0TD', tagClass: 'bg-emerald-100 text-emerald-700',
-    sinMant: 0.154500, conMant: 0.150000, potPunta: LUZ[2].potPunta, potValle: LUZ[2].potValle,
-    validez: LUZ[2].validez, contratacion: LUZ[2].contratacion },
+  { id: 'toc', label: 'Tu Otra Casa 50 (2.0TD)', shortLabel: 'Tu Otra Casa 50', tag: '2.0TD', tagClass: 'bg-emerald-100 text-emerald-700',
+    isToc: true, pctPromo: TOC_PCT_PROMO, preciosSinMant: LUZ_TOC.sinMant, preciosConMant: LUZ_TOC.conMant,
+    sinMant: tocPrecioMedio(LUZ_TOC.sinMant), conMant: tocPrecioMedio(LUZ_TOC.conMant), potPunta: LUZ_TOC.potPunta, potValle: LUZ_TOC.potValle,
+    validez: LUZ_TOC.validez, contratacion: LUZ_TOC.contratacion },
   { id: 'tempo', bloqueada: true, label: 'TEMPO 2.0TD — Precio Único 24H (B2B ≤ 15 kW)', shortLabel: 'TEMPO 2.0TD', tag: 'Tempo', tagClass: 'bg-amber-100 text-amber-700',
     sinMant: TEMPO_2_0TD.energia.promo, conMant: TEMPO_2_0TD.energia.promo,
     potPunta: TEMPO_2_0TD.potencia[0].anyo, potValle: TEMPO_2_0TD.potencia[1].anyo,
@@ -320,6 +324,10 @@ export default function EstudioComparativo() {
   const precioBaseP2 = isIndexada ? tarifa.energiaA.p2 + tarifa.energiaB.p2 * omie : precioEn;
   const precioBaseP3 = isIndexada ? tarifa.energiaA.p3 + tarifa.energiaB.p3 * omie : precioEn;
 
+  // Tu Otra Casa 50: el precio de cada periodo es la media 35% Horas Promo / 65% Resto h.
+  const tocPrecios  = tarifa.isToc ? (mant ? tarifa.preciosConMant : tarifa.preciosSinMant) : null;
+  const tocDesglose = tocPrecios ? `${pct(tarifa.pctPromo, 0)} × ${tocPrecios.promoH.toFixed(6)} + ${pct(1 - tarifa.pctPromo, 0)} × ${tocPrecios.restoH.toFixed(6)}` : '';
+
   const precioP1 = precioBaseP1 * (1 - dto);
   const precioP2 = precioBaseP2 * (1 - dto);
   const precioP3 = precioBaseP3 * (1 - dto);
@@ -570,7 +578,9 @@ export default function EstudioComparativo() {
                     <p className="text-[11px] text-google-gray mt-0.5 font-mono">
                       {t.isIndexada
                         ? <>Precio dinámico OMIE (A + B×OMIE)</>
-                        : <>{(mant ? t.conMant : t.sinMant).toFixed(6)} €/kWh</>
+                        : t.isToc
+                          ? <>{(mant ? t.conMant : t.sinMant).toFixed(6)} €/kWh ({pct(t.pctPromo, 0)} × {(mant ? t.preciosConMant : t.preciosSinMant).promoH.toFixed(6)} + {pct(1 - t.pctPromo, 0)} × {(mant ? t.preciosConMant : t.preciosSinMant).restoH.toFixed(6)})</>
+                          : <>{(mant ? t.conMant : t.sinMant).toFixed(6)} €/kWh</>
                       } · Pot. P {t.potPunta.toFixed(3)} — V {t.potValle.toFixed(3)} €/kW·año
                       {t.isSolar && <> · Comp. excedentes {t.compExcedentes.toFixed(2)} €/kWh</>}
                       {t.cuotaBateriaMes > 0 && <> · Batería {t.cuotaBateriaMes}€/mes</>}
@@ -941,6 +951,7 @@ export default function EstudioComparativo() {
                     <span className="text-google-gray">
                       {kwhP1} kWh (P1) × {precioP1.toFixed(6)} €/kWh
                       {isIndexada && <span className="text-cyan-600 ml-1.5 text-[11px]">({tarifa.energiaA.p1.toFixed(6)} + {tarifa.energiaB.p1} × {omie.toFixed(4)})</span>}
+                      {tarifa.isToc && <span className="text-emerald-600 ml-1.5 text-[11px]">({tocDesglose})</span>}
                       {dto > 0 && <span className="text-google-blue ml-1.5 text-[11px]">(dto. {pct(dto, 0)} incluido)</span>}
                     </span>
                     <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(imtEnP1)}</span>
@@ -950,6 +961,7 @@ export default function EstudioComparativo() {
                       <span className="text-google-gray">
                         {kwhP2} kWh (P2) × {precioP2.toFixed(6)} €/kWh
                         {isIndexada && <span className="text-cyan-600 ml-1.5 text-[11px]">({tarifa.energiaA.p2.toFixed(6)} + {tarifa.energiaB.p2} × {omie.toFixed(4)})</span>}
+                        {tarifa.isToc && <span className="text-emerald-600 ml-1.5 text-[11px]">({tocDesglose})</span>}
                       </span>
                       <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(imtEnP2)}</span>
                     </div>
@@ -959,6 +971,7 @@ export default function EstudioComparativo() {
                       <span className="text-google-gray">
                         {kwhP3} kWh (P3) × {precioP3.toFixed(6)} €/kWh
                         {isIndexada && <span className="text-cyan-600 ml-1.5 text-[11px]">({tarifa.energiaA.p3.toFixed(6)} + {tarifa.energiaB.p3} × {omie.toFixed(4)})</span>}
+                        {tarifa.isToc && <span className="text-emerald-600 ml-1.5 text-[11px]">({tocDesglose})</span>}
                       </span>
                       <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(imtEnP3)}</span>
                     </div>

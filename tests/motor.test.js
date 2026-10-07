@@ -300,14 +300,15 @@ test('LUZ 24H: precios del documento de 09/09/2026; el resto de B2C sin cambios'
   assert.deepEqual(directo.conMant, { promo: 0.114847, noPromo: 0.171414 });
   assert.deepEqual(prescriptor.sinMant, { promo: 0.137131, noPromo: 0.171414 });
   assert.deepEqual(prescriptor.conMant, { promo: 0.131989, noPromo: 0.171414 });
-  assert.equal(toc.sinMant.promoH, 0.110250);
+  assert.equal(toc.sinMant.promoH, 0.104280);
+  assert.equal(toc.sinMant.restoH, 0.208560);
   assert.equal(directo.potPunta, 34.188);
   assert.equal(LUZ_SOLAR[1].energiaConsumida.promo, 0.148707);
   assert.equal(GAS[0].sinMant.promo, 0.065590);
   assert.equal(GAS[2].terFijo, 30.672);
   // LUZ 24H ya tiene documento propio; el resto sigue con la extension interna.
-  for (const t of [LUZ[2], ...LUZ_SOLAR, ...GAS]) assert.equal(t.contratacion.extensionInterna, true);
-  for (const t of [LUZ[0], LUZ[1]]) {
+  for (const t of [...LUZ_SOLAR, ...GAS]) assert.equal(t.contratacion.extensionInterna, true);
+  for (const t of [LUZ[0], LUZ[1], LUZ[2]]) {
     assert.equal(t.contratacion.extensionInterna, undefined);
     assert.equal(t.contratacion.hasta, '2026-10-14');
   }

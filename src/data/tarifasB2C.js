@@ -5,7 +5,10 @@
  * LUZ 24H (Canal Directo y Con Prescriptor): precios y vigencia del documento
  * Endesa 'Oferta LUZ 24H' editado el 09/09/2026 (contrataciones 17/09/2026 – 14/10/2026).
  *
- * EL RESTO (Tu Otra Casa, Solar e Indexada 2.0TD) sigue pendiente de documento nuevo:
+ * TU OTRA CASA 50: documento Endesa 'Oferta Tu Otra Casa 50' editado el 10/09/2026
+ * (contrataciones 17/09/2026 – 14/10/2026).
+ *
+ * EL RESTO (Solar e Indexada 2.0TD) sigue pendiente de documento nuevo:
  * precios y descuentos sin cambios respecto a los documentos Endesa de junio de 2026.
  * VIGENCIA: extensión por instrucción interna del responsable comercial
  * (18/09/2026), tomando como referencia la ventana de los documentos B2B de luz
@@ -20,6 +23,14 @@ export const VIGENCIA_LUZ_24H = {
   fuente: 'Oferta LUZ 24H — documento Endesa editado el 09/09/2026',
 };
 const VALIDEZ_LUZ_24H = '17/09/2026 – 14/10/2026';
+
+/* TU OTRA CASA 50: documento Endesa propio. */
+export const VIGENCIA_TOC = {
+  desde: '2026-09-17',
+  hasta: '2026-10-14',
+  fuente: 'Oferta Tu Otra Casa 50 — documento Endesa editado el 10/09/2026',
+};
+const VALIDEZ_TOC = '17/09/2026 – 14/10/2026';
 
 /* Resto de tarifas B2C: siguen sin documento nuevo. */
 export const VIGENCIA_B2C_LUZ = {
@@ -70,20 +81,20 @@ export const LUZ = [
   },
   {
     id: 'tu-otra-casa',
-    precioSinActualizar: true,
     title: 'Tu Otra Casa 50',
     canal: '2.0TD',
     canalColor: 'bg-emerald-100 text-emerald-700',
     desc: '50% de descuento en las 50 horas de mayor consumo de cada mes.',
     isToc: true,
-    sinMant: { promoH: 0.110250, restoH: 0.220000, noPromoH: 0.122500, noPromoR: 0.245000 },
-    conMant: { promoH: 0.106575, restoH: 0.210000, noPromoH: 0.122500, noPromoR: 0.245000 },
+    sinMant: { promoH: 0.104280, restoH: 0.208560, noPromoH: 0.130350, noPromoR: 0.260700 },
+    // El documento no publica precio con mantenimiento: −3% sobre los precios promocionados.
+    conMant: { promoH: 0.101152, restoH: 0.202303, noPromoH: 0.130350, noPromoR: 0.260700 },
     potPunta: 32.880000,
     potValle: 5.904000,
-    descuentos: ['50% — en las 50h de mayor consumo del mes', '10% — 1 año (nuevas contrataciones)'],
+    descuentos: ['50% — en las 50h de mayor consumo del mes', '10% — 1 año (nuevas contrataciones)', '10% — indefinido sobre término de energía'],
     mantLabel: '3% adicional — serv. eléctrico en misma dirección (1 año)',
-    contratacion: VIGENCIA_B2C_LUZ,
-    validez: VALIDEZ_B2C,
+    contratacion: VIGENCIA_TOC,
+    validez: VALIDEZ_TOC,
   },
 ];
 
