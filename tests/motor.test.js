@@ -278,14 +278,15 @@ test('ofertas fuera de su ventana de contratación no se presentan como válidas
   assert.equal(calcularOfertaLuz({ ...b, producto: INDEXADA_30TD, omie: 0.05 }).estado, ESTADO.NO_DISPONIBLE);
 });
 
-test('gas RL.4 (Gas Estable): fijo prorrateado, variable sin descuento e impuesto de hidrocarburos', () => {
-  const r = calcularOfertaGas({ producto: GAS_EMPRESA[0], kwh: 20000, dias: 31, alquiler: 5, ivaRate: 0.21, consumoAnualKwh: 150000, fechaOferta: HOY });
+test('gas RL.4 (Gas Estable 28/10/2026): fijo prorrateado, variable con el 20 % e impuesto de hidrocarburos', () => {
+  const r = calcularOfertaGas({ producto: GAS_EMPRESA[0], kwh: 20000, dias: 31, alquiler: 5, ivaRate: 0.21, consumoAnualKwh: 150000, fechaOferta: HOY_OPEN });
   assert.equal(r.estado, ESTADO.OK);
-  near(r.fijo, 42.43);
+  assert.equal(r.precio, 0.102464);
+  near(r.fijo, 44.14);  // 43,313 €/mes × 12 / 365 × 31
   near(r.ieh, 46.80);
-  near(r.total, 2318.68);
-  assert.equal(calcularOfertaGas({ producto: GAS_EMPRESA[0], kwh: 20000, dias: 31, consumoAnualKwh: 400000, fechaOferta: HOY }).estado, ESTADO.NO_ELEGIBLE);
-  assert.equal(calcularOfertaGas({ producto: GAS_EMPRESA[0], kwh: 20000, dias: 31, fechaOferta: '2026-09-21' }).estado, ESTADO.NO_DISPONIBLE);
+  near(r.total, 2595.72); // (44,14 + 2.049,28 + 46,80 + 5) × 1,21
+  assert.equal(calcularOfertaGas({ producto: GAS_EMPRESA[0], kwh: 20000, dias: 31, consumoAnualKwh: 400000, fechaOferta: HOY_OPEN }).estado, ESTADO.NO_ELEGIBLE);
+  assert.equal(calcularOfertaGas({ producto: GAS_EMPRESA[0], kwh: 20000, dias: 31, fechaOferta: '2026-10-29' }).estado, ESTADO.NO_DISPONIBLE);
 });
 
 test('gas RL.1 (B2C) con IEH y precios del documento de 13/10/2026', () => {
@@ -318,7 +319,8 @@ test('B2C de octubre: Conecta Luz (sustituye a Canal Directo), LUZ 24H Con Presc
   }
   // Gas RL.2 y RL.3: documentos del 13/10/2026 (10 % + 20 % y 10 % + 10 %).
   assert.deepEqual(GAS[1].sinMant, { promo: 0.077389, noPromo: 0.110556 });
-  assert.deepEqual(GAS[1].conMant, { promo: 0.074072, noPromo: 0.110556 });
+  assert.deepEqual(GAS[1].conMant, { promo: 0.074073, noPromo: 0.110556 });
+  assert.deepEqual(GAS[2].conMant, { promo: 0.084700, noPromo: 0.110000 }); // 3 % de mantenimiento también en RL.3
   assert.equal(GAS[1].terFijo, 14.6);
   assert.deepEqual(GAS[2].sinMant, { promo: 0.088000, noPromo: 0.110000 });
   assert.equal(GAS[2].terFijo, 30.7);
