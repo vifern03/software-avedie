@@ -316,11 +316,19 @@ test('B2C de octubre: Conecta Luz (sustituye a Canal Directo), LUZ 24H Con Presc
     assert.equal(t.contratacion.hasta, '2026-12-02');
     assert.equal(t.precioSinActualizar, undefined);
   }
-  // Solar y gas RL.2–RL.6 conservan los precios anteriores.
+  // Gas RL.2 y RL.3: documentos del 13/10/2026 (10 % + 20 % y 10 % + 10 %).
+  assert.deepEqual(GAS[1].sinMant, { promo: 0.077389, noPromo: 0.110556 });
+  assert.deepEqual(GAS[1].conMant, { promo: 0.074072, noPromo: 0.110556 });
+  assert.equal(GAS[1].terFijo, 14.6);
+  assert.deepEqual(GAS[2].sinMant, { promo: 0.088000, noPromo: 0.110000 });
+  assert.equal(GAS[2].terFijo, 30.7);
+  for (const t of [GAS[1], GAS[2]]) {
+    assert.equal(t.contratacion.hasta, '2026-12-02');
+    assert.equal(t.precioSinActualizar, undefined);
+  }
+  // Solar conserva los precios anteriores.
   assert.equal(LUZ_SOLAR[1].energiaConsumida.promo, 0.148707);
-  assert.equal(GAS[1].sinMant.promo, 0.065100);
-  assert.equal(GAS[2].terFijo, 30.672);
-  for (const t of [...LUZ_SOLAR, GAS[1], GAS[2]]) assert.equal(t.contratacion.extensionInterna, true);
+  for (const t of LUZ_SOLAR) assert.equal(t.contratacion.extensionInterna, true);
 });
 
 test('ahorro: fórmula sobre el coste actual, negativo permitido, coste actual cero controlado', () => {

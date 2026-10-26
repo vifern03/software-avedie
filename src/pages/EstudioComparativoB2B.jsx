@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Upload, FileText, Printer, Download, X, Loader2, Factory, Info, CheckCircle2, Ban } from 'lucide-react';
-import { exportElementToPdf, slugifyFilename } from '../lib/exportPdf';
+import { exportElementToPdf, imprimirElementoPdf, slugifyFilename } from '../lib/exportPdf';
 import { construirInforme, eurES, numES } from '../lib/energia/informe';
 import { OPEN_30TD, OPEN_61TD, SIMPLY_30TD, SIMPLY_61TD, INDEXADA_30TD, INDEXADA_61TD } from '../data/tarifasB2B';
 import { calcularOfertaLuz, ESTADO, tramosPorPotencia } from '../lib/energia/motor';
@@ -213,6 +213,19 @@ export default function EstudioComparativoB2B() {
   const onDragLeave = useCallback(() => setDragging(false), []);
   const onDrop = e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFileUpload(f); };
 
+    /* Imprimir el MISMO PDF que se descarga (no el HTML de la página). */
+  async function handlePrintPdf() {
+    setIsExportingPdf(true);
+    setPdfError('');
+    try {
+      await imprimirElementoPdf('ecb2b-informe');
+    } catch {
+      setPdfError('No se pudo preparar la impresión. Prueba de nuevo o usa "Descargar".');
+    } finally {
+      setIsExportingPdf(false);
+    }
+  }
+
   async function handleDownloadPdf() {
     if (!informe) return;
     setIsExportingPdf(true);
@@ -315,7 +328,7 @@ export default function EstudioComparativoB2B() {
                 {isExportingPdf ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
                 {isExportingPdf ? 'Generando PDF…' : 'Descargar'}
               </button>
-              <button onClick={() => window.print()}
+              <button onClick={handlePrintPdf}
                 className="flex items-center gap-2 bg-google-dark text-white text-sm font-medium px-4 py-2 rounded-xl hover:bg-gray-800 transition-colors">
                 <Printer size={15} /> Imprimir informe
               </button>

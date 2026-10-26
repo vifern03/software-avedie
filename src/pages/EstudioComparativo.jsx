@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Calculator, Upload, FileText, Printer, Download, X, AlertTriangle, Loader2, SlidersHorizontal } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { exportElementToPdf, slugifyFilename } from '../lib/exportPdf';
+import { exportElementToPdf, imprimirElementoPdf, slugifyFilename } from '../lib/exportPdf';
 import { LUZ, LUZ_SOLAR, INDEXADA_2_0TD } from '../data/tarifasB2C';
 import { TEMPO_2_0TD } from '../data/tarifasB2B';
 import { IE_RATE as IE_RATE_MOTOR, calcularAhorro, extrapolarAnual } from '../lib/energia/motor';
@@ -585,6 +585,19 @@ export default function EstudioComparativo() {
     }
   }
 
+    /* Imprimir el MISMO PDF que se descarga (no el HTML de la página). */
+  async function handlePrintPdf() {
+    setIsExportingPdf(true);
+    setPdfError('');
+    try {
+      await imprimirElementoPdf('ec-informe');
+    } catch {
+      setPdfError('No se pudo preparar la impresión. Prueba de nuevo o usa "Descargar".');
+    } finally {
+      setIsExportingPdf(false);
+    }
+  }
+
   async function handleDownloadPdf() {
     setIsExportingPdf(true);
     setPdfError('');
@@ -656,7 +669,7 @@ export default function EstudioComparativo() {
                 {isExportingPdf ? 'Generando PDF…' : 'Descargar'}
               </button>
               <button
-                onClick={() => window.print()}
+                onClick={handlePrintPdf}
                 className="flex items-center gap-2 bg-google-dark text-white text-sm font-medium px-4 py-2 rounded-xl hover:bg-gray-800 transition-colors"
               >
                 <Printer size={15} />

@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { GAS, GAS_EMPRESA } from '../data/tarifasGas';
 import { Calculator, Upload, FileText, Printer, Download, X, AlertTriangle, Loader2 } from 'lucide-react';
-import { exportElementToPdf, slugifyFilename } from '../lib/exportPdf';
+import { exportElementToPdf, imprimirElementoPdf, slugifyFilename } from '../lib/exportPdf';
 import { calcularOfertaGas, calcularAhorro, extrapolarAnual, ESTADO } from '../lib/energia/motor';
 import { IEH_GAS_EUR_KWH } from '../data/tarifasGas';
 import { aCampo, valorNum, cantidadES, formatoES } from '../lib/energia/numeros';
@@ -24,6 +24,9 @@ const GAS_ALL = [...GAS, ...GAS_EMPRESA];
 /* Comparativa activa: RL.1 con el documento de 13/10/2026 y RL.2–RL.6 con los
    precios anteriores. */
 const COMPARATIVA_BLOQUEADA = false;
+/* RL.4–RL.6 (Gas Estable empresa): sin comparativa hasta habilitarlas expresamente.
+   Conservan su lógica, catálogo y la misma extracción y verificación de datos. */
+const TARIFAS_GAS_BLOQUEADAS = new Set(['rl4', 'rl5', 'rl6']);
 
 /* Timeout de seguridad: si Gemini no responde en este tiempo, se aborta la petición
    y se muestra un error en vez de dejar la carga colgada indefinidamente. */
@@ -218,7 +221,10 @@ export default function EstudioComparativoGas() {
 
   // Errores críticos sin resolver (de la factura o de datos editados): no se emite el informe.
   const datosMinimos = kwhGas > 0 && dias > 0 && factActual > 0;
-  const bloqueos = (baseFactura || datosMinimos) ? ev.bloqueos : [];
+  const bloqueos = [
+    ...((baseFactura || datosMinimos) ? ev.bloqueos : []),
+    ...(TARIFAS_GAS_BLOQUEADAS.has(tarifa.id) ? [{ campos: [], msg: `${tarifa.title} no está disponible para comparativas por ahora (solo RL.1, RL.2 y RL.3).` }] : []),
+  ];
   const isReady = !COMPARATIVA_BLOQUEADA && datosMinimos && gasOk && !bloqueos.length;
 
   /* ════════════ PRINT TITLE ════════════ */
@@ -338,6 +344,19 @@ export default function EstudioComparativoGas() {
     }
   }
 
+    /* Imprimir el MISMO PDF que se descarga (no el HTML de la página). */
+  async function handlePrintPdf() {
+    setIsExportingPdf(true);
+    setPdfError('');
+    try {
+      await imprimirElementoPdf('ec-informe-gas');
+    } catch {
+      setPdfError('No se pudo preparar la impresión. Prueba de nuevo o usa "Descargar".');
+    } finally {
+      setIsExportingPdf(false);
+    }
+  }
+
   async function handleDownloadPdf() {
     setIsExportingPdf(true);
     setPdfError('');
@@ -409,7 +428,7 @@ export default function EstudioComparativoGas() {
                 {isExportingPdf ? 'Generando PDF…' : 'Descargar'}
               </button>
               <button
-                onClick={() => window.print()}
+                onClick={handlePrintPdf}
                 className="flex items-center gap-2 bg-google-dark text-white text-sm font-medium px-4 py-2 rounded-xl hover:bg-gray-800 transition-colors"
               >
                 <Printer size={15} />
@@ -442,14 +461,14 @@ export default function EstudioComparativoGas() {
                   <label
                     key={t.id}
                     className={`flex items-start gap-3 p-3 rounded-xl border transition-all ${
-                      COMPARATIVA_BLOQUEADA
+                      COMPARATIVA_BLOQUEADA || TARIFAS_GAS_BLOQUEADAS.has(t.id)
                         ? 'border-google-border bg-gray-50 opacity-50 cursor-not-allowed'
                         : tarifaGasId === t.id
                           ? 'border-orange-400 bg-orange-50 cursor-pointer'
                           : 'border-google-border hover:border-orange-200 cursor-pointer'
                     }`}
                   >
-                    <input type="radio" name="tarifaGas" value={t.id} checked={tarifaGasId === t.id} disabled={COMPARATIVA_BLOQUEADA} onChange={() => setTarifaGasId(t.id)} className="accent-orange-500 mt-0.5 disabled:cursor-not-allowed" />
+                    <input type="radio" name="tarifaGas" value={t.id} checked={tarifaGasId === t.id} disabled={COMPARATIVA_BLOQUEADA || TARIFAS_GAS_BLOQUEADAS.has(t.id)} onChange={() => setTarifaGasId(t.id)} className="accent-orange-500 mt-0.5 disabled:cursor-not-allowed" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium text-google-dark">{t.title}</span>
