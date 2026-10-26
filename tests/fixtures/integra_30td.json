@@ -1,0 +1,33 @@
+{
+  "_nota": "Factura Integra Energía 3.0TD (sep-2026), anonimizada: sin titular, CUPS, NIF ni direcciones. 'ex' es la respuesta real de Gemini (26/10/2026) con los campos personales vaciados y los 'textos' literales del prompt nuevo; 'lineasPdf' son las líneas de texto del PDF (pdf.js) que contienen los datos.",
+  "ex": {
+    "titular": null, "cups": null, "tarifaAcceso": "3.0TD", "fechaEmision": "2026-10-06",
+    "periodoConsumo": { "desde": "2026-09-01", "hasta": "2026-09-30" },
+    "diasFacturados": 30,
+    "potenciaContratadaKw": [15.001, 17, 17, 17, 17, 41],
+    "consumoFacturadoKwh": [0, 0, 1442, 980, 0, 2345],
+    "consumoTotalKwh": 4767,
+    "maximetrosKw": [19.44, 23.3, 19.48, 19.04, 17.87, 23.64],
+    "importes": { "potencia": 89.96, "energiaTotal": 1253.45, "excesosPotencia": 1.07, "reactiva": 64.46, "bonoSocial": 0.76, "alquilerEquipos": 5.94, "otrosServicios": null, "baseIVA": 1507.79, "tipoIVAPct": 21, "iva": 316.64, "total": 1824.43 },
+    "textos": { "potenciaContratadaKw": ["15.001", "17.0", "17.0", "17.0", "17.0", "41.0"], "consumoFacturadoKwh": ["0.0", "0.0", "1442.0", "980.0", "0.0", "2345.0"], "diasFacturados": "30", "total": "1.824,43" },
+    "autoconsumo": { "kwhExcedentes": null }
+  },
+  "lineasPdf": [
+    { "pagina": 1, "texto": "Total factura   1.824,43 €" },
+    { "pagina": 1, "texto": "Periodo de facturación: del 01/09/2026 al 30/09/2026" },
+    { "pagina": 1, "texto": "Peaje 3.0TD   Cargo 2" },
+    { "pagina": 1, "texto": "Pot. Contratada (kW) 15.001, 17.0, 17.0, 17.0, 17.0, 41.0" },
+    { "pagina": 1, "texto": "Por potencia contratada   89,96 €" },
+    { "pagina": 1, "texto": "Por energía consumida   1.253,45 €" },
+    { "pagina": 1, "texto": "TOTAL IMPORTE FACTURA   1.824,43 €" },
+    { "pagina": 2, "texto": "Demandada19,44 23,3   19,48 19,04   17,87 23,64" },
+    { "pagina": 3, "texto": "Término Fijo (30 días)" },
+    { "pagina": 3, "texto": "P1   0.0 kWh   0,490383 €   73,00%   0,00 €   15.0 kW   15.0 kW   0,083863 €   37,74 €" },
+    { "pagina": 3, "texto": "P2   0.0 kWh   0,469893 €   75,00%   0,00 €   17.0 kW   17.0 kW   0,043709 €   22,29 €" },
+    { "pagina": 3, "texto": "P3   1442.0 kWh   0,439810 €   76,00% 152,21 €   17.0 kW   17.0 kW   0,018361 €   9,36 €" },
+    { "pagina": 3, "texto": "P4   980.0 kWh   0,444511 €   76,00% 104,54 €   17.0 kW   17.0 kW   0,015901 €   8,11 €" },
+    { "pagina": 3, "texto": "P5   0.0 kWh   0,434409 €   79,00%   0,00 €   17.0 kW   17.0 kW   0,010213 €   5,21 €" },
+    { "pagina": 3, "texto": "P6   2345.0 kWh   0,434076 €   80,00% 203,59 €   41.0 kW   41.0 kW   0,005887 €   7,24 €" },
+    { "pagina": 3, "texto": "Subtotal   4767.0 kWh   2.087,74 €   -1.627,40 €   460,34 €   Subtotal   89,96 €" }
+  ]
+}

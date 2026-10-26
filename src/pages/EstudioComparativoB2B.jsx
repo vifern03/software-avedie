@@ -6,8 +6,13 @@ import { construirInforme, eurES, numES } from '../lib/energia/informe';
 import { OPEN_30TD, OPEN_61TD, SIMPLY_30TD, SIMPLY_61TD, INDEXADA_30TD, INDEXADA_61TD } from '../data/tarifasB2B';
 import { calcularOfertaLuz, ESTADO, tramosPorPotencia } from '../lib/energia/motor';
 import { PROMPT_EXTRACCION_LUZ, validarExtraccion, parsearRespuestaModelo } from '../lib/energia/extraccion';
-import { extraerFactura, ExtraccionTimeout, ESPERA_MAX_MS } from '../lib/energia/geminiCliente';
+import { extraerFactura, revisarCamposIA, ExtraccionTimeout, ESPERA_MAX_MS } from '../lib/energia/geminiCliente';
 import { hoyMadridISO } from '../lib/energia/vigencia';
+import { aCampo, valorNum, inequivoco } from '../lib/energia/numeros';
+import { extraerTextoPdf } from '../lib/energia/textoPdf';
+import { verificarExtraccion } from '../lib/energia/verificacion';
+import { LUZ_B2B } from '../lib/energia/esquemas';
+import { volcarAFormulario, evaluarFormulario } from '../lib/energia/formulario';
 
 /* ── Constantes ──────────────────────────────────────────────────────────────── */
 
@@ -19,6 +24,11 @@ const CATALOGO = {
   '30': { open: OPEN_30TD, simply: SIMPLY_30TD, indexada: INDEXADA_30TD },
   '61': { open: OPEN_61TD, simply: SIMPLY_61TD, indexada: INDEXADA_61TD },
 };
+/* Productos sin comparativa hasta que se habiliten expresamente (aunque se actualice su
+   precio). Conservan toda su lógica y la misma extracción y verificación de datos. */
+const PRODUCTOS_BLOQUEADOS = new Set(['simply', 'indexada']);
+const productoDisponible = (nivel, id) => !PRODUCTOS_BLOQUEADOS.has(id) && !CATALOGO[nivel][id].precioSinActualizar;
+
 const NIVELES = [
   { id: '30', label: '3.0TD', sub: 'Baja tensión > 15 kW' },
   { id: '61', label: '6.1TD', sub: 'Alta tensión (Open hasta 450 kW)' },
@@ -33,16 +43,15 @@ function estimateExtractionSeconds(bytes) {
   return Math.min(10, Math.round(3 + bytes / (500 * 1024)));
 }
 
-function n(v, fb = 0) {
-  if (v === null || v === undefined) return fb;
-  const s = String(v).trim().replace(/\s/g, '');
-  if (!s) return fb;
-  // "1.200" o "27.263" = miles (formato español); "0.153" o "1,5" = decimales.
-  const t = s.includes(',') ? s.replace(/\./g, '').replace(',', '.')
-    : /^\d{1,3}(\.\d{3})+$/.test(s) ? s.replace(/\./g, '') : s;
-  const x = parseFloat(t);
-  return isNaN(x) ? fb : x;
-}
+/* Campos verificados (clave del esquema LUZ_B2B → campo del formulario). */
+const MAPA_B2B = Object.assign(
+  { dias: 'dias', total: 'facturaActual' },
+  ...PERIODS.map(i => ({ [`pot${i}`]: `kwPotP${i}`, [`kwh${i}`]: `kwhP${i}` })),
+);
+/* Consumo de un periodo que el usuario deja vacío a mano: 0 kWh (criterio de siempre). */
+const KWH_VACIO_MANUAL = Object.assign({}, ...PERIODS.map(i => ({ [`kwh${i}`]: 0 })));
+const esPdf = (file) => file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+
 const eur = (v) => (v == null ? '—' : v.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €');
 
 function PBadge({ p }) {
@@ -99,6 +108,9 @@ export default function EstudioComparativoB2B() {
   const [tramoSel, setTramoSel] = useState({ '30': null, '61': null });
   const [form, setForm] = useState(INIT);
   const [incidencias, setIncidencias] = useState([]);
+  // Valores verificados de la última factura (para distinguir lo que el usuario edita) y su contexto.
+  const [baseFactura, setBaseFactura] = useState(null);
+  const [ctxFactura, setCtxFactura] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [dropped, setDropped] = useState(null);
   const [isExtracting, setIsExtracting] = useState(false);
@@ -127,13 +139,20 @@ export default function EstudioComparativoB2B() {
     setExtractionDone(false);
     setExtractionError('');
     setIncidencias([]);
+    setBaseFactura(null);
+    setCtxFactura(null);
     clearInterval(countdownRef.current);
     countdownRef.current = setInterval(() => setRemainingSeconds(s => Math.max(0, s - 1)), 1000);
     try {
+      // Texto impreso del PDF (sin IA), en paralelo con la extracción: fuente independiente de contraste.
+      const buffer = await file.arrayBuffer();
+      const textoPdfP = esPdf(file) ? extraerTextoPdf(buffer).catch(() => null) : Promise.resolve(null);
       const { datos: ex } = await extraerFactura(file, { prompt: PROMPT_EXTRACCION_LUZ, parse: parsearRespuestaModelo });
       const v = validarExtraccion(ex);
       const d = v.datos;
-      setIncidencias(v.incidencias);
+      // Los datos esenciales los valida verificarExtraccion (con evidencia); del validador
+      // general se conservan el resto de comprobaciones.
+      setIncidencias(v.incidencias.filter(i => !['consumoTotalKwh', 'consumoFacturadoKwh', 'potenciaContratadaKw', 'importes.total'].includes(i.campo)));
 
       if (d.tarifaAcceso === '2.0TD') {
         setExtractionError('La factura es 2.0TD: usa la pestaña "Comparativas 2.0". No se han volcado datos.');
@@ -142,28 +161,30 @@ export default function EstudioComparativoB2B() {
       if (d.tarifaAcceso === '6.1TD') setNivel('61');
       else if (d.tarifaAcceso === '3.0TD') setNivel('30');
 
+      const verif = await verificarExtraccion({
+        esquema: LUZ_B2B, ex, textoPdf: await textoPdfP,
+        revisarIA: (campos) => revisarCamposIA({ buffer, mimeType: file.type }, campos, { parse: parsearRespuestaModelo }),
+      });
+      const { textos, base } = volcarAFormulario(verif, MAPA_B2B);
+      setBaseFactura(base);
+      setCtxFactura(LUZ_B2B.contexto(ex));
+
       const ivaPct = d.importes.ivaPct;
-      const ivaRate = ivaPct != null ? ivaPct / 100 : n(form.iva, 0.21);
+      const ivaRate = ivaPct != null ? ivaPct / 100 : valorNum(form.iva, 0.21);
       setForm(f => {
-        const next = { ...f };
-        PERIODS.forEach((p, i) => {
-          next[`kwhP${p}`] = d.kwhPeriodo[i] != null ? String(d.kwhPeriodo[i]) : '0';
-          next[`kwPotP${p}`] = d.potenciasKw[i] != null ? String(d.potenciasKw[i]) : '';
-        });
+        const next = { ...f, ...textos };
         next.cliente = d.titular || f.cliente;
         next.cups = d.cups || f.cups;
         next.fechaEmision = d.fechaEmision || '';
         next.desde = d.periodo.desde || '';
         next.hasta = d.periodo.hasta || '';
-        next.dias = d.dias != null ? String(d.dias) : '';
-        next.excesos = String(d.importes.excesos ?? 0);
-        next.reactiva = String(d.importes.reactiva ?? 0);
-        next.alquiler = String(d.importes.alquiler ?? 0);
-        next.bonoSocial = String(d.importes.bonoSocial ?? 0);
-        next.facturaActual = d.importes.total != null ? String(d.importes.total) : '';
+        next.excesos = aCampo(d.importes.excesos ?? 0);
+        next.reactiva = aCampo(d.importes.reactiva ?? 0);
+        next.alquiler = aCampo(d.importes.alquiler ?? 0);
+        next.bonoSocial = aCampo(d.importes.bonoSocial ?? 0);
         next.otrosNoComparables = '0'; // se compara la factura completa; solo el comercial puede excluir algo expresamente
         next.iva = String(ivaRate);
-        next.excedentesKwh = String(d.excedentesKwh ?? 0);
+        next.excedentesKwh = aCampo(d.excedentesKwh ?? 0);
         return next;
       });
       if ((d.excedentesKwh || 0) > 0) setAutoconsumo(true);
@@ -210,16 +231,20 @@ export default function EstudioComparativoB2B() {
 
   const producto = CATALOGO[nivel][productoId];
   const hoy = hoyMadridISO();
-  const kwhPeriodo = PERIODS.map(i => n(form[`kwhP${i}`]));
-  const potenciasKw = PERIODS.map(i => n(form[`kwPotP${i}`]));
+  // Datos esenciales: valores verificados de la factura o, si el usuario los ha editado,
+  // lo que ha escrito (leído sin ambigüedad) con las reglas que aplican a datos manuales.
+  const contextoReglas = { ...(ctxFactura || LUZ_B2B.contexto({})), tarifa: nivel === '61' ? '6.1TD' : '3.0TD' };
+  const ev = evaluarFormulario({ esquema: LUZ_B2B, mapa: MAPA_B2B, form, base: baseFactura, contexto: contextoReglas, vacioManual: KWH_VACIO_MANUAL });
+  const kwhPeriodo = PERIODS.map(i => ev.valores[`kwh${i}`] ?? 0);
+  const potenciasKw = PERIODS.map(i => ev.valores[`pot${i}`] ?? 0);
   const periodo = form.desde && form.hasta ? { desde: form.desde, hasta: form.hasta } : undefined;
 
   const entrada = {
-    potenciasKw, dias: n(form.dias), periodo, kwhPeriodo,
-    omie: form.omie === '' ? null : n(form.omie),
-    tieneAutoconsumo: autoconsumo, excedentesKwh: n(form.excedentesKwh),
-    mantenidos: { excesos: n(form.excesos), reactiva: n(form.reactiva), alquiler: n(form.alquiler), bonoSocial: n(form.bonoSocial) },
-    ivaRate: n(form.iva, 0.21), fechaOferta: hoy, ignorarVigencia: true,
+    potenciasKw, dias: ev.valores.dias ?? 0, periodo, kwhPeriodo,
+    omie: form.omie === '' ? null : valorNum(form.omie, 0),
+    tieneAutoconsumo: autoconsumo, excedentesKwh: valorNum(form.excedentesKwh, 0),
+    mantenidos: { excesos: valorNum(form.excesos, 0), reactiva: valorNum(form.reactiva, 0), alquiler: valorNum(form.alquiler, 0), bonoSocial: valorNum(form.bonoSocial, 0) },
+    ivaRate: valorNum(form.iva, 0.21), fechaOferta: hoy, ignorarVigencia: true,
   };
 
   const resultadosModalidad = useMemo(() => {
@@ -235,8 +260,8 @@ export default function EstudioComparativoB2B() {
     ? resultadosModalidad.filter(x => x.r.estado === ESTADO.OK).sort((a, b) => a.r.total - b.r.total)[0]
     : null;
 
-  const factActual = n(form.facturaActual);
-  const otros = n(form.otrosNoComparables);
+  const factActual = ev.valores.total ?? 0;
+  const otros = valorNum(form.otrosNoComparables, 0);
   const ok = resultado?.estado === ESTADO.OK;
   const isReady = factActual > 0 && entrada.dias > 0 && kwhPeriodo.some(x => x > 0) && potenciasKw.some(x => x > 0);
 
@@ -246,13 +271,26 @@ export default function EstudioComparativoB2B() {
   const asesorDisplay = form.asesor === '__otro__' ? form.asesorLibre : form.asesor;
   const today = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' });
   const tituloOferta = producto.modalidades ? `${producto.nombre} — ${modalidadSel?.label}` : producto.nombre;
-  const incidenciasVisibles = incidencias.filter(i => i.nivel !== 'info');
+  // Incidencias de la verificación (se muestran en los mismos recuadros de siempre).
+  const conDatos = !!baseFactura || isReady;
+  const bloqueos = conDatos ? ev.bloqueos : [];
+  const incidenciasTodas = [
+    ...incidencias,
+    ...bloqueos.map(b => ({ nivel: 'error', mensaje: b.msg })),
+    ...(conDatos ? ev.avisos.map(a => ({ nivel: 'aviso', mensaje: a.nivel === 'autocorreccion' ? `Corregido automáticamente — ${a.msg}` : a.msg })) : []),
+    ...(conDatos ? ev.info.map(a => ({ nivel: 'info', mensaje: a.msg })) : []),
+  ];
+  const incidenciasVisibles = incidenciasTodas.filter(i => i.nivel !== 'info');
 
-  const informe = ok && isReady ? construirInforme({
+  const informe = ok && isReady && !bloqueos.length && productoDisponible(nivel, productoId) ? construirInforme({
     resultado, oferta: tituloOferta, cliente: form.cliente, cups: form.cups, asesor: asesorDisplay,
     fechaInforme: today, dias: entrada.dias, facturaOriginal: factActual, otrosExcluidos: otros,
   }) : null;
-  const incidenciasInfo = incidencias.filter(i => i.nivel === 'info');
+  const incidenciasInfo = incidenciasTodas.filter(i => i.nivel === 'info');
+  // Diferencia muy grande entre la oferta y la factura: puede ser legítima, solo se avisa.
+  if (informe && factActual > 0 && (resultado.total / factActual > 2.5 || resultado.total / factActual < 0.4)) {
+    incidenciasVisibles.push({ nivel: 'aviso', mensaje: `La oferta (${eur(resultado.total)}) es muy distinta de la factura actual (${eur(factActual)}): revisa que los datos sean los de la factura.` });
+  }
 
   /* ════════════ RENDER ════════════ */
 
@@ -363,7 +401,7 @@ export default function EstudioComparativoB2B() {
               <div>
                 <label className="text-[10px] font-medium text-google-gray mb-1.5 block">Producto</label>
                 <select value={productoId} onChange={e => setProductoId(e.target.value)} className="input-field text-sm" id="ecb2b-producto">
-                  {PRODUCTOS.map(p => <option key={p.id} value={p.id} disabled={!!CATALOGO[nivel][p.id].precioSinActualizar}>{p.label}</option>)}
+                  {PRODUCTOS.map(p => <option key={p.id} value={p.id} disabled={!productoDisponible(nivel, p.id)}>{p.label}</option>)}
                 </select>
               </div>
             </div>
@@ -417,7 +455,7 @@ export default function EstudioComparativoB2B() {
                 </p>
                 {potenciasKw.some(x => x > 0) && (
                   <p className="text-[10px] text-google-dark mt-1" id="ecb2b-tramos-potencia">
-                    Según cada potencia: {tramosPorPotencia(producto, potenciasKw).map(x => `${x.p} ${x.kw} kW → ${x.label}`).join(' · ')}
+                    Según cada potencia: {tramosPorPotencia(producto, potenciasKw).map(x => `${x.p} ${inequivoco(x.kw)} kW → ${x.label}`).join(' · ')}
                   </p>
                 )}
               </div>
@@ -482,7 +520,7 @@ export default function EstudioComparativoB2B() {
                 <div className="flex rounded-lg overflow-hidden border border-google-border">
                   {[['0.21', '21%'], ['0.1', '10%'], ['0.03', 'IGIC 3%']].map(([v, l]) => (
                     <button key={v} type="button" onClick={() => setForm(f => ({ ...f, iva: v }))}
-                      className={`flex-1 py-2 text-xs font-medium ${n(form.iva) === n(v) ? 'bg-google-blue text-white' : 'bg-white text-google-gray hover:bg-blue-50'}`}>{l}</button>
+                      className={`flex-1 py-2 text-xs font-medium ${valorNum(form.iva) === valorNum(v) ? 'bg-google-blue text-white' : 'bg-white text-google-gray hover:bg-blue-50'}`}>{l}</button>
                   ))}
                 </div>
               </div>
@@ -518,9 +556,10 @@ export default function EstudioComparativoB2B() {
             <div className="space-y-4">
               {!ok || !informe ? (
                 <div className="bg-white border border-amber-300 rounded-xl shadow-sm px-5 py-4">
-                  <p className="text-sm font-bold text-amber-900 flex items-center gap-2"><Ban size={16} /> {ESTADO_UI[resultado.estado].label}: no se puede emitir el informe</p>
+                  <p className="text-sm font-bold text-amber-900 flex items-center gap-2"><Ban size={16} /> {bloqueos.length ? 'Datos incoherentes' : ESTADO_UI[resultado.estado].label}: no se puede emitir el informe</p>
                   <ul className="mt-2 space-y-1 text-[12px] text-amber-900 list-disc pl-5">
-                    {resultado.motivos.map((m, k) => <li key={k}>{m}</li>)}
+                    {bloqueos.map((b, k) => <li key={`b${k}`}>{b.msg}</li>)}
+                    {!bloqueos.length && resultado.motivos.map((m, k) => <li key={k}>{m}</li>)}
                   </ul>
                 </div>
               ) : (

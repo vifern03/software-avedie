@@ -34,7 +34,8 @@ export const ESTADO = {
 export const r2 = (x) => Math.round((x + Number.EPSILON) * 100) / 100;
 const es = (x, d) => Number(x).toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d });
 const es6 = (x) => es(x, 6);
-const esN = (x) => Number(x).toLocaleString('es-ES', { maximumFractionDigits: 2 });
+// Sin separador de miles: "15.001 kW" sería ambiguo (¿15 o 15 mil?).
+const esN = (x) => Number(x).toLocaleString('es-ES', { maximumFractionDigits: 3, useGrouping: false });
 const sum = (arr) => arr.reduce((a, b) => a + (Number(b) || 0), 0);
 
 /* ══════════════════════════ Elegibilidad / tramos ══════════════════════════ */

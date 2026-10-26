@@ -45,9 +45,9 @@ test('informe: conceptos adicionales mantenidos; IE e IVA recalculados sobre sus
 
 test('informe: desglose por período, sin notas y formato español', () => {
   assert.equal(m.potencia.length, 6);
-  assert.equal(m.potencia[0].detalle, '49 kW (P1) × 31 días × 0.059937 €/kW');
+  assert.equal(m.potencia[0].detalle, '49 kW (P1) × 31 días × 0,059937 €/kW');
   assert.deepEqual(m.energia.map(e => e.detalle), [
-    '7170 kWh (P1) × 0.168229 €/kWh', '5156 kWh (P2) × 0.168229 €/kWh', '9928 kWh (P6) × 0.168229 €/kWh',
+    '7.170 kWh (P1) × 0,168229 €/kWh', '5.156 kWh (P2) × 0,168229 €/kWh', '9.928 kWh (P6) × 0,168229 €/kWh',
   ]);
   assert.equal(m.notas, undefined);
   assert.equal(eurES(1480.6), '1.480,60 €');
@@ -57,8 +57,8 @@ test('informe: desglose por período, sin notas y formato español', () => {
 test('informe Día: el P6 sale en dos líneas, mitad a cada precio, sin mencionar el criterio', () => {
   const d = informe(calcularOfertaLuz({ ...ENTRADA, modalidadId: 'dia' }), { oferta: 'Open 3.0TD — Día' });
   assert.deepEqual(d.energia.map(e => e.detalle), [
-    '7170 kWh (P1) × 0.155675 €/kWh', '5156 kWh (P2) × 0.155675 €/kWh',
-    '4964 kWh (P6) × 0.155675 €/kWh', '4964 kWh (P6) × 0.205892 €/kWh',
+    '7.170 kWh (P1) × 0,155675 €/kWh', '5.156 kWh (P2) × 0,155675 €/kWh',
+    '4.964 kWh (P6) × 0,155675 €/kWh', '4.964 kWh (P6) × 0,205892 €/kWh',
   ]);
   near(d.subtotalEnergia, 17290 * 0.155675 + 4964 * 0.205892, 1e-6);
   near(d.totalOferta, 5283.33);

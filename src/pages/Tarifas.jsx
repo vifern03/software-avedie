@@ -968,7 +968,7 @@ export default function Tarifas() {
       {tab === 'luz' && (
         <div className="flex flex-col gap-6">
           {/* Tarjetas: en mobile quedan debajo del botón (order-2), en desktop arriba (order-1) */}
-          <div className="order-2 md:order-1 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+          <div className="order-2 md:order-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {LUZ.map(t => <LuzCard key={t.id} tarifa={t} />)}
           </div>
 

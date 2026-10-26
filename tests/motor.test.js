@@ -294,13 +294,16 @@ test('gas RL.1 (B2C) con IEH y precios del documento de 13/10/2026', () => {
   assert.equal(calcularOfertaGas({ producto: GAS[0], kwh: 300, dias: 30, fechaOferta: HOY }).estado, ESTADO.NO_DISPONIBLE);
 });
 
-test('B2C de octubre: LUZ 24H directo, Tu Otra Casa 50, Conecta Luz y RL.1 con documento nuevo; el resto sin cambios', () => {
-  const [directo, prescriptor, toc, conecta] = LUZ;
+test('B2C de octubre: Conecta Luz (sustituye a Canal Directo), LUZ 24H Con Prescriptor, Tu Otra Casa 50 y RL.1', () => {
+  // Orden de Consulta de Tarifas: Conecta Luz primero; Luz Fija 24H sin prescriptor ya no existe.
+  assert.deepEqual(LUZ.map(t => t.id), ['conecta', 'prescriptor', 'tu-otra-casa']);
+  const [conecta, prescriptor, toc] = LUZ;
   // promo = noPromo x 0,90 (10 % el primer año) y 3 puntos más de mantenimiento en conMant.
-  assert.deepEqual(directo.sinMant, { promo: 0.166990, noPromo: 0.185544 });
-  assert.deepEqual(directo.conMant, { promo: 0.161424, noPromo: 0.185544 });
   assert.deepEqual(conecta.sinMant, { promo: 0.129990, noPromo: 0.144433 });
   assert.deepEqual(conecta.conMant, { promo: 0.125657, noPromo: 0.144433 });
+  // El PDF 'Oferta LUZ 24H' editado el 13/10/2026 es el de prescriptor.
+  assert.deepEqual(prescriptor.sinMant, { promo: 0.166990, noPromo: 0.185544 });
+  assert.deepEqual(prescriptor.conMant, { promo: 0.161424, noPromo: 0.185544 });
   assert.equal(toc.sinMant.promoH, 0.123674);
   assert.equal(toc.sinMant.restoH, 0.247347);
   assert.equal(toc.conMant.promoH, 0.119964);
@@ -308,15 +311,12 @@ test('B2C de octubre: LUZ 24H directo, Tu Otra Casa 50, Conecta Luz y RL.1 con d
   assert.deepEqual(GAS[0].sinMant, { promo: 0.077700, noPromo: 0.111000 });
   assert.deepEqual(GAS[0].conMant, { promo: 0.074370, noPromo: 0.111000 });
   assert.equal(GAS[0].terFijo, 7.5);
-  for (const t of [directo, toc, conecta, GAS[0]]) {
+  for (const t of [conecta, prescriptor, toc, GAS[0]]) {
     assert.equal(t.contratacion.desde, '2026-10-15');
     assert.equal(t.contratacion.hasta, '2026-12-02');
     assert.equal(t.precioSinActualizar, undefined);
   }
-  // Con Prescriptor, Solar y gas RL.2–RL.6 conservan los precios anteriores.
-  assert.deepEqual(prescriptor.sinMant, { promo: 0.137131, noPromo: 0.171414 });
-  assert.equal(prescriptor.precioSinActualizar, true);
-  assert.equal(prescriptor.contratacion.hasta, '2026-10-14');
+  // Solar y gas RL.2–RL.6 conservan los precios anteriores.
   assert.equal(LUZ_SOLAR[1].energiaConsumida.promo, 0.148707);
   assert.equal(GAS[1].sinMant.promo, 0.065100);
   assert.equal(GAS[2].terFijo, 30.672);

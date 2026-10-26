@@ -2,13 +2,11 @@
  * Tarifas B2C (Luz Residencial 2.0TD) — fuente única para Consulta de Tarifas,
  * Comparativas 2.0 e informe PDF.
  *
- * LUZ 24H Canal Directo, TU OTRA CASA 50 y CONECTA LUZ: documentos Endesa
- * 'Oferta LUZ 24H' y 'Oferta Tu Otra Casa 50' editados el 13/10/2026 y
- * 'Oferta Conecta Luz' editado el 09/10/2026 (contrataciones 15/10/2026 – 02/12/2026).
+ * CONECTA LUZ (sustituye a Luz Fija 24H Canal Directo), LUZ FIJA 24H CON PRESCRIPTOR
+ * y TU OTRA CASA 50: documentos Endesa 'Oferta Conecta Luz' editado el 09/10/2026 y
+ * 'Oferta LUZ 24H' (es la de prescriptor) y 'Oferta Tu Otra Casa 50' editados el
+ * 13/10/2026 (contrataciones 15/10/2026 – 02/12/2026).
  * Ninguno publica precio con mantenimiento: se mantienen los 3 puntos de siempre.
- *
- * LUZ 24H Con Prescriptor: sin documento nuevo, conserva los precios del
- * documento editado el 09/09/2026 (contrataciones 17/09/2026 – 14/10/2026).
  *
  * EL RESTO (Solar e Indexada 2.0TD) sigue pendiente de documento nuevo:
  * precios y descuentos sin cambios respecto a los documentos Endesa de junio de 2026.
@@ -38,14 +36,6 @@ export const VIGENCIA_CONECTA = {
   fuente: 'Oferta Conecta Luz — documento Endesa editado el 09/10/2026',
 };
 
-/* LUZ 24H Con Prescriptor: documento anterior (09/09/2026). */
-const VIGENCIA_LUZ_24H_PRESCRIPTOR = {
-  desde: '2026-09-17',
-  hasta: '2026-10-14',
-  fuente: 'Oferta LUZ 24H — documento Endesa editado el 09/09/2026',
-};
-const VALIDEZ_LUZ_24H_PRESCRIPTOR = '17/09/2026 – 14/10/2026';
-
 /* Resto de tarifas B2C: siguen sin documento nuevo. */
 export const VIGENCIA_B2C_LUZ = {
   desde: '2026-09-17',
@@ -67,35 +57,34 @@ export const BONO_SOCIAL = [
 
 export const LUZ = [
   {
-    id: 'directo',
+    id: 'conecta',
+    title: 'Conecta Luz',
+    canal: 'Residencial',
+    canalColor: 'bg-sky-100 text-sky-700',
+    desc: 'Precio único 24 h. Factura electrónica y domiciliación.',
+    sinMant: { promo: 0.129990, noPromo: 0.144433 },
+    conMant: { promo: 0.125657, noPromo: 0.144433 },
+    potPunta: 34.188000,
+    potValle: 34.188000,
+    descuentos: ['10% 1 año (nuevas altas)'],
+    mantLabel: '3% mantenimiento',
+    contratacion: VIGENCIA_CONECTA,
+    validez: VALIDEZ_OCT,
+  },
+  {
+    id: 'prescriptor',
     title: 'Luz Fija 24H',
-    canal: 'Canal Directo',
-    canalColor: 'bg-blue-100 text-blue-700',
-    desc: 'Precio único 24 h, sin franjas horarias.',
+    canal: 'Con Prescriptor',
+    canalColor: 'bg-violet-100 text-violet-700',
+    desc: 'Precio único 24 h. Venta con prescriptor.',
     sinMant: { promo: 0.166990, noPromo: 0.185544 },
     conMant: { promo: 0.161424, noPromo: 0.185544 },
     potPunta: 34.188000,
     potValle: 34.188000,
     descuentos: ['10% 1 año (nuevas altas)'],
-    mantLabel: '3% mantenimiento',
+    mantLabel: '3% mantenimiento (1 año)',
     contratacion: VIGENCIA_LUZ_24H,
     validez: VALIDEZ_OCT,
-  },
-  {
-    id: 'prescriptor',
-    precioSinActualizar: true,
-    title: 'Luz Fija 24H',
-    canal: 'Con Prescriptor',
-    canalColor: 'bg-violet-100 text-violet-700',
-    desc: 'Precio único 24 h. Venta con prescriptor.',
-    sinMant: { promo: 0.137131, noPromo: 0.171414 },
-    conMant: { promo: 0.131989, noPromo: 0.171414 },
-    potPunta: 34.188000,
-    potValle: 34.188000,
-    descuentos: ['10% 1 año (nuevas altas)', '10% indefinido'],
-    mantLabel: '3% mantenimiento (1 año)',
-    contratacion: VIGENCIA_LUZ_24H_PRESCRIPTOR,
-    validez: VALIDEZ_LUZ_24H_PRESCRIPTOR,
   },
   {
     id: 'tu-otra-casa',
@@ -112,21 +101,6 @@ export const LUZ = [
     descuentos: ['50% en 50 h de más consumo', '10% 1 año (nuevas altas)'],
     mantLabel: '3% mantenimiento (1 año)',
     contratacion: VIGENCIA_TOC,
-    validez: VALIDEZ_OCT,
-  },
-  {
-    id: 'conecta',
-    title: 'Conecta Luz',
-    canal: 'Residencial',
-    canalColor: 'bg-sky-100 text-sky-700',
-    desc: 'Precio único 24 h. Factura electrónica y domiciliación.',
-    sinMant: { promo: 0.129990, noPromo: 0.144433 },
-    conMant: { promo: 0.125657, noPromo: 0.144433 },
-    potPunta: 34.188000,
-    potValle: 34.188000,
-    descuentos: ['10% 1 año (nuevas altas)'],
-    mantLabel: '3% mantenimiento',
-    contratacion: VIGENCIA_CONECTA,
     validez: VALIDEZ_OCT,
   },
 ];

@@ -11,6 +11,7 @@
  */
 
 import { diasInclusivos } from './calendario.js';
+import { leerNumero } from './numeros.js';
 
 export const IE_RATE_REF = 5.11269632; // % impreso habitualmente
 
@@ -34,6 +35,8 @@ Devuelve EXCLUSIVAMENTE un objeto JSON válido (sin markdown) con esta forma:
   "consumoFacturadoKwh": [P1, P2, P3, P4, P5, P6],
   "consumoTotalKwh": número impreso o null,
   "importes": {
+    "potencia": importe total del término de potencia (p. ej. "Por potencia contratada", "Total importe potencia") o null,
+    "energiaTotal": importe total del término de energía (p. ej. "Por energía consumida") o null,
     "excesosPotencia": número o null,
     "reactiva": número o null,
     "bonoSocial": número o null,
@@ -44,11 +47,18 @@ Devuelve EXCLUSIVAMENTE un objeto JSON válido (sin markdown) con esta forma:
     "iva": número o null,
     "total": número o null
   },
-  "autoconsumo": { "kwhExcedentes": número o null }
+  "autoconsumo": { "kwhExcedentes": número o null },
+  "maximetrosKw": [P1, P2, P3, P4, P5, P6] potencia máxima demandada (maxímetro) de cada periodo en kW, o null si no figura,
+  "textos": {
+    "potenciaContratadaKw": [P1…P6] cada potencia COPIADA tal como está impresa, con sus puntos y comas, como texto (p. ej. "15.001", "17,000"),
+    "consumoFacturadoKwh": [P1…P6] cada consumo COPIADO tal como está impreso, como texto (null si el periodo no aparece),
+    "diasFacturados": los días tal como están impresos, o null,
+    "total": el TOTAL de la factura tal como está impreso (p. ej. "1.824,43")
+  }
 }
 
 REGLAS
-1. NÚMEROS. Formato español: "27.263" = 27263; "0,121637" = 0.121637; "3.316,19" = 3316.19; "49,000 kW" = 49. Devuelve números JSON, nunca texto.
+1. NÚMEROS. Devuelve números JSON, nunca texto. Lo habitual es el formato español ("3.316,19" = 3316.19; "0,121637" = 0.121637; "49,000 kW" = 49; "27.263 kWh" = 27263), pero algunas facturas usan el PUNTO como decimal ("17.0 kW", "1442.0 kWh"): decide el separador mirando los demás números de la MISMA línea o tabla. Ejemplo: "Pot. Contratada (kW) 15.001, 17.0, 17.0, 41.0" → 15.001, 17, 17, 41 (punto decimal, porque "17.0" solo puede ser decimal). En "textos" copia además los números tal cual, sin convertir.
 2. FECHAS. Formato ISO AAAA-MM-DD. "periodoConsumo" es el periodo de facturación o de consumo (desde–hasta); "fechaEmision" es la fecha en que se emite la factura. El nombre del archivo NO es un dato. Ejemplo: "Periodo 01/07/2025 a 31/07/2025, fecha factura 18/08/2025" → desde 2025-07-01, hasta 2025-07-31, emisión 2025-08-18.
 3. DÍAS. "diasFacturados" es el número de días impreso en las líneas del término de potencia o del alquiler (p. ej. "280 kW x 31 días" → 31). Si no hay ningún número de días impreso, null.
 4. TARIFA. "tarifaAcceso" es el peaje de acceso impreso ("Peaje de acceso", "Tarifa ATR", "Tarifa"): 2.0TD, 3.0TD o 6.1TD.
@@ -73,13 +83,7 @@ REGLAS
 /* ══════════════════════════ Normalización ══════════════════════════ */
 
 const PER = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6'];
-const num = (v) => {
-  if (v === null || v === undefined || v === '') return null;
-  if (typeof v === 'number') return isFinite(v) ? v : null;
-  const s = String(v).trim();
-  const n = s.includes(',') ? Number(s.replace(/\./g, '').replace(',', '.')) : Number(s);
-  return isFinite(n) ? n : null;
-};
+const num = (v) => leerNumero(v).valor; // lector único (src/lib/energia/numeros.js)
 const cerca = (a, b, tolAbs = 0.02, tolRel = 0) => Math.abs(a - b) <= Math.max(tolAbs, Math.abs(b) * tolRel);
 
 /** Convierte un precio impreso a €/kWh o €/kW·día. */

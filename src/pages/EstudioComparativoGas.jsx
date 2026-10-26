@@ -5,6 +5,12 @@ import { Calculator, Upload, FileText, Printer, Download, X, AlertTriangle, Load
 import { exportElementToPdf, slugifyFilename } from '../lib/exportPdf';
 import { calcularOfertaGas, calcularAhorro, extrapolarAnual, ESTADO } from '../lib/energia/motor';
 import { IEH_GAS_EUR_KWH } from '../data/tarifasGas';
+import { aCampo, valorNum, cantidadES, formatoES } from '../lib/energia/numeros';
+import { extraerTextoPdf } from '../lib/energia/textoPdf';
+import { verificarExtraccion } from '../lib/energia/verificacion';
+import { GAS_ESQ } from '../lib/energia/esquemas';
+import { volcarAFormulario, evaluarFormulario } from '../lib/energia/formulario';
+import { revisarCamposIA } from '../lib/energia/geminiCliente';
 
 /* ── Constantes ──────────────────────────────────────────────────────────────── */
 
@@ -35,16 +41,8 @@ function estimateExtractionSeconds(fileSizeBytes) {
 
 /* ── Helpers ─────────────────────────────────────────────────────────────────── */
 
-function n(v, fb = 0) {
-  if (v === null || v === undefined) return fb;
-  const s = String(v).trim().replace(/\s/g, '');
-  if (!s) return fb;
-  // "1.200" o "27.263" = miles (formato español); "0.153" o "1,5" = decimales.
-  const t = s.includes(',') ? s.replace(/\./g, '').replace(',', '.')
-    : /^\d{1,3}(\.\d{3})+$/.test(s) ? s.replace(/\./g, '') : s;
-  const x = parseFloat(t);
-  return isNaN(x) ? fb : x;
-}
+/* Campos verificados (clave del esquema GAS_ESQ → campo del formulario). */
+const MAPA_GAS = { kwh: 'kwhGas', dias: 'dias', total: 'facturaActual', fijo: 'terminoFijoFactura' };
 
 function eur(v) {
   return v.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
@@ -81,7 +79,13 @@ El JSON debe tener exactamente estos campos, en este orden (usa null para string
   "importeTotalFactura": importe TOTAL a pagar de la factura en euros (importe final con todos los impuestos incluidos),
   "costeTerminoFijo": importe exacto cobrado en esta factura por el término fijo, de capacidad o de conducción (el concepto fijo, sea cual sea su nombre en el tramo detectado) en euros del período facturado (0 si no aparece),
   "costeAlquilerContador": coste del alquiler del contador en euros (0 si no aparece),
-  "tipoIVA": tipo de IVA en formato decimal. Localiza la línea con formato "IVA X % s/YY,YY €  ZZ,ZZ €": X es el PORCENTAJE, conviértelo a decimal (10→0.10, 21→0.21, 7→0.07). ZZ,ZZ es el importe en euros — NUNCA lo uses como tipo. Ejemplo: "IVA 10 % s/47,62 €  4,76 €" → devuelve 0.10 (NO 4.76). NUNCA extraigas el importe en euros como tipo de IVA.
+  "tipoIVA": tipo de IVA en formato decimal. Localiza la línea con formato "IVA X % s/YY,YY €  ZZ,ZZ €": X es el PORCENTAJE, conviértelo a decimal (10→0.10, 21→0.21, 7→0.07). ZZ,ZZ es el importe en euros — NUNCA lo uses como tipo. Ejemplo: "IVA 10 % s/47,62 €  4,76 €" → devuelve 0.10 (NO 4.76). NUNCA extraigas el importe en euros como tipo de IVA,
+  "textosLiterales": {
+    "totalKwhGas": los kWh de gas COPIADOS tal como están impresos, con sus puntos y comas (p. ej. "1.234" o "1.234,5"), o null si los has sumado tú,
+    "diasFacturacion": los días tal como están impresos, o null si los has contado tú,
+    "importeTotalFactura": el importe total tal como está impreso (p. ej. "1.234,56"),
+    "costeTerminoFijo": el importe del término fijo tal como está impreso, o null si lo has sumado tú
+  }
 }
 
 ════════ REGLAS OBLIGATORIAS ════════
@@ -154,6 +158,9 @@ export default function EstudioComparativoGas() {
   const [isExtracting, setIsExtracting]         = useState(false);
   const [extractionDone, setExtractionDone]     = useState(false);
   const [extractionError, setExtractionError]   = useState('');
+  // Valores verificados de la última factura (para distinguir lo que el usuario edita) y su contexto.
+  const [baseFactura, setBaseFactura]           = useState(null);
+  const [ctxFactura, setCtxFactura]             = useState(null);
   const [estimatedSeconds, setEstimatedSeconds] = useState(0);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [isExportingPdf, setIsExportingPdf]     = useState(false);
@@ -169,19 +176,21 @@ export default function EstudioComparativoGas() {
 
   const asesorDisplay = form.asesor === '__otro__' ? (form.asesorLibre || '') : form.asesor;
 
-  const kwhGas     = n(form.kwhGas);
-  const dias       = n(form.dias);
-  const ivaRate    = n(form.iva, 0.21);
-  const tfFactura  = n(form.terminoFijoFactura);
-  const alqCont    = n(form.alquilerContador);
-  const factActual = n(form.facturaActual);
+  // Datos esenciales: valores verificados de la factura o lo que haya escrito el usuario.
+  const ev = evaluarFormulario({ esquema: GAS_ESQ, mapa: MAPA_GAS, form, base: baseFactura, contexto: ctxFactura || {} });
+  const kwhGas     = ev.valores.kwh ?? 0;
+  const dias       = ev.valores.dias ?? 0;
+  const ivaRate    = valorNum(form.iva, 0.21);
+  const tfFactura  = ev.valores.fijo ?? 0;
+  const alqCont    = valorNum(form.alquilerContador, 0);
+  const factActual = ev.valores.total ?? 0;
 
   /* Cálculo en el motor determinista (src/lib/energia/motor.js): término fijo
      prorrateado por días, variable al precio publicado (sin volver a descontar),
      impuesto de hidrocarburos 0,00234 €/kWh e IVA. */
   const rGas = calcularOfertaGas({
     producto: tarifa, kwh: kwhGas, dias, mantenimiento: mant, alquiler: alqCont, ivaRate,
-    consumoAnualKwh: n(form.consumoAnual), ignorarVigencia: true,
+    consumoAnualKwh: valorNum(form.consumoAnual, 0), ignorarVigencia: true,
   });
   const gasOk      = rGas.estado === ESTADO.OK;
   const precioVar  = gasOk ? rGas.precio : 0;
@@ -207,7 +216,10 @@ export default function EstudioComparativoGas() {
   const ahorroAnual   = extrapolarAnual(dif, dias) ?? 0;
   const dto = 0;
 
-  const isReady = !COMPARATIVA_BLOQUEADA && kwhGas > 0 && dias > 0 && factActual > 0 && gasOk;
+  // Errores críticos sin resolver (de la factura o de datos editados): no se emite el informe.
+  const datosMinimos = kwhGas > 0 && dias > 0 && factActual > 0;
+  const bloqueos = (baseFactura || datosMinimos) ? ev.bloqueos : [];
+  const isReady = !COMPARATIVA_BLOQUEADA && datosMinimos && gasOk && !bloqueos.length;
 
   /* ════════════ PRINT TITLE ════════════ */
 
@@ -243,7 +255,13 @@ export default function EstudioComparativoGas() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), EXTRACTION_TIMEOUT_MS);
 
+    setBaseFactura(null);
+    setCtxFactura(null);
     try {
+      // Texto impreso del PDF (sin IA), en paralelo: fuente independiente para contrastar.
+      const buffer = await file.arrayBuffer();
+      const esPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+      const textoPdfP = esPdf ? extraerTextoPdf(buffer).catch(() => null) : Promise.resolve(null);
       const base64 = await fileToBase64(file);
       const res = await fetch(PROXY_URL, {
         method: 'POST',
@@ -268,6 +286,13 @@ export default function EstudioComparativoGas() {
       else { const m = raw.match(/\{[\s\S]*\}/); if (m) raw = m[0]; }
 
       const ex = JSON.parse(raw);
+      const verif = await verificarExtraccion({
+        esquema: GAS_ESQ, ex, textoPdf: await textoPdfP,
+        revisarIA: (campos) => revisarCamposIA({ buffer, mimeType: file.type }, campos),
+      });
+      const { textos, base } = volcarAFormulario(verif, MAPA_GAS);
+      setBaseFactura(base);
+      setCtxFactura(GAS_ESQ.contexto(ex));
 
       /* IVA */
       let ivaValue = form.iva;
@@ -293,11 +318,9 @@ export default function EstudioComparativoGas() {
         ...f,
         cliente:            ex.nombreCliente              || f.cliente,
         cups:               ex.cups                       || f.cups,
-        dias:               ex.diasFacturacion   != null  ? String(ex.diasFacturacion)      : f.dias,
-        kwhGas:             ex.totalKwhGas       != null  ? String(ex.totalKwhGas)          : f.kwhGas,
-        facturaActual:      ex.importeTotalFactura != null ? String(ex.importeTotalFactura)  : f.facturaActual,
-        terminoFijoFactura: ex.costeTerminoFijo  != null  ? String(ex.costeTerminoFijo)     : f.terminoFijoFactura,
-        alquilerContador:   ex.costeAlquilerContador != null ? String(ex.costeAlquilerContador) : f.alquilerContador,
+        // Consumo, días, total y término fijo: valores verificados.
+        ...textos,
+        alquilerContador:   ex.costeAlquilerContador != null ? aCampo(valorNum(ex.costeAlquilerContador)) : f.alquilerContador,
         iva:                ivaValue,
       }));
       setExtractionDone(true);
@@ -542,10 +565,17 @@ export default function EstudioComparativoGas() {
             {extractionDone && !isExtracting && (
               <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 mt-3">
                 <AlertTriangle size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
-                <p className="text-[11px] text-amber-800 leading-relaxed">
+                <div className="text-[11px] text-amber-800 leading-relaxed">
                   <span className="font-bold text-amber-700 block mb-0.5">⚠️ Revisión obligatoria</span>
                   Revise los campos volcados, especialmente el consumo en kWh y el término fijo, antes de presentar el estudio al cliente.
-                </p>
+                  {[...bloqueos, ...ev.avisos, ...ev.info].length > 0 && (
+                    <ul className="mt-1.5 space-y-1 list-disc pl-4">
+                      {bloqueos.map((b, k) => <li key={`b${k}`} className="text-red-700"><strong>Error:</strong> {b.msg}</li>)}
+                      {ev.avisos.map((a, k) => <li key={`a${k}`}>{a.nivel === 'autocorreccion' ? 'Corregido automáticamente — ' : ''}{a.msg}</li>)}
+                      {ev.info.map((a, k) => <li key={`i${k}`} className="text-google-gray">{a.msg}</li>)}
+                    </ul>
+                  )}
+                </div>
               </div>
             )}
             {extractionError && !isExtracting && (
@@ -664,6 +694,9 @@ export default function EstudioComparativoGas() {
               <p className="text-xs text-google-gray max-w-xs text-center">
                 Rellena al menos: consumo kWh, días de facturación y factura actual del cliente.
               </p>
+              {bloqueos.length > 0 && (
+                <ul className="text-xs text-red-700 max-w-sm text-left list-disc pl-4 space-y-1">{bloqueos.map((b, k) => <li key={k}>{b.msg}</li>)}</ul>
+              )}
             </div>
           ) : (
             <div id="ec-informe-gas" className="bg-white border border-google-border rounded-xl shadow-sm overflow-hidden print:border-0 print:shadow-none print:rounded-none print:w-full">
@@ -699,7 +732,7 @@ export default function EstudioComparativoGas() {
                   <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-3">Término Fijo</p>
                   <div className="flex justify-between items-baseline text-sm">
                     <span className="text-google-gray">
-                      {tarifa.terFijo.toFixed(3)} €/mes × 12/365 × {dias} días
+                      {formatoES(tarifa.terFijo, 3)} €/mes × 12/365 × {dias} días
                     </span>
                     <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(tfEndesa)}</span>
                   </div>
@@ -714,7 +747,7 @@ export default function EstudioComparativoGas() {
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-baseline text-sm">
                     <span className="text-google-gray">
-                      {kwhGas} kWh × {precioVar.toFixed(6)} €/kWh
+                      {cantidadES(kwhGas)} kWh × {formatoES(precioVar, 6)} €/kWh
                       {dto > 0 && <span className="text-orange-500 ml-1.5 text-[11px]">(dto. {pct(dto, 0)} incluido)</span>}
                     </span>
                     <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(subtotVar)}</span>
@@ -742,7 +775,7 @@ export default function EstudioComparativoGas() {
                 )}
                 <div className="flex justify-between items-baseline text-sm">
                   <span className="text-google-gray">
-                    {n(form.iva) === 0.03 ? 'IGIC' : 'IVA'} ({pct(ivaRate, 0)}) sobre {eur(baseIVA)}
+                    {valorNum(form.iva) === 0.03 ? 'IGIC' : 'IVA'} ({pct(ivaRate, 0)}) sobre {eur(baseIVA)}
                   </span>
                   <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(ivaImp)}</span>
                 </div>

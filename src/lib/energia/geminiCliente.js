@@ -13,7 +13,7 @@
  * - Llamadas simultáneas sobre el mismo documento se deduplican.
  */
 
-export const EXTRACTOR_VERSION = 'luz-b2b-2026-09-30.1'; // prompt acotado a los campos de la comparativa
+export const EXTRACTOR_VERSION = 'luz-b2b-2026-10-26.1'; // + textos literales, importes de potencia/energía y maxímetros
 export const ESPERA_MAX_MS = 16000;
 const PRESUPUESTO_SERVIDOR_MS = 14000;
 const RELEVO_SERVIDOR_MS = 4500;
@@ -80,3 +80,48 @@ export async function extraerFactura(file, { prompt, version = EXTRACTOR_VERSION
 }
 
 export function vaciarCacheExtracciones() { cache.clear(); }
+
+/* ══════════════════ Segunda consulta: revisión dirigida ══════════════════ */
+
+/**
+ * Pide a la IA la LÍNEA literal y el número tal como está impreso de los campos en
+ * conflicto. No se le enseña lo que respondió la primera extracción (para que no la
+ * confirme por inercia) ni se le pide el valor: el código comprueba que esa línea
+ * existe en el PDF y vuelve a leer el número.
+ */
+export function promptRevision(campos) {
+  return `Eres un verificador de facturas españolas de energía. Para cada dato de la lista, localízalo en el documento y COPIA LITERALMENTE:
+- "linea": la línea completa del documento donde aparece, tal cual (con sus etiquetas, unidades y los demás números de esa línea);
+- "texto": el número del dato tal como está impreso, con sus puntos y comas, sin convertirlo.
+No interpretes ni corrijas nada. Si no lo encuentras, devuelve null para ese dato.
+
+Datos:
+${campos.map(c => `- "${c.clave}": ${c.descripcion}`).join('\n')}
+
+Devuelve EXCLUSIVAMENTE un objeto JSON: { ${campos.map(c => `"${c.clave}": { "linea": "...", "texto": "..." }`).join(', ')} }`;
+}
+
+/** @returns {Promise<Record<string,{linea:string,texto:string}>|null>} */
+export async function revisarCamposIA({ buffer, mimeType }, campos, { esperaMs = 15000, parse } = {}) {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), esperaMs);
+  try {
+    const res = await fetch('/api/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: promptRevision(campos), history: [], json: true,
+        modelo: 'flash', thinkingBudget: 128, presupuestoMs: esperaMs - 1000, relevoMs: RELEVO_SERVIDOR_MS,
+        file: { mimeType: mimeType || 'application/pdf', data: aBase64(buffer) },
+      }),
+      signal: controller.signal,
+    });
+    const data = await res.json();
+    if (!res.ok) return null;
+    return (parse || JSON.parse)(data.response);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}

@@ -6,6 +6,12 @@ import { exportElementToPdf, slugifyFilename } from '../lib/exportPdf';
 import { LUZ, LUZ_SOLAR, INDEXADA_2_0TD } from '../data/tarifasB2C';
 import { TEMPO_2_0TD } from '../data/tarifasB2B';
 import { IE_RATE as IE_RATE_MOTOR, calcularAhorro, extrapolarAnual } from '../lib/energia/motor';
+import { aCampo, valorNum, cantidadES, formatoES } from '../lib/energia/numeros';
+import { extraerTextoPdf } from '../lib/energia/textoPdf';
+import { verificarExtraccion } from '../lib/energia/verificacion';
+import { LUZ_20 } from '../lib/energia/esquemas';
+import { volcarAFormulario, evaluarFormulario } from '../lib/energia/formulario';
+import { revisarCamposIA } from '../lib/energia/geminiCliente';
 
 /* Estimación de tiempo de extracción proporcional al peso del archivo (no inventada):
    tiempo base de 4s (latencia fija de red + arranque del modelo) + 1.5s por cada
@@ -20,7 +26,10 @@ function estimateExtractionSeconds(fileSizeBytes) {
 /* ── Tarifas Endesa LUZ ──────────────────────────────────────────────────────── */
 
 /* Todas las tarifas salen del catálogo central (src/data/*). */
-const [LUZ_DIRECTO, LUZ_PRESCRIPTOR, LUZ_TOC, LUZ_CONECTA] = LUZ;
+const luzPorId = (id) => LUZ.find(t => t.id === id);
+const LUZ_CONECTA = luzPorId('conecta');
+const LUZ_PRESCRIPTOR = luzPorId('prescriptor');
+const LUZ_TOC = luzPorId('tu-otra-casa');
 
 /* Tu Otra Casa 50: sin curva horaria, se estima que el 35% del consumo cae en las
    horas promo (precio "Horas Promo") y el resto a precio "Resto h.". Los
@@ -31,9 +40,9 @@ const tocPrecioMedio = (p, pctPromo) => pctPromo * p.promoH + (1 - pctPromo) * p
 const [SOLAR_BASIC, SOLAR_PLUS, SOLAR_BATERIA] = LUZ_SOLAR;
 
 const TARIFAS = [
-  { id: 'directo', label: 'Luz Fija 24H — Canal Directo', shortLabel: 'Luz Fija 24H', tag: 'Canal Directo', tagClass: 'bg-blue-100 text-blue-700',
-    sinMant: LUZ_DIRECTO.sinMant.promo, conMant: LUZ_DIRECTO.conMant.promo, potPunta: LUZ_DIRECTO.potPunta, potValle: LUZ_DIRECTO.potValle,
-    validez: LUZ_DIRECTO.validez, contratacion: LUZ_DIRECTO.contratacion },
+  { id: 'conecta', label: 'Conecta Luz (2.0TD)', shortLabel: 'Conecta Luz', tag: 'Residencial', tagClass: 'bg-sky-100 text-sky-700',
+    sinMant: LUZ_CONECTA.sinMant.promo, conMant: LUZ_CONECTA.conMant.promo, potPunta: LUZ_CONECTA.potPunta, potValle: LUZ_CONECTA.potValle,
+    validez: LUZ_CONECTA.validez, contratacion: LUZ_CONECTA.contratacion },
   { id: 'prescriptor', label: 'Luz Fija 24H — Con Prescriptor', shortLabel: 'Luz Fija 24H', tag: 'Con Prescriptor', tagClass: 'bg-violet-100 text-violet-700',
     sinMant: LUZ_PRESCRIPTOR.sinMant.promo, conMant: LUZ_PRESCRIPTOR.conMant.promo, potPunta: LUZ_PRESCRIPTOR.potPunta, potValle: LUZ_PRESCRIPTOR.potValle,
     validez: LUZ_PRESCRIPTOR.validez, contratacion: LUZ_PRESCRIPTOR.contratacion },
@@ -41,9 +50,6 @@ const TARIFAS = [
     isToc: true, preciosSinMant: LUZ_TOC.sinMant, preciosConMant: LUZ_TOC.conMant,
     potPunta: LUZ_TOC.potPunta, potValle: LUZ_TOC.potValle,
     validez: LUZ_TOC.validez, contratacion: LUZ_TOC.contratacion },
-  { id: 'conecta', label: 'Conecta Luz (2.0TD)', shortLabel: 'Conecta Luz', tag: 'Residencial', tagClass: 'bg-sky-100 text-sky-700',
-    sinMant: LUZ_CONECTA.sinMant.promo, conMant: LUZ_CONECTA.conMant.promo, potPunta: LUZ_CONECTA.potPunta, potValle: LUZ_CONECTA.potValle,
-    validez: LUZ_CONECTA.validez, contratacion: LUZ_CONECTA.contratacion },
   { id: 'tempo', label: 'TEMPO 2.0TD — Precio Único 24H (B2B ≤ 15 kW)', shortLabel: 'TEMPO 2.0TD', tag: 'Tempo', tagClass: 'bg-amber-100 text-amber-700',
     sinMant: TEMPO_2_0TD.energia.promo, conMant: TEMPO_2_0TD.energia.promo,
     potPunta: TEMPO_2_0TD.potencia[0].anyo, potValle: TEMPO_2_0TD.potencia[1].anyo,
@@ -75,29 +81,9 @@ const PROXY_URL = '/api/gemini';
 
 /* ── Helpers ─────────────────────────────────────────────────────────────────── */
 
-function n(v, fb = 0) {
-  if (v === null || v === undefined) return fb;
-  // Un number ya es inequivoco: aplicarle la heuristica de miles lo corrompe
-  // (109.252 kWh se convertiria en 109252 kWh).
-  if (typeof v === 'number') return Number.isFinite(v) ? v : fb;
-  const s = String(v).trim().replace(/\s/g, '');
-  if (!s) return fb;
-  // "1.200" o "27.263" = miles (formato español); "0.153" o "1,5" = decimales.
-  const t = s.includes(',') ? s.replace(/\./g, '').replace(',', '.')
-    : /^\d{1,3}(\.\d{3})+$/.test(s) ? s.replace(/\./g, '') : s;
-  const x = parseFloat(t);
-  return isNaN(x) ? fb : x;
-}
-
-/* Numero -> texto para los campos del formulario, en formato espanol.
-   Imprescindible: "109.252" seria ambiguo (miles o decimales) y n() lo leeria
-   como 109252; "109,252" no admite otra lectura. */
-function numStr(v) {
-  if (v === null || v === undefined || v === '') return '';
-  const x = Number(v);
-  if (!Number.isFinite(x)) return '';
-  return String(x).replace('.', ',');
-}
+/* Campos verificados (clave del esquema LUZ_20 → campo del formulario). El consumo
+   total va a "kwhP1"; P2 y P3 se dejan a 0 como siempre. */
+const MAPA_20 = { kwPunta: 'kwPunta', kwValle: 'kwValle', kwh: 'kwhP1', dias: 'dias', total: 'facturaActual' };
 
 function eur(v) {
   return v.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
@@ -135,7 +121,14 @@ El JSON debe tener exactamente estos campos (usa null para strings no encontrado
   "costeBonoSocial": importe del bono social en euros (0 si no aparece),
   "compensacionExcedentes": importe de compensación por excedentes de autoconsumo en euros como número POSITIVO (ej: si la factura muestra "-29,72 €" de compensación de excedentes, devuelve 29.72). Devuelve 0 si no hay compensación de excedentes,
   "kwhExcedentesVertidos": kWh totales de energía excedentaria vertida/exportada a la red (autoconsumo). Es el kWh que multiplicado por el precio de compensación da el importe de "compensacionExcedentes" (ej: en la línea "Compensación excedente 784,746 kWh x -0,060000 Eur/kWh", devuelve 784.746). También puede aparecer como "Energía vertida a la red" en el resumen de consumo. Devuelve 0 si no hay excedentes,
-  "tipoIVA": tipo de IVA en formato decimal. Localiza la línea con formato "IVA X % s/YY,YY €  ZZ,ZZ €": X es el PORCENTAJE, conviértelo a decimal (21→0.21, 10→0.10, 7→0.07). ZZ,ZZ es el importe en euros — NUNCA lo uses como tipo. Ejemplo: "IVA (*) 21 % s/47,62 €  10,00 €" → devuelve 0.21 (NO 0.10). NUNCA extraigas el importe en euros como tipo de IVA.
+  "tipoIVA": tipo de IVA en formato decimal. Localiza la línea con formato "IVA X % s/YY,YY €  ZZ,ZZ €": X es el PORCENTAJE, conviértelo a decimal (21→0.21, 10→0.10, 7→0.07). ZZ,ZZ es el importe en euros — NUNCA lo uses como tipo. Ejemplo: "IVA (*) 21 % s/47,62 €  10,00 €" → devuelve 0.21 (NO 0.10). NUNCA extraigas el importe en euros como tipo de IVA,
+  "textosLiterales": {
+    "kwPotenciaPunta": el número de la potencia punta COPIADO tal como está impreso, con sus puntos y comas (p. ej. "4,600"), o null,
+    "kwPotenciaValle": ídem para la potencia valle, o null,
+    "totalKwhFacturados": el total de kWh tal como está impreso si la factura lo imprime (si lo has sumado tú, null),
+    "diasFacturacion": los días tal como están impresos, o null si los has contado tú,
+    "importeTotalFacturaActual": el importe total tal como está impreso (p. ej. "1.234,56")
+  }
 }
 
 ════════ REGLAS OBLIGATORIAS — MERCADO ELÉCTRICO ESPAÑOL ════════
@@ -359,7 +352,7 @@ export default function EstudioComparativo() {
   const { users, currentUser } = useAuth();
   const isAdmin = currentUser?.role === 'admin';
 
-  const [tarifaId, setTarifaId]             = useState('directo');
+  const [tarifaId, setTarifaId]             = useState('conecta');
   // Tu Otra Casa 50: % general (guardado para todos) y % solo para esta factura
   const [tocPctGeneral, setTocPctGeneral]   = useState(TOC_PCT_PROMO);
   const [tocPctFactura, setTocPctFactura]   = useState(null);
@@ -376,6 +369,8 @@ export default function EstudioComparativo() {
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [pdfError, setPdfError]             = useState('');
+  // Valores verificados de la última factura (para distinguir lo que el usuario edita).
+  const [baseFactura, setBaseFactura]       = useState(null);
   const fileRef       = useRef(null);
   const originalTitle = useRef(document.title);
   const countdownRef  = useRef(null);
@@ -389,18 +384,20 @@ export default function EstudioComparativo() {
     ? tocPrecioMedio(mant ? tarifa.preciosConMant : tarifa.preciosSinMant, tocPct)
     : (mant ? tarifa.conMant : tarifa.sinMant);
 
-  const kwhP1    = n(form.kwhP1);
-  const kwhP2    = n(form.kwhP2);
-  const kwhP3    = n(form.kwhP3);
-  const kwPunta  = n(form.kwPunta);
-  const kwValle  = n(form.kwValle);
-  const dias     = n(form.dias);
-  const bono     = n(form.bonoSocial);
-  const alqCont  = n(form.alquilerContador);
-  const factActual = n(form.facturaActual);
-  const dtoCup   = n(form.dtoCupones);
+  // Datos esenciales: valores verificados de la factura o lo que haya escrito el usuario.
+  const ev = evaluarFormulario({ esquema: LUZ_20, mapa: MAPA_20, form, base: baseFactura });
+  const kwhP1    = ev.valores.kwh ?? 0;
+  const kwhP2    = valorNum(form.kwhP2, 0);
+  const kwhP3    = valorNum(form.kwhP3, 0);
+  const kwPunta  = ev.valores.kwPunta ?? 0;
+  const kwValle  = ev.valores.kwValle ?? 0;
+  const dias     = ev.valores.dias ?? 0;
+  const bono     = valorNum(form.bonoSocial, 0);
+  const alqCont  = valorNum(form.alquilerContador, 0);
+  const factActual = ev.valores.total ?? 0;
+  const dtoCup   = valorNum(form.dtoCupones, 0);
   const factBase = factActual; // el cupón/dto de fidelización nunca se aplica: se compara siempre el bruto de la factura
-  const ivaRate  = n(form.iva, 0.21);
+  const ivaRate  = valorNum(form.iva, 0.21);
   // Los precios del catálogo ya incluyen los descuentos publicados: no se aplica
   // ningún descuento adicional (evita descontar dos veces).
   const dto      = 0;
@@ -414,7 +411,7 @@ export default function EstudioComparativo() {
   // Tarifas Indexadas a OMIE: precio por periodo = A + (B × OMIEmes), en vez de un
   // único precio fijo. Las demás tarifas mantienen el mismo precio en P1/P2/P3.
   const isIndexada = !!tarifa.isIndexada;
-  const omie       = n(form.omie);
+  const omie       = valorNum(form.omie, 0);
   const precioBaseP1 = isIndexada ? tarifa.energiaA.p1 + tarifa.energiaB.p1 * omie : precioEn;
   const precioBaseP2 = isIndexada ? tarifa.energiaA.p2 + tarifa.energiaB.p2 * omie : precioEn;
   const precioBaseP3 = isIndexada ? tarifa.energiaA.p3 + tarifa.energiaB.p3 * omie : precioEn;
@@ -434,8 +431,8 @@ export default function EstudioComparativo() {
   // Tarifas solares: la compensación se calcula a partir del kWh vertido y el precio de
   // la tarifa, tope legal (RD 244/2019): no puede superar el coste de la energía consumida.
   // El interruptor "compExcActiva" permite desactivar por completo la compensación.
-  const excedentesKwh       = n(form.excedentesKwh);
-  const excedentesManual    = n(form.compensacionExcedentes);
+  const excedentesKwh       = valorNum(form.excedentesKwh, 0);
+  const excedentesManual    = valorNum(form.compensacionExcedentes, 0);
   const excedentesSolarBruto = (tarifa.isSolar && compExcActiva) ? excedentesKwh * tarifa.compExcedentes : 0;
   const excedentes          = compExcActiva ? (tarifa.isSolar ? Math.min(excedentesSolarBruto, subtotEn) : excedentesManual) : 0;
   // Batería Virtual: el excedente que supera el coste de la energía se acumula para
@@ -456,7 +453,10 @@ export default function EstudioComparativo() {
   // (mismo criterio que las comparativas ya entregadas y que Ahorro_por_CUPS).
   const ahorroPctOferta = total > 0 ? dif / total : 0;
   const ahorroAnual   = extrapolarAnual(dif, dias) ?? 0;
-  const isReady = kwhP1 > 0 && kwPunta > 0 && dias > 0 && factActual > 0;
+  const datosMinimos = kwhP1 > 0 && kwPunta > 0 && dias > 0 && factActual > 0;
+  // Errores críticos sin resolver (de la factura o de datos editados): no se emite el informe.
+  const bloqueos = (baseFactura || datosMinimos) ? ev.bloqueos : [];
+  const isReady = datosMinimos && !bloqueos.length;
 
   /* ════════════ FECHAS ════════════ */
 
@@ -504,6 +504,7 @@ export default function EstudioComparativo() {
     setIsExtracting(true);
     setExtractionDone(false);
     setExtractionError('');
+    setBaseFactura(null);
 
     clearInterval(countdownRef.current);
     countdownRef.current = setInterval(() => {
@@ -512,6 +513,10 @@ export default function EstudioComparativo() {
 
     let timeoutId;
     try {
+      // Texto impreso del PDF (sin IA), en paralelo: fuente independiente para contrastar.
+      const buffer = await file.arrayBuffer();
+      const esPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+      const textoPdfP = esPdf ? extraerTextoPdf(buffer).catch(() => null) : Promise.resolve(null);
       const base64 = await fileToBase64(file);
       const controller = new AbortController();
       timeoutId = setTimeout(() => controller.abort(), 45000); // espera máxima 45 s
@@ -538,6 +543,12 @@ export default function EstudioComparativo() {
       else { const m = raw.match(/\{[\s\S]*\}/); if (m) raw = m[0]; }
 
       const ex = JSON.parse(raw);
+      const verif = await verificarExtraccion({
+        esquema: LUZ_20, ex, textoPdf: await textoPdfP,
+        revisarIA: (campos) => revisarCamposIA({ buffer, mimeType: file.type }, campos),
+      });
+      const { textos, base } = volcarAFormulario(verif, MAPA_20);
+      setBaseFactura(base);
 
       let ivaValue = form.iva;
       if (ex.tipoIVA != null) {
@@ -551,20 +562,15 @@ export default function EstudioComparativo() {
         ...f,
         cliente:          ex.nombreCliente                     || f.cliente,
         cups:             ex.cups                              || f.cups,
-        dias:             ex.diasFacturacion        != null    ? numStr(ex.diasFacturacion)              : f.dias,
-        kwhP1:            ex.totalKwhFacturados     != null    ? numStr(ex.totalKwhFacturados)           : f.kwhP1,
+        // Potencias, consumo, días y total: valores verificados (sin potencia valle, la de punta).
+        ...textos,
         kwhP2:            '0',
         kwhP3:            '0',
-        kwPunta:          ex.kwPotenciaPunta        != null    ? numStr(ex.kwPotenciaPunta)              : f.kwPunta,
-        kwValle:          (ex.kwPotenciaValle != null && ex.kwPotenciaValle !== 0)
-                            ? numStr(ex.kwPotenciaValle)
-                            : (ex.kwPotenciaPunta != null ? numStr(ex.kwPotenciaPunta) : f.kwValle),
-        facturaActual:          ex.importeTotalFacturaActual != null ? numStr(ex.importeTotalFacturaActual)    : f.facturaActual,
-        alquilerContador:       ex.costeAlquilerContador    != null ? numStr(ex.costeAlquilerContador)        : f.alquilerContador,
-        bonoSocial:             ex.costeBonoSocial          != null ? numStr(ex.costeBonoSocial)              : f.bonoSocial,
-        compensacionExcedentes: ex.compensacionExcedentes   != null ? numStr(ex.compensacionExcedentes)       : f.compensacionExcedentes,
-        excedentesKwh:          ex.kwhExcedentesVertidos    != null ? numStr(ex.kwhExcedentesVertidos)        : f.excedentesKwh,
-        dtoCupones:             ex.descuentoCupon           != null ? numStr(ex.descuentoCupon)                : f.dtoCupones,
+        alquilerContador:       ex.costeAlquilerContador    != null ? aCampo(valorNum(ex.costeAlquilerContador))     : f.alquilerContador,
+        bonoSocial:             ex.costeBonoSocial          != null ? aCampo(valorNum(ex.costeBonoSocial))           : f.bonoSocial,
+        compensacionExcedentes: ex.compensacionExcedentes   != null ? aCampo(valorNum(ex.compensacionExcedentes))    : f.compensacionExcedentes,
+        excedentesKwh:          ex.kwhExcedentesVertidos    != null ? aCampo(valorNum(ex.kwhExcedentesVertidos))     : f.excedentesKwh,
+        dtoCupones:             ex.descuentoCupon           != null ? aCampo(valorNum(ex.descuentoCupon))            : f.dtoCupones,
         iva:                    ivaValue,
       }));
       setExtractionDone(true);
@@ -814,7 +820,15 @@ export default function EstudioComparativo() {
             {extractionDone && !isExtracting && (
               <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 mt-3">
                 <AlertTriangle size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
-                <p className="text-[11px] text-amber-800 leading-relaxed"><span className="font-bold text-amber-700 block mb-0.5">⚠️ Atención: Revisión obligatoria</span>Los datos han sido volcados automáticamente mediante IA. Revise todos los campos antes de presentar el estudio.</p>
+                <div className="text-[11px] text-amber-800 leading-relaxed"><span className="font-bold text-amber-700 block mb-0.5">⚠️ Atención: Revisión obligatoria</span>Los datos han sido volcados automáticamente mediante IA. Revise todos los campos antes de presentar el estudio.
+                  {[...bloqueos, ...ev.avisos, ...ev.info].length > 0 && (
+                    <ul className="mt-1.5 space-y-1 list-disc pl-4">
+                      {bloqueos.map((b, k) => <li key={`b${k}`} className="text-red-700"><strong>Error:</strong> {b.msg}</li>)}
+                      {ev.avisos.map((a, k) => <li key={`a${k}`}>{a.nivel === 'autocorreccion' ? 'Corregido automáticamente — ' : ''}{a.msg}</li>)}
+                      {ev.info.map((a, k) => <li key={`i${k}`} className="text-google-gray">{a.msg}</li>)}
+                    </ul>
+                  )}
+                </div>
               </div>
             )}
             {extractionError && !isExtracting && (
@@ -1021,7 +1035,9 @@ export default function EstudioComparativo() {
                 <Calculator size={26} className="text-google-blue" />
               </div>
               <p className="text-sm font-semibold text-google-dark">El informe aparecerá aquí</p>
-              <p className="text-xs text-google-gray max-w-xs text-center">Rellena al menos: consumo P1, kW Punta, días de facturación y factura actual.</p>
+              {bloqueos.length
+                ? <ul className="text-xs text-red-700 max-w-sm text-left list-disc pl-4 space-y-1">{bloqueos.map((b, k) => <li key={k}>{b.msg}</li>)}</ul>
+                : <p className="text-xs text-google-gray max-w-xs text-center">Rellena al menos: consumo P1, kW Punta, días de facturación y factura actual.</p>}
             </div>
           ) : (
             <div id="ec-informe" className="bg-white border border-google-border rounded-xl shadow-sm overflow-hidden print:border-0 print:shadow-none print:rounded-none print:w-full">
@@ -1042,10 +1058,10 @@ export default function EstudioComparativo() {
                 </div>
                 <div className="flex flex-wrap gap-2.5 pr-40">
                   <span className="inline-flex items-center bg-white/20 text-white text-[11px] font-semibold leading-none px-3 py-1.5 rounded-full">{tarifa.shortLabel}</span>
-                  {isIndexada && <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">OMIE {omie.toFixed(4)} €/kWh</span>}
+                  {isIndexada && <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">OMIE {formatoES(omie, 4)} €/kWh</span>}
                   {mant && <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">Con Mantenimiento −3%</span>}
                   <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">{dias} días</span>
-                  {n(form.descuento) > 0 && <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">Dto. adicional {form.descuento}%</span>}
+                  {valorNum(form.descuento, 0) > 0 && <span className="inline-flex items-center bg-white/20 text-white text-[11px] leading-none px-3 py-1.5 rounded-full">Dto. adicional {form.descuento}%</span>}
                 </div>
                 <div className="absolute bottom-6 right-8 text-right text-xs">
                   <p className="font-semibold text-white">{today}</p>
@@ -1058,12 +1074,12 @@ export default function EstudioComparativo() {
                 <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-3">Término de Potencia</p>
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-baseline text-sm">
-                    <span className="text-google-gray">{kwPunta} kW (Punta) × {dias} días × {potPuntaDia.toFixed(6)} €/kW</span>
+                    <span className="text-google-gray">{cantidadES(kwPunta)} kW (Punta) × {dias} días × {formatoES(potPuntaDia, 6)} €/kW</span>
                     <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(imtPotPunta)}</span>
                   </div>
                   {kwValle > 0 && (
                     <div className="flex justify-between items-baseline text-sm">
-                      <span className="text-google-gray">{kwValle} kW (Valle) × {dias} días × {potValleDia.toFixed(6)} €/kW</span>
+                      <span className="text-google-gray">{cantidadES(kwValle)} kW (Valle) × {dias} días × {formatoES(potValleDia, 6)} €/kW</span>
                       <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(imtPotValle)}</span>
                     </div>
                   )}
@@ -1082,8 +1098,8 @@ export default function EstudioComparativo() {
                 <div className="space-y-1.5">
                   <div className="flex justify-between items-baseline text-sm">
                     <span className="text-google-gray">
-                      {kwhP1} kWh (P1) × {precioP1.toFixed(6)} €/kWh
-                      {isIndexada && <span className="text-cyan-600 ml-1.5 text-[11px]">({tarifa.energiaA.p1.toFixed(6)} + {tarifa.energiaB.p1} × {omie.toFixed(4)})</span>}
+                      {cantidadES(kwhP1)} kWh (P1) × {formatoES(precioP1, 6)} €/kWh
+                      {isIndexada && <span className="text-cyan-600 ml-1.5 text-[11px]">({formatoES(tarifa.energiaA.p1, 6)} + {formatoES(tarifa.energiaB.p1, { max: 3 })} × {formatoES(omie, 4)})</span>}
                       {tarifa.isToc && <span className="text-emerald-600 ml-1.5 text-[11px]">({tocDesglose})</span>}
                       {dto > 0 && <span className="text-google-blue ml-1.5 text-[11px]">(dto. {pct(dto, 0)} incluido)</span>}
                     </span>
@@ -1092,8 +1108,8 @@ export default function EstudioComparativo() {
                   {kwhP2 > 0 && (
                     <div className="flex justify-between items-baseline text-sm">
                       <span className="text-google-gray">
-                        {kwhP2} kWh (P2) × {precioP2.toFixed(6)} €/kWh
-                        {isIndexada && <span className="text-cyan-600 ml-1.5 text-[11px]">({tarifa.energiaA.p2.toFixed(6)} + {tarifa.energiaB.p2} × {omie.toFixed(4)})</span>}
+                        {cantidadES(kwhP2)} kWh (P2) × {formatoES(precioP2, 6)} €/kWh
+                        {isIndexada && <span className="text-cyan-600 ml-1.5 text-[11px]">({formatoES(tarifa.energiaA.p2, 6)} + {formatoES(tarifa.energiaB.p2, { max: 3 })} × {formatoES(omie, 4)})</span>}
                         {tarifa.isToc && <span className="text-emerald-600 ml-1.5 text-[11px]">({tocDesglose})</span>}
                       </span>
                       <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(imtEnP2)}</span>
@@ -1102,8 +1118,8 @@ export default function EstudioComparativo() {
                   {kwhP3 > 0 && (
                     <div className="flex justify-between items-baseline text-sm">
                       <span className="text-google-gray">
-                        {kwhP3} kWh (P3) × {precioP3.toFixed(6)} €/kWh
-                        {isIndexada && <span className="text-cyan-600 ml-1.5 text-[11px]">({tarifa.energiaA.p3.toFixed(6)} + {tarifa.energiaB.p3} × {omie.toFixed(4)})</span>}
+                        {cantidadES(kwhP3)} kWh (P3) × {formatoES(precioP3, 6)} €/kWh
+                        {isIndexada && <span className="text-cyan-600 ml-1.5 text-[11px]">({formatoES(tarifa.energiaA.p3, 6)} + {formatoES(tarifa.energiaB.p3, { max: 3 })} × {formatoES(omie, 4)})</span>}
                         {tarifa.isToc && <span className="text-emerald-600 ml-1.5 text-[11px]">({tocDesglose})</span>}
                       </span>
                       <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(imtEnP3)}</span>
@@ -1117,7 +1133,7 @@ export default function EstudioComparativo() {
                     <div className="flex justify-between items-baseline text-sm mt-1.5">
                       <span className="text-[12px] text-green-700">
                         Compensación excedentes (autoconsumo)
-                        {tarifa.isSolar && <span className="text-google-gray ml-1">({excedentesKwh} kWh × {tarifa.compExcedentes.toFixed(2)} €/kWh)</span>}
+                        {tarifa.isSolar && <span className="text-google-gray ml-1">({cantidadES(excedentesKwh)} kWh × {formatoES(tarifa.compExcedentes, 2)} €/kWh)</span>}
                       </span>
                       <span className="font-semibold text-green-700 tabular-nums whitespace-nowrap ml-4">−{eur(excedentes)}</span>
                     </div>
@@ -1158,7 +1174,7 @@ export default function EstudioComparativo() {
                   </div>
                 )}
                 <div className="flex justify-between items-baseline text-sm">
-                  <span className="text-google-gray">{n(form.iva) === 0.07 ? 'IGIC' : 'IVA'} ({pct(ivaRate, 0)}) sobre {eur(baseIVA)}</span>
+                  <span className="text-google-gray">{valorNum(form.iva) === 0.07 ? 'IGIC' : 'IVA'} ({pct(ivaRate, 0)}) sobre {eur(baseIVA)}</span>
                   <span className="font-semibold text-google-dark tabular-nums whitespace-nowrap ml-4">{eur(ivaImp)}</span>
                 </div>
               </div>

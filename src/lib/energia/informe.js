@@ -9,6 +9,7 @@
  */
 
 import { calcularAhorro, extrapolarAnual } from './motor.js';
+import { cantidadES, formatoES } from './numeros.js';
 
 export function eurES(v) {
   if (v == null || !isFinite(v)) return '—';
@@ -17,8 +18,9 @@ export function eurES(v) {
 export function numES(v, dec = 0) {
   return Number(v).toLocaleString('es-ES', { minimumFractionDigits: dec, maximumFractionDigits: dec, useGrouping: 'always' });
 }
-// Cantidades del desglose (kW, kWh): sin ceros de relleno y sin arrastrar decimales de coma flotante.
-const cant = (v) => String(Math.round(Number(v) * 1000) / 1000);
+// Cantidades del desglose (kW, kWh) en formato español, sin ceros de relleno: 15,001 kW · 1.442 kWh.
+const cant = cantidadES;
+const precio6 = (v) => formatoES(v, 6);
 
 /**
  * @param {object} p
@@ -32,11 +34,11 @@ const cant = (v) => String(Math.round(Number(v) * 1000) / 1000);
 export function construirInforme(p) {
   const r = p.resultado;
   const potencia = r.detallePotencia.map(x => ({
-    detalle: `${cant(x.kw)} kW (${x.periodo}) × ${x.dias} días × ${x.precioDia.toFixed(6)} €/kW`,
+    detalle: `${cant(x.kw)} kW (${x.periodo}) × ${x.dias} días × ${precio6(x.precioDia)} €/kW`,
     importe: x.importe,
   }));
   const energia = r.detalleEnergia.map(x => ({
-    detalle: `${cant(x.kwh)} kWh (${x.periodo || x.etiqueta}) × ${x.precio.toFixed(6)} €/kWh`,
+    detalle: `${cant(x.kwh)} kWh (${x.periodo || x.etiqueta}) × ${precio6(x.precio)} €/kWh`,
     importe: x.importe,
   }));
   if (r.excedentes) energia.push({ detalle: 'Compensación de excedentes (autoconsumo)', importe: -r.excedentes });
