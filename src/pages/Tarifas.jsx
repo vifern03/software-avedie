@@ -5,7 +5,7 @@ import EstudioComparativoGas from './EstudioComparativoGas';
 import EstudioComparativoB2B from './EstudioComparativoB2B';
 import { GAS, GAS_EMPRESA } from '../data/tarifasGas';
 import { OPEN_30TD, OPEN_61TD, SIMPLY_30TD, SIMPLY_61TD, TEMPO_2_0TD as TEMPO, INDEXADA_30TD, INDEXADA_61TD } from '../data/tarifasB2B';
-import { BONO_SOCIAL, LUZ, LUZ_SOLAR, INDEXADA_2_0TD } from '../data/tarifasB2C';
+import { BONO_SOCIAL, BONO_SOCIAL_SIN_IMPUESTOS, LUZ, LUZ_SOLAR, INDEXADA_2_0TD } from '../data/tarifasB2C';
 
 /* Todos los datos de tarifas viven en src/data/ (fuente única compartida con
    las comparativas y el informe PDF). */
@@ -104,7 +104,7 @@ function BonoSocialModal({ onClose }) {
           </button>
         </div>
         <p className="text-xs text-google-gray mb-3">
-          Coste fijo por cliente (comercialización): <strong className="text-google-dark">0,019121 €/día</strong> (sin impuestos)
+          Coste fijo por cliente (comercialización): <strong className="text-google-dark">{BONO_SOCIAL_SIN_IMPUESTOS}</strong> (sin impuestos)
         </p>
         <div className="divide-y divide-gray-100">
           {BONO_SOCIAL.map(z => (
@@ -134,99 +134,79 @@ function LuzCard({ tarifa }) {
   const [mant, setMant] = useState(false);
   const [showBono, setShowBono] = useState(false);
   const data = mant ? tarifa.conMant : tarifa.sinMant;
+  const fmtPot = v => v.toLocaleString('es-ES', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
 
   return (
     <>
       {showBono && <BonoSocialModal onClose={() => setShowBono(false)} />}
       <div className="bg-white border border-google-border rounded-xl shadow-sm flex flex-col">
-        <div className="px-5 pt-5 pb-4 border-b border-gray-100">
-          <div className="flex items-start justify-between gap-2 mb-1.5">
-            <h3 className="text-base font-semibold text-google-dark leading-tight">{tarifa.title}</h3>
-            <div className="flex flex-col items-end gap-1 flex-shrink-0">
-              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${tarifa.canalColor}`}>
-                {tarifa.canal}
-              </span>
-              {tarifa.precioSinActualizar && <SinActualizarBadge />}
-            </div>
-          </div>
-          <p className="text-xs text-google-gray">{tarifa.desc}</p>
-        </div>
-
-        <div className="px-5 py-4 space-y-4 flex-1">
-          {tarifa.isToc ? (
-            <div>
-              <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-2">Término de energía (€/kWh)</p>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-blue-50 rounded-lg p-3 text-center">
-                  <p className="text-[10px] text-blue-500 font-medium mb-1">50h Promo</p>
-                  <p className="text-lg font-bold text-google-blue leading-tight">{fmt(data.promoH)}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">promocionado</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-3 text-center">
-                  <p className="text-[10px] text-google-gray font-medium mb-1">Resto h.</p>
-                  <p className="text-lg font-bold text-google-dark leading-tight">{fmt(data.restoH)}</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">promocionado</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2 mt-1 text-center">
-                <p className="text-[10px] text-google-gray">No promo: <span className="line-through">{fmt(data.noPromoH)}</span></p>
-                <p className="text-[10px] text-google-gray">No promo: <span className="line-through">{fmt(data.noPromoR)}</span></p>
-              </div>
-            </div>
-          ) : (
-            <div>
-              <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-2">Término de energía (€/kWh)</p>
-              <div className="bg-blue-50 rounded-lg p-3 text-center">
-                <p className="text-2xl font-bold text-google-blue leading-tight">{fmt(data.promo)}</p>
-                <p className="text-xs text-blue-500 mt-0.5">precio promocionado</p>
-              </div>
-              <p className="text-xs text-google-gray mt-1.5 text-center">
-                No promocionado: <span className="line-through">{fmt(data.noPromo)}</span>
-              </p>
-            </div>
-          )}
-
-          <div>
-            <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-1.5">Término de potencia (€/kW/año)</p>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="bg-gray-50 rounded-lg px-3 py-2 flex justify-between items-center">
-                <span className="text-[10px] text-google-gray">Punta-llano</span>
-                <span className="text-xs font-semibold text-google-dark">{tarifa.potPunta.toFixed(6)}</span>
-              </div>
-              <div className="bg-gray-50 rounded-lg px-3 py-2 flex justify-between items-center">
-                <span className="text-[10px] text-google-gray">Valle</span>
-                <span className="text-xs font-semibold text-google-dark">{tarifa.potValle.toFixed(6)}</span>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-1.5">Descuentos incluidos</p>
-            <div className="flex flex-wrap gap-1.5">
-              {tarifa.descuentos.map((d, i) => <DiscountBadge key={i} label={d} />)}
-              {mant && <DiscountBadge label={tarifa.mantLabel} />}
-            </div>
-          </div>
-        </div>
-
-        <div className="px-5 pt-3 pb-4 border-t border-gray-100 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <MiniToggle on={mant} onToggle={() => setMant(v => !v)} />
-            <span className="text-xs text-google-gray">
-              Mantenimiento <span className="text-google-blue font-semibold">(−3%)</span>
+        <div className="px-4 pt-4 pb-3 border-b border-gray-100">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <h3 className="text-sm font-semibold text-google-dark leading-tight">{tarifa.title}</h3>
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${tarifa.canalColor}`}>
+              {tarifa.canal}
             </span>
           </div>
-          <button
-            onClick={() => setShowBono(true)}
-            className="flex items-center gap-1 text-[11px] text-google-gray hover:text-google-blue transition-colors"
-          >
-            <Info size={12} />
-            Bono Social
-          </button>
+          <p className="text-[11px] text-google-gray leading-snug">{tarifa.desc}</p>
+          {tarifa.precioSinActualizar && <div className="mt-1.5"><SinActualizarBadge /></div>}
         </div>
 
-        <div className="px-5 pb-3">
-          <p className="text-[10px] text-gray-400 text-right">Válida: {tarifa.validez} · 2.0TD · 0–15 kW</p>
+        <div className="px-4 py-3 space-y-3 flex-1">
+          <div>
+            <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-1.5">Energía (€/kWh)</p>
+            {tarifa.isToc ? (
+              <div className="grid grid-cols-2 gap-1.5">
+                <div className="bg-blue-50 rounded-lg px-2 py-1.5 text-center">
+                  <p className="text-[10px] text-blue-500 font-medium">50 h promo</p>
+                  <p className="text-base font-bold text-google-blue leading-tight">{fmt(data.promoH)}</p>
+                  <p className="text-[10px] text-google-gray">No promo <span className="line-through">{fmt(data.noPromoH)}</span></p>
+                </div>
+                <div className="bg-gray-50 rounded-lg px-2 py-1.5 text-center">
+                  <p className="text-[10px] text-google-gray font-medium">Resto h.</p>
+                  <p className="text-base font-bold text-google-dark leading-tight">{fmt(data.restoH)}</p>
+                  <p className="text-[10px] text-google-gray">No promo <span className="line-through">{fmt(data.noPromoR)}</span></p>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-blue-50 rounded-lg px-2 py-1.5 text-center">
+                <p className="text-xl font-bold text-google-blue leading-tight">{fmt(data.promo)}</p>
+                <p className="text-[10px] text-google-gray">No promo <span className="line-through">{fmt(data.noPromo)}</span></p>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider mb-1">Potencia (€/kW/año)</p>
+            <p className="text-xs text-google-dark">
+              <span className="text-google-gray">Punta</span> <span className="font-semibold">{fmtPot(tarifa.potPunta)}</span>
+              <span className="text-gray-300 mx-1.5">·</span>
+              <span className="text-google-gray">Valle</span> <span className="font-semibold">{fmtPot(tarifa.potValle)}</span>
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-1">
+            {tarifa.descuentos.map((d, i) => <DiscountBadge key={i} label={d} />)}
+            {mant && <DiscountBadge label={tarifa.mantLabel} />}
+          </div>
+        </div>
+
+        <div className="px-4 pt-2.5 pb-3 border-t border-gray-100">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <MiniToggle on={mant} onToggle={() => setMant(v => !v)} />
+              <span className="text-[11px] text-google-gray">
+                Mant. <span className="text-google-blue font-semibold">(−3%)</span>
+              </span>
+            </div>
+            <button
+              onClick={() => setShowBono(true)}
+              className="flex items-center gap-1 text-[11px] text-google-gray hover:text-google-blue transition-colors"
+            >
+              <Info size={12} />
+              Bono Social
+            </button>
+          </div>
+          <p className="text-[10px] text-gray-400 mt-1.5">Válida: {tarifa.validez} · 0–15 kW</p>
         </div>
       </div>
     </>
@@ -988,7 +968,7 @@ export default function Tarifas() {
       {tab === 'luz' && (
         <div className="flex flex-col gap-6">
           {/* Tarjetas: en mobile quedan debajo del botón (order-2), en desktop arriba (order-1) */}
-          <div className="order-2 md:order-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="order-2 md:order-1 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
             {LUZ.map(t => <LuzCard key={t.id} tarifa={t} />)}
           </div>
 

@@ -2,11 +2,13 @@
  * Tarifas B2C (Luz Residencial 2.0TD) — fuente única para Consulta de Tarifas,
  * Comparativas 2.0 e informe PDF.
  *
- * LUZ 24H (Canal Directo y Con Prescriptor): precios y vigencia del documento
- * Endesa 'Oferta LUZ 24H' editado el 09/09/2026 (contrataciones 17/09/2026 – 14/10/2026).
+ * LUZ 24H Canal Directo, TU OTRA CASA 50 y CONECTA LUZ: documentos Endesa
+ * 'Oferta LUZ 24H' y 'Oferta Tu Otra Casa 50' editados el 13/10/2026 y
+ * 'Oferta Conecta Luz' editado el 09/10/2026 (contrataciones 15/10/2026 – 02/12/2026).
+ * Ninguno publica precio con mantenimiento: se mantienen los 3 puntos de siempre.
  *
- * TU OTRA CASA 50: documento Endesa 'Oferta Tu Otra Casa 50' editado el 10/09/2026
- * (contrataciones 17/09/2026 – 14/10/2026).
+ * LUZ 24H Con Prescriptor: sin documento nuevo, conserva los precios del
+ * documento editado el 09/09/2026 (contrataciones 17/09/2026 – 14/10/2026).
  *
  * EL RESTO (Solar e Indexada 2.0TD) sigue pendiente de documento nuevo:
  * precios y descuentos sin cambios respecto a los documentos Endesa de junio de 2026.
@@ -16,21 +18,33 @@
  * No procede de un documento Endesa B2C nuevo.
  */
 
-/* LUZ 24H: documento Endesa propio, no es una extensión interna. */
+/* Documentos Endesa de octubre de 2026 (LUZ 24H, Tu Otra Casa 50, Conecta Luz). */
 export const VIGENCIA_LUZ_24H = {
+  desde: '2026-10-15',
+  hasta: '2026-12-02',
+  fuente: 'Oferta LUZ 24H — documento Endesa editado el 13/10/2026',
+};
+const VALIDEZ_OCT = '15/10/2026 – 02/12/2026';
+
+export const VIGENCIA_TOC = {
+  desde: '2026-10-15',
+  hasta: '2026-12-02',
+  fuente: 'Oferta Tu Otra Casa 50 — documento Endesa editado el 13/10/2026',
+};
+
+export const VIGENCIA_CONECTA = {
+  desde: '2026-10-15',
+  hasta: '2026-12-02',
+  fuente: 'Oferta Conecta Luz — documento Endesa editado el 09/10/2026',
+};
+
+/* LUZ 24H Con Prescriptor: documento anterior (09/09/2026). */
+const VIGENCIA_LUZ_24H_PRESCRIPTOR = {
   desde: '2026-09-17',
   hasta: '2026-10-14',
   fuente: 'Oferta LUZ 24H — documento Endesa editado el 09/09/2026',
 };
-const VALIDEZ_LUZ_24H = '17/09/2026 – 14/10/2026';
-
-/* TU OTRA CASA 50: documento Endesa propio. */
-export const VIGENCIA_TOC = {
-  desde: '2026-09-17',
-  hasta: '2026-10-14',
-  fuente: 'Oferta Tu Otra Casa 50 — documento Endesa editado el 10/09/2026',
-};
-const VALIDEZ_TOC = '17/09/2026 – 14/10/2026';
+const VALIDEZ_LUZ_24H_PRESCRIPTOR = '17/09/2026 – 14/10/2026';
 
 /* Resto de tarifas B2C: siguen sin documento nuevo. */
 export const VIGENCIA_B2C_LUZ = {
@@ -41,11 +55,14 @@ export const VIGENCIA_B2C_LUZ = {
 };
 const VALIDEZ_B2C = '17/09/2026 – 27/09/2026';
 
+/* Coste fijo del bono social (comercialización): 0,024688 €/día sin impuestos. */
+export const BONO_SOCIAL_SIN_IMPUESTOS = '0,024688 €/día';
+
 export const BONO_SOCIAL = [
-  { zona: 'Península y Baleares (< 10 kW)',       valor: '0,02431959 €/día' },
-  { zona: 'Canarias (< 10 kW, cliente doméstico)', valor: '0,02009883 €/día' },
-  { zona: 'Ceuta y Melilla',                        valor: '0,02029982 €/día' },
-  { zona: 'Resto de casos',                         valor: '0,02070180 €/día' },
+  { zona: 'Península y Baleares',                   valor: '0,031400 €/día' },
+  { zona: 'Canarias (< 10 kW, cliente doméstico)', valor: '0,025950 €/día' },
+  { zona: 'Canarias (resto de casos)',              valor: '0,0267292 €/día' },
+  { zona: 'Ceuta y Melilla',                        valor: '0,02621023 €/día' },
 ];
 
 export const LUZ = [
@@ -54,47 +71,63 @@ export const LUZ = [
     title: 'Luz Fija 24H',
     canal: 'Canal Directo',
     canalColor: 'bg-blue-100 text-blue-700',
-    desc: 'Precio único en energía y potencia, sin franjas horarias.',
-    sinMant: { promo: 0.119990, noPromo: 0.171414 },
-    conMant: { promo: 0.114847, noPromo: 0.171414 },
+    desc: 'Precio único 24 h, sin franjas horarias.',
+    sinMant: { promo: 0.166990, noPromo: 0.185544 },
+    conMant: { promo: 0.161424, noPromo: 0.185544 },
     potPunta: 34.188000,
     potValle: 34.188000,
-    descuentos: ['10% — 1 año (nuevas contrataciones)', '20% — indefinido sobre término de energía'],
-    mantLabel: '3% adicional — serv. eléctrico en misma dirección',
+    descuentos: ['10% 1 año (nuevas altas)'],
+    mantLabel: '3% mantenimiento',
     contratacion: VIGENCIA_LUZ_24H,
-    validez: VALIDEZ_LUZ_24H,
+    validez: VALIDEZ_OCT,
   },
   {
     id: 'prescriptor',
+    precioSinActualizar: true,
     title: 'Luz Fija 24H',
     canal: 'Con Prescriptor',
     canalColor: 'bg-violet-100 text-violet-700',
-    desc: 'Precio único sin franjas horarias. Canal venta con prescriptor.',
+    desc: 'Precio único 24 h. Venta con prescriptor.',
     sinMant: { promo: 0.137131, noPromo: 0.171414 },
     conMant: { promo: 0.131989, noPromo: 0.171414 },
     potPunta: 34.188000,
     potValle: 34.188000,
-    descuentos: ['10% — 1 año (nuevas contrataciones)', '10% — indefinido sobre término de energía'],
-    mantLabel: '3% adicional — serv. eléctrico en misma dirección (1 año)',
-    contratacion: VIGENCIA_LUZ_24H,
-    validez: VALIDEZ_LUZ_24H,
+    descuentos: ['10% 1 año (nuevas altas)', '10% indefinido'],
+    mantLabel: '3% mantenimiento (1 año)',
+    contratacion: VIGENCIA_LUZ_24H_PRESCRIPTOR,
+    validez: VALIDEZ_LUZ_24H_PRESCRIPTOR,
   },
   {
     id: 'tu-otra-casa',
     title: 'Tu Otra Casa 50',
     canal: '2.0TD',
     canalColor: 'bg-emerald-100 text-emerald-700',
-    desc: '50% de descuento en las 50 horas de mayor consumo de cada mes.',
+    desc: '50% dto. en las 50 h de mayor consumo del mes.',
     isToc: true,
-    sinMant: { promoH: 0.104280, restoH: 0.208560, noPromoH: 0.130350, noPromoR: 0.260700 },
+    sinMant: { promoH: 0.123674, restoH: 0.247347, noPromoH: 0.137415, noPromoR: 0.274830 },
     // El documento no publica precio con mantenimiento: −3% sobre los precios promocionados.
-    conMant: { promoH: 0.101152, restoH: 0.202303, noPromoH: 0.130350, noPromoR: 0.260700 },
+    conMant: { promoH: 0.119964, restoH: 0.239927, noPromoH: 0.137415, noPromoR: 0.274830 },
     potPunta: 32.880000,
     potValle: 5.904000,
-    descuentos: ['50% — en las 50h de mayor consumo del mes', '10% — 1 año (nuevas contrataciones)', '10% — indefinido sobre término de energía'],
-    mantLabel: '3% adicional — serv. eléctrico en misma dirección (1 año)',
+    descuentos: ['50% en 50 h de más consumo', '10% 1 año (nuevas altas)'],
+    mantLabel: '3% mantenimiento (1 año)',
     contratacion: VIGENCIA_TOC,
-    validez: VALIDEZ_TOC,
+    validez: VALIDEZ_OCT,
+  },
+  {
+    id: 'conecta',
+    title: 'Conecta Luz',
+    canal: 'Residencial',
+    canalColor: 'bg-sky-100 text-sky-700',
+    desc: 'Precio único 24 h. Factura electrónica y domiciliación.',
+    sinMant: { promo: 0.129990, noPromo: 0.144433 },
+    conMant: { promo: 0.125657, noPromo: 0.144433 },
+    potPunta: 34.188000,
+    potValle: 34.188000,
+    descuentos: ['10% 1 año (nuevas altas)'],
+    mantLabel: '3% mantenimiento',
+    contratacion: VIGENCIA_CONECTA,
+    validez: VALIDEZ_OCT,
   },
 ];
 

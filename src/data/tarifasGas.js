@@ -11,7 +11,7 @@
 
 export const IEH_GAS_EUR_KWH = 0.00234;
 
-/* RL.1–RL.3 (B2C). Precios y descuentos SIN CAMBIOS.
+/* RL.2–RL.3 (B2C). Precios y descuentos SIN CAMBIOS.
  * Vigencia: extensión por instrucción interna del responsable comercial (18/09/2026),
  * tomando como referencia la ventana del documento B2B de gas (Gas Estable
  * RL.4–RL.6: 17/09/2026 – 20/09/2026). No procede de un documento Endesa B2C nuevo. */
@@ -22,21 +22,29 @@ const VIGENCIA_B2C_GAS = {
   extensionInterna: true,
 };
 
+/* RL.1: documento Endesa 'Oferta Gas Endesa' editado el 13/10/2026
+ * (contrataciones 15/10/2026 – 02/12/2026). No publica precio con mantenimiento:
+ * se mantienen los 3 puntos de siempre. */
+const VIGENCIA_RL1 = {
+  desde: '2026-10-15',
+  hasta: '2026-12-02',
+  fuente: 'Oferta Gas Endesa RL.1 — documento Endesa editado el 13/10/2026',
+};
+
 export const GAS = [
   {
     id: 'rl1',
-    precioSinActualizar: true,
     title: 'Gas RL.1',
     consumo: '0 – 5.000 kWh/año',
     consumoMin: 0, consumoMax: 5000,
-    terFijo: 7.181000,
-    sinMant: { promo: 0.065590, noPromo: 0.093700 },
-    conMant: { promo: 0.062779, noPromo: 0.093700 },
+    terFijo: 7.500000,
+    sinMant: { promo: 0.077700, noPromo: 0.111000 },
+    conMant: { promo: 0.074370, noPromo: 0.111000 },
     hasMant: true,
-    descuentos: ['20% — 1 año (electricidad en misma dirección)', '10% — 1 año (nuevas contrataciones)'],
+    descuentos: ['20% — indefinido (electricidad en misma dirección)', '10% — 1 año (nuevas contrataciones)'],
     mantLabel: '3% — Dto. por Mantenimiento',
-    contratacion: VIGENCIA_B2C_GAS,
-    validez: '17/09/2026 – 20/09/2026',
+    contratacion: VIGENCIA_RL1,
+    validez: '15/10/2026 – 02/12/2026',
   },
   {
     id: 'rl2',

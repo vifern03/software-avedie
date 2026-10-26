@@ -20,7 +20,7 @@ function estimateExtractionSeconds(fileSizeBytes) {
 /* ── Tarifas Endesa LUZ ──────────────────────────────────────────────────────── */
 
 /* Todas las tarifas salen del catálogo central (src/data/*). */
-const [LUZ_DIRECTO, LUZ_PRESCRIPTOR, LUZ_TOC] = LUZ;
+const [LUZ_DIRECTO, LUZ_PRESCRIPTOR, LUZ_TOC, LUZ_CONECTA] = LUZ;
 
 /* Tu Otra Casa 50: sin curva horaria, se estima que el 35% del consumo cae en las
    horas promo (precio "Horas Promo") y el resto a precio "Resto h.". Los
@@ -41,6 +41,9 @@ const TARIFAS = [
     isToc: true, preciosSinMant: LUZ_TOC.sinMant, preciosConMant: LUZ_TOC.conMant,
     potPunta: LUZ_TOC.potPunta, potValle: LUZ_TOC.potValle,
     validez: LUZ_TOC.validez, contratacion: LUZ_TOC.contratacion },
+  { id: 'conecta', label: 'Conecta Luz (2.0TD)', shortLabel: 'Conecta Luz', tag: 'Residencial', tagClass: 'bg-sky-100 text-sky-700',
+    sinMant: LUZ_CONECTA.sinMant.promo, conMant: LUZ_CONECTA.conMant.promo, potPunta: LUZ_CONECTA.potPunta, potValle: LUZ_CONECTA.potValle,
+    validez: LUZ_CONECTA.validez, contratacion: LUZ_CONECTA.contratacion },
   { id: 'tempo', label: 'TEMPO 2.0TD — Precio Único 24H (B2B ≤ 15 kW)', shortLabel: 'TEMPO 2.0TD', tag: 'Tempo', tagClass: 'bg-amber-100 text-amber-700',
     sinMant: TEMPO_2_0TD.energia.promo, conMant: TEMPO_2_0TD.energia.promo,
     potPunta: TEMPO_2_0TD.potencia[0].anyo, potValle: TEMPO_2_0TD.potencia[1].anyo,
