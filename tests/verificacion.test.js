@@ -381,3 +381,41 @@ test('resolver: empate entre dos lecturas válidas sin convención ni lectura de
   assert.equal(r2.estado, 'ok');
   assert.equal(r2.valores.x, 27.263);
 });
+
+/* ══════════════════════════ Tramo RL de gas ══════════════════════════ */
+
+import { detectarTramoRL, normalizarTramoRL } from '../src/lib/energia/esquemas.js';
+
+const pdfCon = (...lineas) => ({ lineas: lineas.map(texto => ({ pagina: 1, texto })) });
+
+test('tramo RL: formatos reales impresos por distintas comercializadoras', () => {
+  const casos = [
+    ['Tarifa: CLASICA BASE   Tarifa RL. 4   Caudal Contratado   1,00', 'rl4'], // TotalEnergies
+    ['Tarifa del contrato: RL03', 'rl3'],                                      // FG (Naturgy)
+    ['Peaje de acceso: RL.4   BOE: 30.05.2024', 'rl4'],                         // TUR
+    ['Peaje de acceso: RL. 3', 'rl3'],
+    ['Peaje de acceso: RL.2', 'rl2'],
+  ];
+  for (const [linea, id] of casos) {
+    const r = detectarTramoRL({ tarifaIA: id.toUpperCase(), textoPdf: pdfCon(linea), kwh: 1000, dias: 30 });
+    assert.equal(r.id, id, linea);
+    assert.equal(r.fuente, 'pdf');
+  }
+  for (const [v, id] of [['RL.3', 'rl3'], ['RL. 2', 'rl2'], ['RL03', 'rl3'], ['rl1', 'rl1'], ['2', 'rl2'], ['', null], [null, null]]) assert.equal(normalizarTramoRL(v), id, String(v));
+});
+
+test('tramo RL: si la IA se equivoca, manda el tramo impreso y se explica', () => {
+  const r = detectarTramoRL({ tarifaIA: 'RL.1', textoPdf: pdfCon('Peaje de acceso: RL.2'), kwh: 1500, dias: 60 });
+  assert.equal(r.id, 'rl2');
+  assert.equal(r.nivel, 'autocorreccion');
+  assert.match(r.msg, /imprime Gas RL\.2/);
+});
+
+test('tramo RL: sin tramo impreso → el de la IA; sin ninguno → estimado por consumo con aviso', () => {
+  assert.equal(detectarTramoRL({ tarifaIA: 'RL.3', textoPdf: pdfCon('Consumo 2.500 kWh'), kwh: 2500, dias: 30 }).id, 'rl3');
+  const e = detectarTramoRL({ tarifaIA: null, textoPdf: null, kwh: 1500, dias: 60 }); // 9.125 kWh/año → RL.2
+  assert.equal(e.id, 'rl2');
+  assert.equal(e.fuente, 'estimado');
+  assert.match(e.msg, /estimando 9125 kWh\/año/);
+  assert.equal(detectarTramoRL({ tarifaIA: null, textoPdf: null, kwh: 300, dias: 30 }).id, 'rl1');
+});

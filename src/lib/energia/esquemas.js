@@ -252,3 +252,45 @@ export const GAS_ESQ = {
     return out;
   },
 };
+
+/* ══════════════════════════ Tramo RL de gas ══════════════════════════ */
+
+/** "RL.3", "RL. 3", "RL03", "rl3", "3" → 'rl3' (o null). */
+export function normalizarTramoRL(v) {
+  const m = String(v ?? '').match(/^\s*(?:RL\s*\.?\s*0?)?([1-6])\s*$/i) || String(v ?? '').match(/RL\s*\.?\s*0?([1-6])\b/i);
+  return m ? `rl${m[1]}` : null;
+}
+
+/** Tramos RL impresos en el texto del PDF ("Peaje de acceso: RL.4", "Tarifa RL. 4", "Tarifa del contrato: RL03"). */
+export function tramosEnPdf(textoPdf) {
+  const set = new Set();
+  for (const l of textoPdf?.lineas || []) {
+    for (const m of l.texto.matchAll(/\bRL\s*\.?\s*0?([1-6])\b/gi)) set.add(`rl${m[1]}`);
+  }
+  return [...set];
+}
+
+/**
+ * Tramo RL de una factura de gas, por orden de evidencia:
+ *   1. el impreso en la factura (texto del PDF, sin IA) si es uno solo;
+ *   2. el que lee la IA;
+ *   3. estimado con el consumo del periodo (kWh ÷ días × 365), avisando de que es una estimación.
+ * @returns {{ id: string|null, fuente: 'pdf'|'ia'|'estimado'|null, msg: string|null, nivel: 'info'|'autocorreccion'|null }}
+ */
+export function detectarTramoRL({ tarifaIA, textoPdf, kwh, dias }) {
+  const ia = normalizarTramoRL(tarifaIA);
+  const impresos = tramosEnPdf(textoPdf);
+  const titulo = (id) => GAS_TODAS.find(g => g.id === id)?.title || id;
+  if (impresos.length === 1) {
+    const id = impresos[0];
+    if (ia && ia !== id) return { id, fuente: 'pdf', nivel: 'autocorreccion', msg: `Tramo de gas: la IA leyó ${titulo(ia)}, pero la factura imprime ${titulo(id)}; se usa ${titulo(id)}.` };
+    return { id, fuente: 'pdf', nivel: 'info', msg: `Tramo ${titulo(id)} según la factura.` };
+  }
+  if (ia) return { id: ia, fuente: 'ia', nivel: 'info', msg: `Tramo ${titulo(ia)} leído por la IA${impresos.length > 1 ? ` (la factura menciona varios: ${impresos.map(titulo).join(', ')})` : ''}.` };
+  if (kwh > 0 && dias > 0) {
+    const anual = kwh / dias * 365;
+    const t = GAS_TODAS.find(g => anual > g.consumoMin && anual <= g.consumoMax) || (anual <= GAS_TODAS[0].consumoMax ? GAS_TODAS[0] : null);
+    if (t) return { id: t.id, fuente: 'estimado', nivel: 'autocorreccion', msg: `La factura no indica el tramo de gas: se selecciona ${t.title} estimando ${inequivoco(Math.round(anual))} kWh/año con el consumo de este periodo. Compruébalo: el consumo varía mucho según la época del año.` };
+  }
+  return { id: null, fuente: null, nivel: null, msg: null };
+}

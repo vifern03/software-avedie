@@ -8,7 +8,7 @@ import { IEH_GAS_EUR_KWH } from '../data/tarifasGas';
 import { aCampo, valorNum, cantidadES, formatoES } from '../lib/energia/numeros';
 import { extraerTextoPdf } from '../lib/energia/textoPdf';
 import { verificarExtraccion } from '../lib/energia/verificacion';
-import { GAS_ESQ } from '../lib/energia/esquemas';
+import { GAS_ESQ, detectarTramoRL } from '../lib/energia/esquemas';
 import { volcarAFormulario, evaluarFormulario } from '../lib/energia/formulario';
 import { revisarCamposIA } from '../lib/energia/geminiCliente';
 
@@ -292,11 +292,16 @@ export default function EstudioComparativoGas() {
       else { const m = raw.match(/\{[\s\S]*\}/); if (m) raw = m[0]; }
 
       const ex = JSON.parse(raw);
+      const textoPdf = await textoPdfP;
+      // Tramo RL: el impreso en la factura manda; si no lo imprime, el de la IA; si tampoco, estimado.
+      const tramo = detectarTramoRL({ tarifaIA: ex.tarifaRL, textoPdf, kwh: valorNum(ex.totalKwhGas), dias: valorNum(ex.diasFacturacion) });
+      if (tramo.id) ex.tarifaRL = tramo.id;
       const verif = await verificarExtraccion({
-        esquema: GAS_ESQ, ex, textoPdf: await textoPdfP,
+        esquema: GAS_ESQ, ex, textoPdf,
         revisarIA: (campos) => revisarCamposIA({ buffer, mimeType: file.type }, campos),
       });
       const { textos, base } = volcarAFormulario(verif, MAPA_GAS);
+      if (tramo.msg) base.incidencias.push({ campos: [], nivel: tramo.nivel === 'autocorreccion' ? 'autocorreccion' : 'info', msg: tramo.msg });
       setBaseFactura(base);
       setCtxFactura(GAS_ESQ.contexto(ex));
 
@@ -309,16 +314,8 @@ export default function EstudioComparativoGas() {
         else                                  ivaValue = '0.21';
       }
 
-      /* Auto-seleccionar tarifa RL (RL.1-RL.3 residencial, RL.4-RL.6 empresa) */
-      if (ex.tarifaRL) {
-        const rl = ex.tarifaRL.toString().toLowerCase().replace(/[\s.]/g, '');
-        if      (rl.includes('rl1') || rl === '1') setTarifaGasId('rl1');
-        else if (rl.includes('rl2') || rl === '2') setTarifaGasId('rl2');
-        else if (rl.includes('rl3') || rl === '3') setTarifaGasId('rl3');
-        else if (rl.includes('rl4') || rl === '4') setTarifaGasId('rl4');
-        else if (rl.includes('rl5') || rl === '5') setTarifaGasId('rl5');
-        else if (rl.includes('rl6') || rl === '6') setTarifaGasId('rl6');
-      }
+      /* Auto-seleccionar la tarifa RL detectada (RL.4–RL.6 quedan seleccionadas pero sin comparativa) */
+      if (tramo.id) setTarifaGasId(tramo.id);
 
       setForm(f => ({
         ...f,
