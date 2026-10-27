@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { LayoutDashboard, Database, RefreshCw, UserPlus, Building2, History, LogOut, Settings, User, Store, ClipboardList, Sparkles, Menu, X, Landmark, Clock, Phone, Tag, AlertTriangle } from 'lucide-react';
+import { LayoutDashboard, Database, RefreshCw, UserPlus, Building2, History, LogOut, Settings, User, Store, ClipboardList, Sparkles, Menu, X, Landmark, Clock, Phone, Tag, AlertTriangle, ListChecks } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useTasks } from '../context/TasksContext';
+import { alertaSidebar, textoBadge } from '../lib/tasksLogica';
 
 const ALL_ITEMS = [
   { id: 'dashboard', label: 'Dashboard General',        icon: LayoutDashboard },
@@ -14,6 +16,7 @@ const ALL_ITEMS = [
   { id: 'llamadas',      label: 'Registro de Llamadas',    icon: Phone      },
   { id: 'tarifas',       label: 'Consulta de Tarifas',     icon: Tag        },
   { id: 'fichajes',      label: 'Control de Horario',      icon: Clock      },
+  { id: 'tasks',         label: 'Tasks',                   icon: ListChecks },
   { id: 'reportes',      label: 'Reportes de Software',    icon: ClipboardList },
   { id: 'historial', label: 'Historial de Actividades', icon: History         },
   { id: 'gestion',   label: 'Gestión de Usuarios',      icon: Settings        },
@@ -22,8 +25,35 @@ const ALL_ITEMS = [
 const ROLE_LABEL = { admin: 'Administrador', manager: 'Manager', comercial: 'Comercial' };
 const ROLE_DOT   = { admin: 'bg-google-blue', manager: 'bg-purple-500', comercial: 'bg-green-500' };
 
+/** Indicadores de Tasks: nº de tareas activas propias + "!" si hay vencidas / próximas. */
+function TasksBadge({ contadores }) {
+  const alerta = alertaSidebar(contadores);
+  if (!contadores.activas && !alerta) return null;
+  const tooltip = [
+    contadores.activas ? `${contadores.activas} tarea(s) activa(s) asignadas a ti` : '',
+    alerta?.texto || '',
+  ].filter(Boolean).join(' · ');
+  return (
+    <span className="flex items-center gap-1" title={tooltip} aria-label={tooltip}>
+      {alerta && (
+        <span className={`w-[18px] h-[18px] rounded-full flex items-center justify-center text-[11px] font-bold leading-none text-white ${alerta.nivel === 'vencida' ? 'bg-red-500' : 'bg-amber-500'}`}>
+          !
+        </span>
+      )}
+      {contadores.activas > 0 && (
+        <span className="min-w-[20px] h-[18px] px-1.5 rounded-full bg-orange-500 text-white text-[10px] font-bold leading-none flex items-center justify-center tabular-nums">
+          {textoBadge(contadores.activas)}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export default function Sidebar({ activeSection, onNavigate, onOpenAI }) {
   const { currentUser, hasAccess, logout } = useAuth();
+  const { contadores } = useTasks();
+  const tasksVisible = hasAccess('tasks');
+  const alertaTasks = tasksVisible ? alertaSidebar(contadores) : null;
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const visibleItems = ALL_ITEMS.filter(item => hasAccess(item.id));
@@ -44,10 +74,16 @@ export default function Sidebar({ activeSection, onNavigate, onOpenAI }) {
       <div className="fixed top-0 left-0 z-40 md:hidden flex items-center gap-3 px-4 pt-4 print:hidden">
         <button
           onClick={() => setIsMobileMenuOpen(true)}
-          className="bg-white p-2 rounded-md shadow-md"
+          className="relative bg-white p-2 rounded-md shadow-md"
           aria-label="Abrir menú"
         >
           <Menu size={20} className="text-google-dark" />
+          {tasksVisible && (alertaTasks || contadores.activas > 0) && (
+            <span
+              className={`absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-white ${alertaTasks?.nivel === 'vencida' ? 'bg-red-500' : alertaTasks ? 'bg-amber-500' : 'bg-orange-500'}`}
+              aria-hidden="true"
+            />
+          )}
         </button>
         <img
           src="/logo-avedie-main.png"
@@ -137,6 +173,7 @@ export default function Sidebar({ activeSection, onNavigate, onOpenAI }) {
               >
                 <Icon size={18} className={isActive ? 'text-google-blue' : ''} />
                 <span className="flex-1 leading-tight">{item.label}</span>
+                {item.id === 'tasks' && <TasksBadge contadores={contadores} />}
               </button>
             );
           })}

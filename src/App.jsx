@@ -19,6 +19,7 @@ import ControlHorario from './pages/ControlHorario';
 import RegistroLlamadas from './pages/RegistroLlamadas';
 import Tarifas from './pages/Tarifas';
 import Pendientes from './pages/Pendientes';
+import Tasks from './pages/Tasks';
 
 function LoadingScreen() {
   return (
@@ -87,7 +88,7 @@ export default function App() {
 
   useEffect(() => {
     if (!currentUser) return;
-    const SECTIONS = ['dashboard', 'historica', 'radar', 'b2c', 'b2b', 'historial', 'visitas', 'visitas_pymes', 'llamadas', 'tarifas', 'fichajes', 'reportes', 'pendientes', 'gestion'];
+    const SECTIONS = ['dashboard', 'historica', 'radar', 'b2c', 'b2b', 'historial', 'visitas', 'visitas_pymes', 'llamadas', 'tarifas', 'fichajes', 'reportes', 'pendientes', 'gestion', 'tasks'];
     const first = SECTIONS.find(s => hasAccess(s));
     if (first) setActiveSection(first);
   }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -113,6 +114,7 @@ export default function App() {
       case 'llamadas':  return <RegistroLlamadas />;
       case 'tarifas':   return <Tarifas />;
       case 'fichajes':  return <ControlHorario />;
+      case 'tasks':     return <Tasks />;
       case 'reportes':  return <ReportesSoftware />;
       case 'pendientes': return <Pendientes />;
       case 'gestion':   return <GestionUsuarios />;
