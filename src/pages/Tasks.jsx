@@ -113,7 +113,7 @@ function TasksPage() {
     <div className="flex flex-col gap-4 mb-5">
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-semibold text-google-dark flex items-center gap-2 mr-auto">
-          <ListChecks size={24} className="text-google-blue" /> Tasks
+          <ListChecks size={24} className="text-google-blue" /> Tareas
         </h1>
         <div className="flex rounded-lg border border-google-border bg-white p-0.5" role="tablist" aria-label="Vista">
           {vistas.map((v) => {
@@ -198,7 +198,7 @@ function TasksPage() {
 
   let cuerpo;
   if (!disponible && !cargando) {
-    cuerpo = <EstadoVacio icono={CloudOff} titulo="Tasks no está disponible todavía" texto="El módulo de tareas aún no está activado en la base de datos. El resto del CRM funciona con normalidad." />;
+    cuerpo = <EstadoVacio icono={CloudOff} titulo="Tareas no está disponible todavía" texto="El módulo de tareas aún no está activado en la base de datos. El resto del CRM funciona con normalidad." />;
   } else if (vista === 'equipo') {
     cuerpo = cargando && !tareas.length ? <SkeletonLista filas={5} /> : <TeamStats onVerTrabajador={verTrabajador} />;
   } else if (vista === 'calendario') {

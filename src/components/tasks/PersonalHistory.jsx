@@ -21,7 +21,7 @@ export default function PersonalHistory({ onClose, onOpenTask }) {
       <div className="max-h-[65vh] overflow-y-auto px-5 py-4">
         {eventos === null && <div className="space-y-3 animate-pulse">{[0, 1, 2, 3].map((i) => <div key={i} className="h-3 bg-gray-100 rounded w-4/5" />)}</div>}
         {error && <p className="text-sm text-red-600">{error}</p>}
-        {eventos && !error && eventos.length === 0 && <p className="text-sm text-google-gray">Todavía no hay actividad tuya en Tasks.</p>}
+        {eventos && !error && eventos.length === 0 && <p className="text-sm text-google-gray">Todavía no hay actividad tuya en Tareas.</p>}
         {eventos && eventos.length > 0 && (
           <ol className="space-y-2.5">
             {eventos.map((ev) => {

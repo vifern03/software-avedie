@@ -18,7 +18,7 @@ const PAGES = [
   { id: 'llamadas',     label: 'Reg. Llamadas'  },
   { id: 'tarifas',      label: 'Tarifas'        },
   { id: 'fichajes',     label: 'Control Horario' },
-  { id: 'tasks',        label: 'Tasks'           },
+  { id: 'tasks',        label: 'Tareas'          },
   { id: 'reportes',     label: 'Reportes'        },
   { id: 'pendientes',   label: 'Pendientes'      },
   { id: 'historial',    label: 'Historial'       },

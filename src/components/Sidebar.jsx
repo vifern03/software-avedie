@@ -16,7 +16,7 @@ const ALL_ITEMS = [
   { id: 'llamadas',      label: 'Registro de Llamadas',    icon: Phone      },
   { id: 'tarifas',       label: 'Consulta de Tarifas',     icon: Tag        },
   { id: 'fichajes',      label: 'Control de Horario',      icon: Clock      },
-  { id: 'tasks',         label: 'Tasks',                   icon: ListChecks },
+  { id: 'tasks',         label: 'Tareas',                  icon: ListChecks },
   { id: 'reportes',      label: 'Reportes de Software',    icon: ClipboardList },
   { id: 'historial', label: 'Historial de Actividades', icon: History         },
   { id: 'gestion',   label: 'Gestión de Usuarios',      icon: Settings        },
