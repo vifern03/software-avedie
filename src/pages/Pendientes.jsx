@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { AlertTriangle, Upload, FileSpreadsheet, X, CheckCircle, FileCheck, Wrench, Pencil, Search } from 'lucide-react';
+import { AlertTriangle, Upload, FileSpreadsheet, X, CheckCircle, FileCheck, Wrench, Pencil, Search, Archive, ArrowLeft } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import Pagination from '../components/Pagination';
@@ -94,6 +94,18 @@ function parseFechaExcel(str) {
 
 /* Timestamp para ordenar: prioriza la fecha original del Excel; si no se puede
    parsear, cae al created_at del registro (siempre válido, generado por BD). */
+/* Corte PUNTUAL del registro (26/10/2026): la herramienta no se usaba desde julio y
+   vuelve a empezar de cero. Lo cargado antes de esta fecha es el "registro anterior"
+   (todo formalizado), que solo consultan administradores y managers; los comerciales
+   ven el registro nuevo, que empieza vacío. No hay ningún mecanismo para archivar de
+   nuevo: un corte futuro se hará cambiando esta fecha a mano cuando se decida. */
+const INICIO_REGISTRO_ACTUAL = Date.parse('2026-10-26T00:00:00+01:00');
+const LABEL_FIN_ANTERIOR = '25/10/2026';
+const esRegistroAnterior = (r) => {
+  const t = Date.parse(r.created_at);
+  return Number.isFinite(t) && t < INICIO_REGISTRO_ACTUAL; // sin fecha (recién subido) = registro actual
+};
+
 function sortTimestamp(r) {
   const fechaExcel = r.raw_data?.['Fecha de creación'] || r.fecha_creacion_excel;
   const parsed = parseFechaExcel(fechaExcel);
@@ -124,6 +136,9 @@ export default function Pendientes() {
   const { registroPendientes, clientesCupsTodos, ingestExcelPendientes, actualizarEstadoPendiente } = useData();
   const { currentUser } = useAuth();
   const isAdmin = currentUser?.role?.toLowerCase() === 'admin';
+  const puedeVerAnterior = isAdmin || currentUser?.role?.toLowerCase() === 'manager';
+  const [verAnterior, setVerAnterior] = useState(false);
+  const modoAnterior = verAnterior && puedeVerAnterior;
 
   const [dragging, setDragging]   = useState(false);
   const [dropped, setDropped]     = useState(null);
@@ -157,10 +172,11 @@ export default function Pendientes() {
   // tabla — se queda como histórico visible, con su propio color pastel.
   const pendientes = useMemo(
     () => registroPendientes
-      .slice()
+      .filter(r => esRegistroAnterior(r) === modoAnterior)
       .sort((a, b) => sortTimestamp(b) - sortTimestamp(a)), // más nuevo primero
-    [registroPendientes]
+    [registroPendientes, modoAnterior]
   );
+  const totalAnterior = useMemo(() => registroPendientes.filter(esRegistroAnterior).length, [registroPendientes]);
 
   // Estados originales del Excel, tal y como se muestran en la badge de la tabla.
   const estadosUnicos = useMemo(() => {
@@ -192,7 +208,7 @@ export default function Pendientes() {
   // Si cambian los filtros, la página actual puede quedar fuera de rango.
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchCups, dateFrom, dateTo, statusFilter]);
+  }, [searchCups, dateFrom, dateTo, statusFilter, modoAnterior]);
 
   const exportToXLSX = async () => {
     const workbook = new ExcelJS.Workbook();
@@ -347,8 +363,8 @@ export default function Pendientes() {
         <h1 className="text-xl font-semibold text-google-dark">Gestión de Pendientes</h1>
       </div>
 
-      {/* Zona de subida — solo Administrador */}
-      {isAdmin && (
+      {/* Zona de subida — solo Administrador, en el registro actual */}
+      {isAdmin && !modoAnterior && (
         <div className="bg-white border border-google-border rounded-xl shadow-sm p-5 mb-6">
           <div className="flex items-center justify-between mb-3">
             <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider">Subir Excel de incidencias (.xlsx)</p>
@@ -489,17 +505,35 @@ export default function Pendientes() {
         </div>
       </div>
 
+      {/* Registro anterior (hasta el 25/10/2026) — solo administradores y managers */}
+      {puedeVerAnterior && totalAnterior > 0 && (
+        <div className="flex justify-end mb-3">
+          <button
+            onClick={() => setVerAnterior(v => !v)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-google-border bg-white text-google-dark text-xs font-medium hover:border-google-blue hover:text-google-blue transition-colors"
+          >
+            {modoAnterior
+              ? <><ArrowLeft size={14} /> Volver al registro actual</>
+              : <><Archive size={14} /> Ver registro anterior ({totalAnterior})</>}
+          </button>
+        </div>
+      )}
+
       {/* Tabla de pendientes */}
       <div className="bg-white border border-google-border rounded-xl shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
-          <h2 className="text-sm font-semibold text-google-dark">Registro de Pendientes</h2>
+          <h2 className="text-sm font-semibold text-google-dark">
+            {modoAnterior ? `Registro anterior (hasta el ${LABEL_FIN_ANTERIOR}) · solo consulta` : 'Registro de Pendientes'}
+          </h2>
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1.5 text-[11px] text-google-gray">
-              <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" /> Dado de alta en el CRM
+              <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" /> {modoAnterior ? 'Cerrado' : 'Dado de alta en el CRM'}
             </span>
-            <span className="flex items-center gap-1.5 text-[11px] text-google-gray">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" /> Sin alta todavía
-            </span>
+            {!modoAnterior && (
+              <span className="flex items-center gap-1.5 text-[11px] text-google-gray">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" /> Sin alta todavía
+              </span>
+            )}
             <span className="text-[11px] font-semibold text-google-gray bg-gray-100 px-2 py-0.5 rounded-full">
               {filteredPendientes.length}{filteredPendientes.length !== pendientes.length ? ` / ${pendientes.length}` : ''}
             </span>
@@ -522,12 +556,13 @@ export default function Pendientes() {
               {paginated.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="text-center py-10 text-google-gray text-sm">
-                    No hay incidencias pendientes. Sube un Excel para empezar.
+                    {modoAnterior ? 'No hay registros anteriores.' : 'No hay incidencias pendientes. Sube un Excel para empezar.'}
                   </td>
                 </tr>
               ) : (
                 paginated.map(r => {
-                  const existeEnCrm = clientesCupsTodos.has((r.cups || '').toUpperCase().trim());
+                  // En el registro anterior todo queda cerrado: círculo verde siempre.
+                  const existeEnCrm = modoAnterior || clientesCupsTodos.has((r.cups || '').toUpperCase().trim());
                   const numeroOi = r.raw_data?.['Nombre'] || r.nombre || '';
                   const estadoOriginal = r.raw_data?.['Estado'] || null;
                   const badge = estadoOriginalBadge(estadoOriginal);
@@ -578,13 +613,13 @@ export default function Pendientes() {
                               </button>
                             </>
                           )}
-                          <button
+                          {!modoAnterior && <button
                             onClick={() => setEditingRegistro(r)}
                             className="flex items-center justify-center w-7 h-7 rounded-lg border border-google-border bg-white text-google-gray hover:border-google-blue hover:text-google-blue transition-colors flex-shrink-0"
                             title="Editar estado"
                           >
                             <Pencil size={13} />
-                          </button>
+                          </button>}
                         </div>
                       </td>
                     </tr>
