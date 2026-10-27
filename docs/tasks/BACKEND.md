@@ -119,6 +119,17 @@ Comportamientos a tener en cuenta:
 - Realtime: `tasks` (REPLICA IDENTITY FULL → UPDATE/DELETE con fila completa) y `task_events` están en
   `supabase_realtime`.
 
+## Producción (aplicado el 2026-10-27)
+
+- Se aplicó a mano **solo** `20261026010000_tasks.sql` en el proyecto Software Avedie (ndcslcsuavjdctqhkrfu),
+  dentro de `BEGIN … COMMIT`, con `npx supabase db query --linked --project-ref ndcslcsuavjdctqhkrfu -f …`.
+  Ni baseline ni seed. Producción no tiene `supabase_migrations.schema_migrations`: no hay registro de migraciones.
+- Revisado antes: `usuarios.username` es `text` PRIMARY KEY, existen `role` y `deleted_at`, no había objetos
+  `task*`, existe la publicación `supabase_realtime`; los usuarios solo se dan de baja con `deleted_at`
+  (las FK `ON DELETE RESTRICT` no afectan a nada existente).
+- Para revertir: `supabase/rollback/20261026010000_tasks_down.sql` (borra los datos de Tareas).
+- En la interfaz el módulo se llama "Tareas"; el id interno (`tasks`), las tablas y las RPC no cambian.
+
 ## Pendiente de seguridad
 
 - **`p_actor` no es una identidad verificada.** Cualquiera con la anon key puede llamar a las RPC
