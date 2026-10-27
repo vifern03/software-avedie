@@ -40,7 +40,7 @@ function esCampoEditable(el) {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
 }
 
-function TasksPage() {
+function TasksPage({ onNavigate }) {
   const { tareas, user, ahora, colorDe, nombreDe, comentarios, cargando, disponible, usuarios, acciones } = useTasks();
   const toast = useToast();
 
@@ -264,7 +264,13 @@ function TasksPage() {
       {cabecera}
       {cuerpo}
 
-      {detalleId && <TaskDetailDrawer taskId={detalleId} onClose={cerrarDetalle} />}
+      {detalleId && (
+        <TaskDetailDrawer
+          taskId={detalleId}
+          onClose={cerrarDetalle}
+          onVerPendientes={onNavigate ? (lote) => onNavigate('pendientes', { lote }) : undefined}
+        />
+      )}
       {crear && (
         <Modal titulo="Nueva tarea" icono={Plus} onClose={() => setCrear(null)} ancho="max-w-xl">
           <TaskCreateForm inicial={crear.inicial} onCreated={() => setCrear(null)} onCancel={() => setCrear(null)} />
@@ -275,10 +281,10 @@ function TasksPage() {
   );
 }
 
-export default function Tasks() {
+export default function Tasks({ onNavigate }) {
   return (
     <ToastProvider>
-      <TasksPage />
+      <TasksPage onNavigate={onNavigate} />
     </ToastProvider>
   );
 }

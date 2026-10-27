@@ -114,6 +114,11 @@ export async function crearTarea(actor, datos) {
   return Array.isArray(data) ? data : data ? [data] : [];
 }
 
+/** Crea (o devuelve si ya existe) la tarea del lote de pendientes importado. */
+export async function crearTareaPendientes(actor, lote) {
+  return una(await rpc('tasks_crear_pendientes', { p_actor: actor, p_lote: lote }));
+}
+
 export async function editarTarea(actor, id, cambios) {
   return una(await rpc('tasks_editar', { p_actor: actor, p_id: id, p_cambios: cambios }));
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Archive, ArchiveRestore, Loader2, Lock, Send, X, History } from 'lucide-react';
+import { Archive, ArchiveRestore, Loader2, Lock, Send, X, History, FileSpreadsheet } from 'lucide-react';
 import { useTasks } from '../../context/TasksContext';
 import { permisosTarea } from '../../lib/tasksPermisos';
 import { ESTADOS, PRIORIDADES, PRIORIDAD_LABEL, describirEvento, diffCambios } from '../../lib/tasksLogica';
@@ -20,7 +20,7 @@ const aForm = (t) => ({
   due_time: horaCorta(t.due_time),
 });
 
-export default function TaskDetailDrawer({ taskId, onClose }) {
+export default function TaskDetailDrawer({ taskId, onClose, onVerPendientes }) {
   const { tareas, user, usuarios, colorDe, nombreDe, acciones, ahora, cargando, eventosVivos } = useTasks();
   const toast = useToast();
   const task = useMemo(() => tareas.find((t) => t.id === taskId), [tareas, taskId]);
@@ -275,6 +275,16 @@ export default function TaskDetailDrawer({ taskId, onClose }) {
                   {ocupado === 'guardar' && <Loader2 size={13} className="animate-spin" />} Guardar cambios
                 </button>
               </div>
+            )}
+
+            {task.pendientes_lote && onVerPendientes && (
+              <button
+                type="button"
+                onClick={() => onVerPendientes(task.pendientes_lote)}
+                className="btn-secondary w-full flex items-center justify-center gap-2 text-sm"
+              >
+                <FileSpreadsheet size={15} /> Ver pendientes de esta importación
+              </button>
             )}
 
             <p className="text-[11px] text-google-gray">

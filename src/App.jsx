@@ -84,6 +84,7 @@ export default function App() {
   const { currentUser, hasAccess, isLoading: authLoading, dbError } = useAuth();
   const { isLoading: dataLoading } = useData();
   const [activeSection, setActiveSection] = useState('b2c');
+  const [pendientesLote, setPendientesLote] = useState(null); // lote abierto desde una tarea
   const [isAIOpen, setIsAIOpen] = useState(false);
 
   useEffect(() => {
@@ -98,7 +99,10 @@ export default function App() {
   if (!currentUser) return <LoginPage />;
   if (dataLoading)  return <LoadingScreen />;
 
-  const handleNavigate = (section) => setActiveSection(section);
+  const handleNavigate = (section, { lote = null } = {}) => {
+    setPendientesLote(section === 'pendientes' ? lote : null);
+    setActiveSection(section);
+  };
 
   const renderPage = () => {
     if (!hasAccess(activeSection)) return <AccessDenied />;
@@ -114,9 +118,9 @@ export default function App() {
       case 'llamadas':  return <RegistroLlamadas />;
       case 'tarifas':   return <Tarifas />;
       case 'fichajes':  return <ControlHorario />;
-      case 'tasks':     return <Tasks />;
+      case 'tasks':     return <Tasks onNavigate={handleNavigate} />;
       case 'reportes':  return <ReportesSoftware />;
-      case 'pendientes': return <Pendientes />;
+      case 'pendientes': return <Pendientes loteFiltro={pendientesLote} onQuitarLote={() => setPendientesLote(null)} />;
       case 'gestion':   return <GestionUsuarios />;
       default:          return <AltaClientes tipo="B2C" />;
     }

@@ -38,7 +38,7 @@ const CLIENTES_SELECT = [
 // incidencias (existan o no como contrato en `clientes`). Ver [[project_pendientes]].
 const REGISTRO_PENDIENTES_SELECT = [
   'id', 'cups', 'nombre', 'numero_caso', 'fecha_creacion_excel', 'origen_excel',
-  'raw_data', 'estado_incidencia', 'fecha_formalizacion', 'created_at',
+  'raw_data', 'estado_incidencia', 'fecha_formalizacion', 'created_at', 'lote_id',
 ].join(',');
 
 // Descarga ÚNICAMENTE el campo Base64 de UN cliente concreto (fetch-on-click)
@@ -1133,11 +1133,20 @@ export function DataProvider({ children }) {
   // Inserta TODAS las filas leídas del/de los Excel(s), sin filtrar por si el
   // CUPS existe en `clientes` — así no se pierde ningún registro. `rows` es
   // [{ cups, nombre, numero_caso, fecha_creacion_excel, origen_excel, raw_data }].
-  const ingestExcelPendientes = async (rows) => {
+  // loteId = huella del archivo: si ese mismo Excel ya está importado no se
+  // vuelve a insertar (evita duplicar filas por reintentos o doble subida).
+  const ingestExcelPendientes = async (rows, loteId = null) => {
     const limpias = (rows || [])
       .map(r => ({ ...r, cups: String(r.cups ?? '').trim() }))
       .filter(r => r.cups);
     if (limpias.length === 0) return { inserted: 0, error: null };
+
+    if (loteId) {
+      const { data: previo, error: errPrevio } = await supabase
+        .from('registro_pendientes').select('id').eq('lote_id', loteId).is('deleted_at', null).limit(1);
+      if (errPrevio) { console.error('ingestExcelPendientes:', errPrevio); return { inserted: 0, error: errPrevio }; }
+      if (previo?.length) return { inserted: 0, error: null, duplicado: true };
+    }
 
     const registros = limpias.map((r, i) => ({
       id:                   Date.now() + i,
@@ -1148,6 +1157,7 @@ export function DataProvider({ children }) {
       origen_excel:         r.origen_excel         || null,
       raw_data:             r.raw_data             || null,
       estado_incidencia:    'Pendiente de tareas',
+      ...(loteId ? { lote_id: loteId } : {}),
     }));
 
     const { data, error } = await supabase.from('registro_pendientes').insert(registros).select('id');

@@ -191,6 +191,7 @@ export function TasksProvider({ children }) {
   // ── Acciones ──────────────────────────────────────────────────────────────
   const acciones = useMemo(() => ({
     crear: async (datos) => { const rows = await api.crearTarea(actor(), datos); fusionar(rows); return rows; },
+    crearDesdePendientes: async (lote) => { const row = await api.crearTareaPendientes(actor(), lote); fusionar(row); return row; },
     editar: async (id, cambios) => { const row = await api.editarTarea(actor(), id, cambios); fusionar(row); return row; },
     cambiarEstado: (id, status) => optimista(id, {
       status,

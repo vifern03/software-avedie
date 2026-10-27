@@ -5,6 +5,7 @@ import { saveAs } from 'file-saver';
 import { AlertTriangle, Upload, FileSpreadsheet, X, CheckCircle, FileCheck, Wrench, Pencil, Search, Archive, ArrowLeft } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
+import { useTasks } from '../context/TasksContext';
 import Pagination from '../components/Pagination';
 import EditarEstadoPendienteModal from '../components/EditarEstadoPendienteModal';
 import ConfirmActionModal from '../components/ConfirmActionModal';
@@ -37,6 +38,14 @@ function fileToArrayBuffer(file) {
   });
 }
 
+/* Lote de importación = SHA-256 del archivo con forma de UUID: el mismo Excel
+   siempre da el mismo lote, así un reintento no duplica filas ni la tarea. */
+async function loteDesdeArchivo(buffer) {
+  const h = [...new Uint8Array(await crypto.subtle.digest('SHA-256', buffer))].slice(0, 16)
+    .map(b => b.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+}
+
 /* Lee el Excel y devuelve TODAS las filas (no solo las que matchean contra la
    BD): cada una se conserva en registro_pendientes para no perder ningún dato.
    Usa header:1 (filas como arrays) para localizar la cabecera EXACTA sin que
@@ -48,6 +57,7 @@ async function extractRowsFromExcel(file) {
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
   if (rows.length === 0) return { registros: [], columnFound: false };
+  const loteId = await loteDesdeArchivo(buffer);
 
   const headerRow = rows[0].map(h => String(h ?? '').trim());
   const cupsIdx    = headerRow.findIndex(h => h === CUPS_COLUMN_HEADER);
@@ -76,7 +86,7 @@ async function extractRowsFromExcel(file) {
     })
     .filter(Boolean);
 
-  return { registros, columnFound };
+  return { registros, columnFound, loteId };
 }
 
 /* Fechas del Excel vienen como "D/M/AAAA" (sin ceros a la izquierda) — Date()
@@ -132,13 +142,16 @@ function estadoOriginalBadge(estado) {
   return { label: estado, className: 'bg-gray-100 text-gray-700' };
 }
 
-export default function Pendientes() {
+export default function Pendientes({ loteFiltro = null, onQuitarLote }) {
   const { registroPendientes, clientesCupsTodos, ingestExcelPendientes, actualizarEstadoPendiente } = useData();
   const { currentUser } = useAuth();
+  const { acciones: accionesTareas, tareas } = useTasks();
   const isAdmin = currentUser?.role?.toLowerCase() === 'admin';
   const puedeVerAnterior = isAdmin || currentUser?.role?.toLowerCase() === 'manager';
+  const puedeImportar = puedeVerAnterior; // admin y manager
+  const tareaLote = loteFiltro ? tareas.find(t => t.pendientes_lote === loteFiltro) : null;
   const [verAnterior, setVerAnterior] = useState(false);
-  const modoAnterior = verAnterior && puedeVerAnterior;
+  const modoAnterior = verAnterior && puedeVerAnterior && !loteFiltro;
 
   const [dragging, setDragging]   = useState(false);
   const [dropped, setDropped]     = useState(null);
@@ -172,9 +185,9 @@ export default function Pendientes() {
   // tabla — se queda como histórico visible, con su propio color pastel.
   const pendientes = useMemo(
     () => registroPendientes
-      .filter(r => esRegistroAnterior(r) === modoAnterior)
+      .filter(r => (loteFiltro ? r.lote_id === loteFiltro : esRegistroAnterior(r) === modoAnterior))
       .sort((a, b) => sortTimestamp(b) - sortTimestamp(a)), // más nuevo primero
-    [registroPendientes, modoAnterior]
+    [registroPendientes, modoAnterior, loteFiltro]
   );
   const totalAnterior = useMemo(() => registroPendientes.filter(esRegistroAnterior).length, [registroPendientes]);
 
@@ -208,7 +221,7 @@ export default function Pendientes() {
   // Si cambian los filtros, la página actual puede quedar fuera de rango.
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchCups, dateFrom, dateTo, statusFilter, modoAnterior]);
+  }, [searchCups, dateFrom, dateTo, statusFilter, modoAnterior, loteFiltro]);
 
   const exportToXLSX = async () => {
     const workbook = new ExcelJS.Workbook();
@@ -303,7 +316,7 @@ export default function Pendientes() {
     setIsProcessing(true);
     startPhase('leyendo', estimateReadSeconds(file.size));
     try {
-      const { registros, columnFound } = await extractRowsFromExcel(file);
+      const { registros, columnFound, loteId } = await extractRowsFromExcel(file);
       if (!columnFound) {
         setResultMsg({ type: 'error', text: `No se ha encontrado la columna "${CUPS_COLUMN_HEADER}" en el Excel. Revisa que el nombre de la cabecera sea exacto (o que la primera fila sea la cabecera).` });
         return;
@@ -314,12 +327,12 @@ export default function Pendientes() {
       }
 
       startPhase('guardando', estimateSaveSeconds(registros.length));
-      const savePromise = ingestExcelPendientes(registros);
+      const savePromise = ingestExcelPendientes(registros, loteId);
       const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('SAVE_TIMEOUT')), SAVE_TIMEOUT_MS));
 
-      let inserted, error;
+      let inserted, error, duplicado;
       try {
-        ({ inserted, error } = await Promise.race([savePromise, timeoutPromise]));
+        ({ inserted, error, duplicado } = await Promise.race([savePromise, timeoutPromise]));
       } catch (raceErr) {
         if (raceErr.message === 'SAVE_TIMEOUT') {
           setResultMsg({ type: 'error', text: `El guardado ha tardado más de ${Math.round(SAVE_TIMEOUT_MS / 1000)}s. Puede haberse guardado parcialmente — revisa la tabla antes de reintentar.` });
@@ -332,10 +345,23 @@ export default function Pendientes() {
         setResultMsg({ type: 'error', text: 'Error al guardar en la base de datos. ¿Has ejecutado supabase_pendientes_v2.sql? Inténtalo de nuevo.' });
         return;
       }
+      // Una importación con pendientes = una tarea (si ya existe, la RPC la devuelve sin duplicarla).
+      let textoTarea = '';
+      try {
+        const tarea = await accionesTareas.crearDesdePendientes(loteId);
+        textoTarea = ` · Tarea «${tarea.title}» disponible en Tareas.`;
+      } catch (errTarea) {
+        console.error('Pendientes — crear tarea:', errTarea);
+        textoTarea = ` · No se pudo crear la tarea en Tareas (${errTarea.message}). Vuelve a subir el mismo Excel para reintentarlo: no se duplicarán los pendientes.`;
+      }
+      if (duplicado) {
+        setResultMsg({ type: 'success', text: `Este Excel ya estaba importado: no se han vuelto a registrar sus pendientes.${textoTarea}` });
+        return;
+      }
       setCurrentPage(1);
       setResultMsg({
         type: 'success',
-        text: `${registros.length} fila(s) leídas del Excel · ${inserted} registradas en el embudo de Pendientes (todas, existan o no ya como contrato en el CRM).`,
+        text: `${registros.length} fila(s) leídas del Excel · ${inserted} registradas en el embudo de Pendientes (todas, existan o no ya como contrato en el CRM).${textoTarea}`,
       });
     } catch (err) {
       console.error('Pendientes — extractRowsFromExcel:', err);
@@ -363,8 +389,19 @@ export default function Pendientes() {
         <h1 className="text-xl font-semibold text-google-dark">Gestión de Pendientes</h1>
       </div>
 
-      {/* Zona de subida — solo Administrador, en el registro actual */}
-      {isAdmin && !modoAnterior && (
+      {/* Pendientes de una tarea (enlace desde Tareas) */}
+      {loteFiltro && (
+        <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-6 text-sm text-google-dark">
+          <FileSpreadsheet size={16} className="text-google-blue flex-shrink-0" />
+          <span className="flex-1">Pendientes de la tarea <strong>{tareaLote?.title || 'Gestionar pendientes'}</strong></span>
+          <button onClick={onQuitarLote} className="text-xs text-google-blue hover:underline flex items-center gap-1">
+            <X size={14} /> Ver todos
+          </button>
+        </div>
+      )}
+
+      {/* Zona de subida — Administrador y Manager, en el registro actual */}
+      {puedeImportar && !modoAnterior && !loteFiltro && (
         <div className="bg-white border border-google-border rounded-xl shadow-sm p-5 mb-6">
           <div className="flex items-center justify-between mb-3">
             <p className="text-[10px] font-semibold text-google-gray uppercase tracking-wider">Subir Excel de incidencias (.xlsx)</p>
@@ -506,7 +543,7 @@ export default function Pendientes() {
       </div>
 
       {/* Registro anterior (hasta el 25/10/2026) — solo administradores y managers */}
-      {puedeVerAnterior && totalAnterior > 0 && (
+      {puedeVerAnterior && totalAnterior > 0 && !loteFiltro && (
         <div className="flex justify-end mb-3">
           <button
             onClick={() => setVerAnterior(v => !v)}
