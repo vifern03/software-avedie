@@ -2,13 +2,14 @@ import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
-import { AlertTriangle, Upload, FileSpreadsheet, X, CheckCircle, FileCheck, Wrench, Pencil, Search, Archive, ArrowLeft } from 'lucide-react';
+import { AlertTriangle, Upload, FileSpreadsheet, X, CheckCircle, FileCheck, Wrench, Pencil, Search, Archive, ArrowLeft, Trash2 } from 'lucide-react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { useTasks } from '../context/TasksContext';
 import Pagination from '../components/Pagination';
 import EditarEstadoPendienteModal from '../components/EditarEstadoPendienteModal';
 import ConfirmActionModal from '../components/ConfirmActionModal';
+import { ESTADOS_PENDIENTE, valorCampo, parseFechaExcel, puedeGestionarPendientes, etiquetaRegistro } from '../lib/pendientesEdicion';
 
 /* Nombre EXACTO de la columna del Excel que contiene el CUPS a cruzar. */
 const CUPS_COLUMN_HEADER = 'CUPS: CUPS';
@@ -89,19 +90,6 @@ async function extractRowsFromExcel(file) {
   return { registros, columnFound, loteId };
 }
 
-/* Fechas del Excel vienen como "D/M/AAAA" (sin ceros a la izquierda) — Date()
-   nativo las interpreta de forma ambigua/inconsistente entre navegadores, así
-   que se parsean a mano. Devuelve null si no es un formato reconocible. */
-function parseFechaExcel(str) {
-  if (!str) return null;
-  const parts = String(str).trim().split(/[/-]/);
-  if (parts.length !== 3) return null;
-  const [d, m, y] = parts.map(Number);
-  if (!d || !m || !y) return null;
-  const date = new Date(y, m - 1, d);
-  return isNaN(date.getTime()) ? null : date.getTime();
-}
-
 /* Timestamp para ordenar: prioriza la fecha original del Excel; si no se puede
    parsear, cae al created_at del registro (siempre válido, generado por BD). */
 /* Corte PUNTUAL del registro (26/10/2026): la herramienta no se usaba desde julio y
@@ -117,8 +105,7 @@ const esRegistroAnterior = (r) => {
 };
 
 function sortTimestamp(r) {
-  const fechaExcel = r.raw_data?.['Fecha de creación'] || r.fecha_creacion_excel;
-  const parsed = parseFechaExcel(fechaExcel);
+  const parsed = parseFechaExcel(valorCampo(r, 'fecha_creacion_excel'));
   if (parsed != null) return parsed;
   const created = new Date(r.created_at).getTime();
   return isNaN(created) ? 0 : created;
@@ -143,15 +130,18 @@ function estadoOriginalBadge(estado) {
 }
 
 export default function Pendientes({ loteFiltro = null, onQuitarLote }) {
-  const { registroPendientes, clientesCupsTodos, ingestExcelPendientes, actualizarEstadoPendiente } = useData();
+  const { registroPendientes, clientesCupsTodos, ingestExcelPendientes, actualizarEstadoPendiente, editarPendiente, borrarPendientes, cambiarEstadoPendientes } = useData();
   const { currentUser } = useAuth();
   const { acciones: accionesTareas, tareas } = useTasks();
   const isAdmin = currentUser?.role?.toLowerCase() === 'admin';
   const puedeVerAnterior = isAdmin || currentUser?.role?.toLowerCase() === 'manager';
   const puedeImportar = puedeVerAnterior; // admin y manager
+  const puedeGestionar = puedeGestionarPendientes(currentUser); // borrar, editar campos y selección múltiple
   const tareaLote = loteFiltro ? tareas.find(t => t.pendientes_lote === loteFiltro) : null;
   const [verAnterior, setVerAnterior] = useState(false);
   const modoAnterior = verAnterior && puedeVerAnterior && !loteFiltro;
+  // Selección múltiple, papelera y edición de campos: admin y manager, solo en el registro actual.
+  const conGestion = puedeGestionar && !modoAnterior;
 
   const [dragging, setDragging]   = useState(false);
   const [dropped, setDropped]     = useState(null);
@@ -167,6 +157,10 @@ export default function Pendientes({ loteFiltro = null, onQuitarLote }) {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [seleccion, setSeleccion] = useState(() => new Set()); // ids seleccionados (admin/manager)
+  const [confirmBorrar, setConfirmBorrar] = useState(null);    // [ids] a borrar, pendiente de confirmar
+  const [estadoMasivo, setEstadoMasivo] = useState('');
+  const [accionMsg, setAccionMsg] = useState(null);            // { type, text } de borrar / editar
   const fileRef = useRef(null);
   const countdownRef = useRef(null);
 
@@ -207,7 +201,7 @@ export default function Pendientes({ loteFiltro = null, onQuitarLote }) {
     const toTs   = dateTo   ? new Date(`${dateTo}T23:59:59`).getTime()   : null;
 
     return pendientes.filter(r => {
-      if (cupsQuery && !(r.cups || '').toUpperCase().includes(cupsQuery)) return false;
+      if (cupsQuery && !valorCampo(r, 'cups').toUpperCase().includes(cupsQuery)) return false;
       if (statusFilter && (r.raw_data?.['Estado'] || '') !== statusFilter) return false;
       if (fromTs != null || toTs != null) {
         const ts = sortTimestamp(r);
@@ -221,7 +215,14 @@ export default function Pendientes({ loteFiltro = null, onQuitarLote }) {
   // Si cambian los filtros, la página actual puede quedar fuera de rango.
   useEffect(() => {
     setCurrentPage(1);
+    setSeleccion(new Set());
   }, [searchCups, dateFrom, dateTo, statusFilter, modoAnterior, loteFiltro]);
+
+  // Solo cuentan los seleccionados que siguen visibles (borrados por otra sesión, etc. salen solos).
+  const seleccionados = useMemo(
+    () => filteredPendientes.filter(r => seleccion.has(r.id)).map(r => r.id),
+    [filteredPendientes, seleccion]
+  );
 
   const exportToXLSX = async () => {
     const workbook = new ExcelJS.Workbook();
@@ -255,10 +256,10 @@ export default function Pendientes({ loteFiltro = null, onQuitarLote }) {
     filteredPendientes.forEach(r => {
       const existeEnCrm = clientesCupsTodos.has((r.cups || '').toUpperCase().trim());
       const row = sheet.addRow({
-        numero_oi:   r.raw_data?.['Nombre'] || r.nombre || '',
-        cups:        String(r.cups || ''),
-        numero_caso: r.raw_data?.['Número del caso'] || r.numero_caso || '',
-        fecha:       r.fecha_creacion_excel || '',
+        numero_oi:   valorCampo(r, 'nombre'),
+        cups:        valorCampo(r, 'cups'),
+        numero_caso: valorCampo(r, 'numero_caso'),
+        fecha:       valorCampo(r, 'fecha_creacion_excel'),
         estado_orig: r.raw_data?.['Estado'] || '',
         estado_inc:  r.estado_incidencia || '',
         en_crm:      existeEnCrm ? 'Sí' : 'No',
@@ -285,9 +286,46 @@ export default function Pendientes({ loteFiltro = null, onQuitarLote }) {
     );
   };
 
-  const handleGuardarEstado = async (nuevoEstado) => {
-    if (editingRegistro) await actualizarEstadoPendiente(editingRegistro.id, nuevoEstado);
+  const handleGuardarEstado = async (form) => {
+    if (!editingRegistro) return null;
+    if (conGestion) {
+      const { error } = await editarPendiente(editingRegistro.id, form);
+      if (error) return { error };
+    } else {
+      await actualizarEstadoPendiente(editingRegistro.id, form.estado_incidencia);
+    }
     setEditingRegistro(null);
+    return null;
+  };
+
+  const toggleSeleccion = (id) => setSeleccion(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const handleConfirmBorrar = async () => {
+    const ids = confirmBorrar;
+    setConfirmBorrar(null);
+    const { error, borrados } = await borrarPendientes(ids);
+    if (error) {
+      setAccionMsg({ type: 'error', text: 'No se ha podido borrar en la base de datos; se han restaurado las filas. Inténtalo de nuevo.' });
+      return;
+    }
+    setSeleccion(prev => { const next = new Set(prev); ids.forEach(id => next.delete(id)); return next; });
+    setAccionMsg({ type: 'success', text: `${borrados} pendiente(s) borrado(s).` });
+  };
+
+  const handleCambiarEstadoMasivo = async () => {
+    if (!estadoMasivo || seleccionados.length === 0) return;
+    const { error, cambiados } = await cambiarEstadoPendientes(seleccionados, estadoMasivo);
+    if (error) {
+      setAccionMsg({ type: 'error', text: 'No se ha podido cambiar el estado en la base de datos; se han restaurado los valores. Inténtalo de nuevo.' });
+      return;
+    }
+    setAccionMsg({ type: 'success', text: `Estado cambiado a «${estadoMasivo}» en ${cambiados} pendiente(s).` });
+    setEstadoMasivo('');
+    setSeleccion(new Set());
   };
 
   const handleTramitarClick = (r) => setConfirmAction({ tipo: 'tramitar', registro: r });
@@ -302,6 +340,12 @@ export default function Pendientes({ loteFiltro = null, onQuitarLote }) {
 
   const totalPages = Math.max(1, Math.ceil(filteredPendientes.length / ITEMS_PER_PAGE));
   const paginated = filteredPendientes.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const paginaSeleccionada = paginated.length > 0 && paginated.every(r => seleccion.has(r.id));
+  const togglePagina = () => setSeleccion(prev => {
+    const next = new Set(prev);
+    paginated.forEach(r => (paginaSeleccionada ? next.delete(r.id) : next.add(r.id)));
+    return next;
+  });
 
   // Si sube un Excel nuevo, se tramita/formaliza algo o cambian los filtros,
   // la página actual puede quedar fuera de rango — recolocar en la última válida.
@@ -556,6 +600,49 @@ export default function Pendientes({ loteFiltro = null, onQuitarLote }) {
         </div>
       )}
 
+      {accionMsg && (
+        <div className={`flex items-start gap-2 rounded-lg px-3 py-2.5 mb-3 border ${
+          accionMsg.type === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
+        }`}>
+          {accionMsg.type === 'success'
+            ? <CheckCircle size={14} className="text-green-500 flex-shrink-0 mt-0.5" />
+            : <AlertTriangle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />}
+          <p className={`flex-1 text-[11px] leading-relaxed ${accionMsg.type === 'success' ? 'text-green-700' : 'text-red-700'}`}>{accionMsg.text}</p>
+          <button onClick={() => setAccionMsg(null)} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
+        </div>
+      )}
+
+      {conGestion && seleccionados.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 mb-3 text-sm text-google-dark">
+          <span className="font-medium">{seleccionados.length} seleccionado(s)</span>
+          <button onClick={() => setSeleccion(new Set())} className="text-xs text-google-blue hover:underline">Quitar selección</button>
+          <div className="flex items-center gap-2 ml-auto">
+            <select
+              value={estadoMasivo}
+              onChange={e => setEstadoMasivo(e.target.value)}
+              className="input-field h-8 w-auto text-xs"
+              aria-label="Nuevo estado para los seleccionados"
+            >
+              <option value="">Nuevo estado…</option>
+              {ESTADOS_PENDIENTE.map(e => <option key={e} value={e}>{e === 'Pendiente de tareas' ? 'Pendiente' : e}</option>)}
+            </select>
+            <button
+              onClick={handleCambiarEstadoMasivo}
+              disabled={!estadoMasivo}
+              className="btn-secondary h-8 text-xs disabled:opacity-50"
+            >
+              Cambiar estado
+            </button>
+            <button
+              onClick={() => setConfirmBorrar(seleccionados)}
+              className="flex items-center gap-1 px-3 h-8 rounded-lg bg-red-600 text-white text-xs font-medium hover:bg-red-700 transition-colors"
+            >
+              <Trash2 size={13} /> Borrar seleccionados
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Tabla de pendientes */}
       <div className="bg-white border border-google-border rounded-xl shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-4">
@@ -580,6 +667,18 @@ export default function Pendientes({ loteFiltro = null, onQuitarLote }) {
           <table className="w-full text-sm min-w-max">
             <thead>
               <tr>
+                {conGestion && (
+                  <th className="table-header w-8">
+                    <input
+                      type="checkbox"
+                      checked={paginaSeleccionada}
+                      onChange={togglePagina}
+                      disabled={paginated.length === 0}
+                      title="Seleccionar todos los de la página"
+                      aria-label="Seleccionar todos los de la página"
+                    />
+                  </th>
+                )}
                 <th className="table-header w-8"></th>
                 <th className="table-header">Número OI</th>
                 <th className="table-header">CUPS</th>
@@ -592,7 +691,7 @@ export default function Pendientes({ loteFiltro = null, onQuitarLote }) {
             <tbody>
               {paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-10 text-google-gray text-sm">
+                  <td colSpan={conGestion ? 8 : 7} className="text-center py-10 text-google-gray text-sm">
                     {modoAnterior ? 'No hay registros anteriores.' : 'No hay incidencias pendientes. Sube un Excel para empezar.'}
                   </td>
                 </tr>
@@ -600,7 +699,7 @@ export default function Pendientes({ loteFiltro = null, onQuitarLote }) {
                 paginated.map(r => {
                   // En el registro anterior todo queda cerrado: círculo verde siempre.
                   const existeEnCrm = modoAnterior || clientesCupsTodos.has((r.cups || '').toUpperCase().trim());
-                  const numeroOi = r.raw_data?.['Nombre'] || r.nombre || '';
+                  const numeroOi = valorCampo(r, 'nombre');
                   const estadoOriginal = r.raw_data?.['Estado'] || null;
                   const badge = estadoOriginalBadge(estadoOriginal);
                   return (
@@ -609,6 +708,16 @@ export default function Pendientes({ loteFiltro = null, onQuitarLote }) {
                       : r.estado_incidencia === 'Tramitado'  ? 'bg-orange-50 hover:bg-orange-100'
                       : 'hover:bg-google-bg'
                     }`}>
+                      {conGestion && (
+                        <td className="table-cell">
+                          <input
+                            type="checkbox"
+                            checked={seleccion.has(r.id)}
+                            onChange={() => toggleSeleccion(r.id)}
+                            aria-label={`Seleccionar ${etiquetaRegistro(r)}`}
+                          />
+                        </td>
+                      )}
                       <td className="table-cell">
                         <span
                           className={`w-3 h-3 rounded-full inline-block ${existeEnCrm ? 'bg-green-500' : 'bg-red-500'}`}
@@ -617,8 +726,8 @@ export default function Pendientes({ loteFiltro = null, onQuitarLote }) {
                       </td>
                       <td className="table-cell font-medium text-google-dark whitespace-nowrap">{numeroOi}</td>
                       <td className="table-cell text-google-gray font-mono text-xs">{r.cups}</td>
-                      <td className="table-cell text-google-gray text-xs">{r.raw_data?.['Número del caso'] || r.numero_caso || ''}</td>
-                      <td className="table-cell text-google-gray text-xs whitespace-nowrap">{r.fecha_creacion_excel || '—'}</td>
+                      <td className="table-cell text-google-gray text-xs">{valorCampo(r, 'numero_caso')}</td>
+                      <td className="table-cell text-google-gray text-xs whitespace-nowrap">{valorCampo(r, 'fecha_creacion_excel') || '—'}</td>
                       <td className="table-cell">
                         <span className={`text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${badge.className}`}>
                           {badge.label}
@@ -653,10 +762,20 @@ export default function Pendientes({ loteFiltro = null, onQuitarLote }) {
                           {!modoAnterior && <button
                             onClick={() => setEditingRegistro(r)}
                             className="flex items-center justify-center w-7 h-7 rounded-lg border border-google-border bg-white text-google-gray hover:border-google-blue hover:text-google-blue transition-colors flex-shrink-0"
-                            title="Editar estado"
+                            title={conGestion ? 'Editar pendiente' : 'Editar estado'}
                           >
                             <Pencil size={13} />
                           </button>}
+                          {conGestion && (
+                            <button
+                              onClick={() => setConfirmBorrar([r.id])}
+                              className="flex items-center justify-center w-7 h-7 rounded-lg border border-google-border bg-white text-google-gray hover:border-red-400 hover:text-red-600 transition-colors flex-shrink-0"
+                              title="Borrar pendiente"
+                              aria-label={`Borrar ${etiquetaRegistro(r)}`}
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -674,8 +793,26 @@ export default function Pendientes({ loteFiltro = null, onQuitarLote }) {
           registro={editingRegistro}
           onClose={() => setEditingRegistro(null)}
           onSave={handleGuardarEstado}
+          editarCampos={conGestion}
         />
       )}
+
+      {confirmBorrar && (() => {
+        const uno = confirmBorrar.length === 1 ? registroPendientes.find(r => r.id === confirmBorrar[0]) : null;
+        return (
+          <ConfirmActionModal
+            title={uno ? 'Borrar pendiente' : 'Borrar pendientes seleccionados'}
+            message={uno
+              ? `¿Seguro que quieres borrar el pendiente de ${etiquetaRegistro(uno)} (CUPS ${uno.cups})? Desaparecerá de la tabla para todos los usuarios.`
+              : `¿Seguro que quieres borrar ${confirmBorrar.length} pendientes seleccionados? Desaparecerán de la tabla para todos los usuarios.`}
+            confirmLabel={uno ? 'Sí, borrar' : `Sí, borrar ${confirmBorrar.length}`}
+            cancelLabel="Cancelar"
+            confirmClassName="bg-red-600 hover:bg-red-700"
+            onConfirm={handleConfirmBorrar}
+            onCancel={() => setConfirmBorrar(null)}
+          />
+        );
+      })()}
 
       {confirmAction && (
         <ConfirmActionModal

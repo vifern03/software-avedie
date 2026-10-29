@@ -2,6 +2,9 @@ import { createContext, useContext, useState, useEffect, useMemo, useRef } from 
 import { useAuth } from './AuthContext';
 import { supabase } from '../lib/supabase';
 import { readQueue, writeQueue, fileToBase64, base64ToBlob } from '../lib/pymesOfflineQueue';
+import {
+  ESTADOS_PENDIENTE, valorCampo, validarEdicion, cambiosEdicion, updateDesdeCambios, describirCambios, etiquetaRegistro,
+} from '../lib/pendientesEdicion';
 
 const DataContext = createContext(null);
 
@@ -1196,6 +1199,17 @@ export function DataProvider({ children }) {
   // de coincidencias incorrecto). Con 0 o 2+ coincidencias, o al revertir
   // desde Formalizado, NO se toca `clientes` — sería ambiguo o inesperado
   // modificar automáticamente la fecha real de formalización del contrato.
+  // Solo con EXACTAMENTE un contrato con ese CUPS (ver comentario de arriba).
+  const reflejarFormalizadoEnClientes = async (cups, fechaHoy = today()) => {
+    const { data: matches } = await supabase
+      .from('clientes').select('id').eq('cups', cups).is('deleted_at', null);
+    if (matches?.length === 1) {
+      const clienteId = matches[0].id;
+      setClientes(prev => prev.map(c => c.id === clienteId ? { ...c, fecha_formalizada: fechaHoy } : c));
+      await supabase.from('clientes').update({ fecha_formalizada: fechaHoy }).eq('id', clienteId);
+    }
+  };
+
   const actualizarEstadoPendiente = async (id, nuevoEstado) => {
     const esFormalizado = nuevoEstado === 'Formalizado';
     const fechaHoy = today();
@@ -1210,15 +1224,7 @@ export function DataProvider({ children }) {
     const { error } = await supabase.from('registro_pendientes').update(updateObj).eq('id', id);
     if (error) { console.error('actualizarEstadoPendiente:', error); return { error }; }
 
-    if (esFormalizado && registro?.cups) {
-      const { data: matches } = await supabase
-        .from('clientes').select('id').eq('cups', registro.cups).is('deleted_at', null);
-      if (matches?.length === 1) {
-        const clienteId = matches[0].id;
-        setClientes(prev => prev.map(c => c.id === clienteId ? { ...c, fecha_formalizada: fechaHoy } : c));
-        await supabase.from('clientes').update({ fecha_formalizada: fechaHoy }).eq('id', clienteId);
-      }
-    }
+    if (esFormalizado && registro?.cups) await reflejarFormalizadoEnClientes(registro.cups, fechaHoy);
 
     if (registro) {
       const verbo = nuevoEstado === 'Formalizado' ? 'formalizado'
@@ -1227,6 +1233,106 @@ export function DataProvider({ children }) {
       addActivity('Pendientes', `${currentUser?.username} ha ${verbo} la incidencia de ${registro.nombre || registro.cups}`, currentUser?.username);
     }
     return { error: null };
+  };
+
+  // ── Edición / borrado de Pendientes (solo admin y manager) ──────────────────
+  // Escritura optimista: se aplica al estado local y, si Supabase falla, se
+  // restaura la foto previa. El borrado es LÓGICO (deleted_at) y el canal
+  // realtime lo propaga al resto de sesiones. Ver src/lib/pendientesEdicion.js.
+
+  // Varias actividades de golpe en un solo INSERT (ids consecutivos para no
+  // chocar como pasaría con varios addActivity en el mismo milisegundo).
+  const addActivities = (tipo, descripciones) => {
+    if (!descripciones.length) return;
+    const now = new Date();
+    const base = Date.now();
+    const nuevas = descripciones.map((descripcion, i) => ({
+      id:          base + i,
+      tipo,
+      descripcion,
+      comercial:   currentUser?.username || 'Sistema',
+      fecha:       now.toISOString().split('T')[0],
+      hora:        now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' }),
+    }));
+    setActividades(prev => [...nuevas.slice().reverse(), ...prev]);
+    supabase.from('actividades').insert(nuevas)
+      .then(({ error }) => {
+        if (error) {
+          console.error('addActivities:', error);
+          const ids = new Set(nuevas.map(a => a.id));
+          setActividades(prev => prev.filter(a => !ids.has(a.id)));
+        }
+      });
+  };
+
+  const editarPendiente = async (id, form) => {
+    const previo = registroPendientes.find(r => r.id === id);
+    if (!previo) return { error: new Error('Registro no encontrado') };
+    const errorValidacion = validarEdicion(form);
+    if (errorValidacion) return { error: new Error(errorValidacion) };
+    const cambios = cambiosEdicion(previo, form);
+    if (!cambios.length) return { error: null };
+    const updateObj = updateDesdeCambios(cambios);
+
+    setRegistroPendientes(prev => prev.map(r => r.id === id ? { ...r, ...updateObj } : r));
+    const { error } = await supabase.from('registro_pendientes').update(updateObj).eq('id', id);
+    if (error) {
+      console.error('editarPendiente:', error);
+      setRegistroPendientes(prev => prev.map(r => r.id === id ? previo : r));
+      return { error };
+    }
+
+    if (updateObj.estado_incidencia === 'Formalizado') await reflejarFormalizadoEnClientes(updateObj.cups ?? previo.cups);
+    addActivity('Pendientes', `${currentUser?.username} ha editado la incidencia de ${etiquetaRegistro(previo)}: ${describirCambios(cambios)}`, currentUser?.username);
+    return { error: null };
+  };
+
+  const borrarPendientes = async (ids) => {
+    const idSet = new Set(ids);
+    const borrados = registroPendientes.filter(r => idSet.has(r.id));
+    if (!borrados.length) return { error: null, borrados: 0 };
+
+    setRegistroPendientes(prev => prev.filter(r => !idSet.has(r.id)));
+    const { error } = await supabase.from('registro_pendientes')
+      .update({ deleted_at: new Date().toISOString() })
+      .in('id', borrados.map(r => r.id));
+    if (error) {
+      console.error('borrarPendientes:', error);
+      setRegistroPendientes(prev => [...borrados.filter(b => !prev.some(p => p.id === b.id)), ...prev]);
+      return { error, borrados: 0 };
+    }
+
+    addActivities('Pendientes', borrados.map(r =>
+      `${currentUser?.username} ha borrado la incidencia de ${etiquetaRegistro(r)} (CUPS ${r.cups})`));
+    return { error: null, borrados: borrados.length };
+  };
+
+  const cambiarEstadoPendientes = async (ids, nuevoEstado) => {
+    if (!ESTADOS_PENDIENTE.includes(nuevoEstado)) return { error: new Error('Estado no válido'), cambiados: 0 };
+    const idSet = new Set(ids);
+    const afectados = registroPendientes.filter(r => idSet.has(r.id) && valorCampo(r, 'estado_incidencia') !== nuevoEstado);
+    if (!afectados.length) return { error: null, cambiados: 0 };
+    const afectadosIds = new Set(afectados.map(r => r.id));
+    const updateObj = {
+      estado_incidencia: nuevoEstado,
+      fecha_formalizacion: nuevoEstado === 'Formalizado' ? new Date().toISOString() : null,
+    };
+
+    setRegistroPendientes(prev => prev.map(r => afectadosIds.has(r.id) ? { ...r, ...updateObj } : r));
+    const { error } = await supabase.from('registro_pendientes').update(updateObj).in('id', [...afectadosIds]);
+    if (error) {
+      console.error('cambiarEstadoPendientes:', error);
+      const previos = new Map(afectados.map(r => [r.id, r]));
+      setRegistroPendientes(prev => prev.map(r => previos.get(r.id) || r));
+      return { error, cambiados: 0 };
+    }
+
+    if (nuevoEstado === 'Formalizado') {
+      for (const cups of new Set(afectados.map(r => r.cups).filter(Boolean))) await reflejarFormalizadoEnClientes(cups);
+    }
+    addActivities('Pendientes', afectados.map(r =>
+      `${currentUser?.username} ha editado la incidencia de ${etiquetaRegistro(r)}: Estado: "${valorCampo(r, 'estado_incidencia')}" → "${nuevoEstado}"`));
+    return { error: null, cambiados: afectados.length };
   };
 
   const renovarContrato = (id, nuevaFechaRef, nuevaFechaVenc, extraData = {}) => {
@@ -1419,6 +1525,9 @@ export function DataProvider({ children }) {
       clientesCupsTodos,
       ingestExcelPendientes,
       actualizarEstadoPendiente,
+      editarPendiente,
+      borrarPendientes,
+      cambiarEstadoPendientes,
       prescriptores,
       prescriptorLinks,
       addPrescriptor,
