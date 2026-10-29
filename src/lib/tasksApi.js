@@ -36,23 +36,23 @@ const comprobar = ({ data, error }) => {
 /** Valor entrecomillado para filtros or() de PostgREST. */
 const q = (v) => `"${String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 
-/** Filtro de visibilidad aplicado a una consulta de `tasks`. */
+/** Filtro de visibilidad aplicado a una consulta de `tasks` (las borradas se excluyen aparte). */
 export function filtroVisibilidad(user) {
   if (!user || user.role === 'admin') return null;
-  return `created_by.eq.${q(user.username)},assignee.eq.${q(user.username)}`;
+  return `created_by.eq.${q(user.username)},assignee.eq.${q(user.username)},shared_with.cs.{${q(user.username)}}`;
 }
 
 /* ── Lecturas ─────────────────────────────────────────────────────────────── */
 
 export async function fetchTareas(user) {
-  let query = supabase.from('tasks').select('*').order('created_at', { ascending: true }).limit(5000);
+  let query = supabase.from('tasks').select('*').is('deleted_at', null).order('created_at', { ascending: true }).limit(5000);
   const f = filtroVisibilidad(user);
   if (f) query = query.or(f);
   return comprobar(await query) || [];
 }
 
 export async function fetchTarea(user, id) {
-  let query = supabase.from('tasks').select('*').eq('id', id);
+  let query = supabase.from('tasks').select('*').eq('id', id).is('deleted_at', null);
   const f = filtroVisibilidad(user);
   if (f) query = query.or(f);
   const rows = comprobar(await query) || [];
@@ -141,6 +141,16 @@ export async function archivarTarea(actor, id, archivar) {
 
 export async function comentarTarea(actor, id, comentario) {
   return una(await rpc('tasks_comentar', { p_actor: actor, p_id: id, p_comentario: String(comentario || '').trim() }));
+}
+
+/** Borrado lógico (creador o admin). */
+export async function borrarTarea(actor, id) {
+  return una(await rpc('tasks_borrar', { p_actor: actor, p_task: id }));
+}
+
+/** Fija la lista completa de usuarios con los que se comparte ([] = nadie). */
+export async function compartirTarea(actor, id, usuarios) {
+  return una(await rpc('tasks_compartir', { p_actor: actor, p_task: id, p_usuarios: usuarios || [] }));
 }
 
 export async function setColorUsuario(actor, username, color) {

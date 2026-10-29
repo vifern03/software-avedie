@@ -190,7 +190,17 @@ export function TasksProvider({ children }) {
 
   // ── Acciones ──────────────────────────────────────────────────────────────
   const acciones = useMemo(() => ({
-    crear: async (datos) => { const rows = await api.crearTarea(actor(), datos); fusionar(rows); return rows; },
+    crear: async (datos) => {
+      const rows = await api.crearTarea(actor(), datos);
+      fusionar(rows);
+      // "Compartida con" al crear: se aplica a cada tarea creada (el responsable no cambia).
+      const compartir = (datos.shared_with || []);
+      if (!compartir.length) return rows;
+      const compartidas = await Promise.all(rows.map((t) =>
+        api.compartirTarea(actor(), t.id, compartir.filter((u) => u !== t.assignee))));
+      fusionar(compartidas);
+      return compartidas.map((t, i) => t || rows[i]);
+    },
     crearDesdePendientes: async (lote) => { const row = await api.crearTareaPendientes(actor(), lote); fusionar(row); return row; },
     editar: async (id, cambios) => { const row = await api.editarTarea(actor(), id, cambios); fusionar(row); return row; },
     cambiarEstado: (id, status) => optimista(id, {
@@ -201,6 +211,8 @@ export function TasksProvider({ children }) {
     mover: (id, fecha, hora) => optimista(id, { planned_date: fecha, planned_time: fecha ? hora || null : null },
       () => api.moverTarea(actor(), id, fecha, hora)),
     archivar: async (id, archivar) => { const row = await api.archivarTarea(actor(), id, archivar); fusionar(row); return row; },
+    borrar: (id) => optimista(id, { deleted_at: new Date().toISOString() }, () => api.borrarTarea(actor(), id)),
+    compartir: async (id, usuariosLista) => { const row = await api.compartirTarea(actor(), id, usuariosLista); fusionar(row); return row; },
     comentar: async (id, texto) => {
       const ev = await api.comentarTarea(actor(), id, texto);
       setComentarios((c) => ({ ...c, [id]: (c[id] || 0) + 1 }));

@@ -1,7 +1,7 @@
 import { memo, useState } from 'react';
-import { Archive, Check, CalendarDays, Loader, MessageSquare } from 'lucide-react';
+import { Archive, Check, CalendarDays, Loader, MessageSquare, Pencil, Trash2, Users } from 'lucide-react';
 import { Avatar, DeadlineChip, PrioridadChip } from './ui';
-import { puedeCambiarEstado } from '../../lib/tasksPermisos';
+import { puedeCambiarEstado, puedeBorrar, esCompartida } from '../../lib/tasksPermisos';
 import { fechaCorta, horaCorta } from '../../lib/tasksFechas';
 
 /** Checkbox redondo para completar / reabrir, con animación sutil. */
@@ -38,7 +38,7 @@ export function CheckCompletar({ task, user, onToggle, size = 20 }) {
   );
 }
 
-function TaskRow({ task, user, ahora, colorDe, nombreDe, comentarios, onOpen, onToggle, seleccionada }) {
+function TaskRow({ task, user, ahora, colorDe, nombreDe, comentarios, onOpen, onToggle, onDelete, seleccionada }) {
   const completada = task.status === 'completed';
   const yo = user.username;
   const plan = task.planned_date ? `${fechaCorta(task.planned_date, ahora)}${task.planned_time ? ` ${horaCorta(task.planned_time)}` : ''}` : '';
@@ -82,6 +82,15 @@ function TaskRow({ task, user, ahora, colorDe, nombreDe, comentarios, onOpen, on
           {task.archived_at && (
             <span className="inline-flex items-center gap-1 text-[11px] text-google-gray"><Archive size={11} /> Archivada</span>
           )}
+          {task.assignee !== yo && esCompartida(user, task) && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-50 border border-purple-200 text-[11px] font-medium text-purple-700 leading-none" title="Te la han compartido: puedes cambiar su estado y comentar">
+              <Users size={10} /> Compartida
+            </span>
+          )}
+          {/* Siempre visible en móvil; en escritorio al pasar el ratón */}
+          <span className="inline-flex items-center gap-1 text-[11px] text-google-blue md:opacity-0 md:group-hover:opacity-100 md:group-focus-visible:opacity-100 transition-opacity">
+            <Pencil size={10} /> Pincha para editar
+          </span>
         </div>
       </div>
 
@@ -90,6 +99,19 @@ function TaskRow({ task, user, ahora, colorDe, nombreDe, comentarios, onOpen, on
           <span className="hidden sm:inline text-xs text-google-gray truncate max-w-[110px]">{nombreDe(task.assignee)}</span>
           <Avatar nombre={nombreDe(task.assignee)} color={colorDe(task.assignee)} size={24} title={`Responsable: ${nombreDe(task.assignee)}`} />
         </div>
+      )}
+
+      {onDelete && puedeBorrar(user, task) && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onDelete(task); }}
+          onKeyDown={(e) => e.stopPropagation()}
+          className="flex-shrink-0 p-1.5 -my-0.5 rounded-md text-google-gray hover:text-red-600 hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+          title="Borrar tarea"
+          aria-label={`Borrar «${task.title}»`}
+        >
+          <Trash2 size={15} />
+        </button>
       )}
     </div>
   );

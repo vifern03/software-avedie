@@ -7,10 +7,13 @@ const esManager = (u) => u?.role === 'manager';
 const esCreador = (u, t) => !!u && !!t && t.created_by === u.username;
 const esResponsable = (u, t) => !!u && !!t && t.assignee === u.username;
 
-/** Visibilidad: admin ve todo; resto, tareas que creó o que tiene asignadas. */
+/** Compartida con el usuario (además del responsable): ve, comenta y cambia el estado. */
+export const esCompartida = (u, t) => !!u && !!t && Array.isArray(t.shared_with) && t.shared_with.includes(u.username);
+
+/** Visibilidad: admin ve todo; resto, tareas que creó, tiene asignadas o le han compartido. Borradas: nadie. */
 export function puedeVer(user, task) {
-  if (!user || !task) return false;
-  return esAdmin(user) || esCreador(user, task) || esResponsable(user, task);
+  if (!user || !task || task.deleted_at) return false;
+  return esAdmin(user) || esCreador(user, task) || esResponsable(user, task) || esCompartida(user, task);
 }
 
 /** Crear para otros usuarios (o varios): admin y manager. Comercial solo para sí mismo. */
@@ -29,8 +32,15 @@ export const puedeArchivar = puedeEditar;
 export const puedeReasignar = (user, task) =>
   !!task && (esAdmin(user) || (esManager(user) && esCreador(user, task)));
 
-/** Cambiar estado / completar / reabrir: admin, creador o responsable. */
+/** Cambiar estado / completar / reabrir: admin, creador, responsable o compartida. */
 export const puedeCambiarEstado = (user, task) =>
+  !!task && (esAdmin(user) || esCreador(user, task) || esResponsable(user, task) || esCompartida(user, task));
+
+/** Borrar (borrado lógico): admin o creador. El responsable que no la creó, no. */
+export const puedeBorrar = (user, task) => !!task && (esAdmin(user) || esCreador(user, task));
+
+/** Compartir con otros usuarios (el responsable no cambia): admin, creador o responsable. */
+export const puedeCompartir = (user, task) =>
   !!task && (esAdmin(user) || esCreador(user, task) || esResponsable(user, task));
 
 /** Comentar: cualquiera que vea la tarea. */
@@ -55,6 +65,8 @@ export function permisosTarea(user, task) {
     reasignar: puedeReasignar(user, task),
     cambiarEstado: puedeCambiarEstado(user, task),
     comentar: puedeComentar(user, task),
+    borrar: puedeBorrar(user, task),
+    compartir: puedeCompartir(user, task),
   };
 }
 

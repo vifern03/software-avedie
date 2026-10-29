@@ -11,6 +11,8 @@ Nunca `supabase link` ni `supabase db push` desde este repo.
 | `supabase/migrations/20261026000000_baseline_SOLO_LOCAL_no_ejecutar_en_produccion.sql` | esquema aproximado de producción (aborta si `usuarios` ya existe) |
 | `supabase/migrations/20261026010000_tasks.sql` | módulo Tasks: tablas, trigger, RLS, realtime, RPC |
 | `supabase/rollback/20261026010000_tasks_down.sql` | rollback de Tasks (idempotente) |
+| `supabase/migrations/20261029000000_tasks_borrar_compartir.sql` | borrado lógico y compartir (aditiva) |
+| `supabase/rollback/20261029000000_tasks_borrar_compartir_down.sql` | rollback de borrar/compartir (idempotente) |
 | `supabase/seed.sql` | datos ficticios (usuarios + 23 tareas con eventos) |
 | `tests/sql/tasks_permisos.sql` | pruebas de permisos (63 aserciones) |
 
@@ -105,7 +107,9 @@ Errores: todas las RPC lanzan `P0001` con mensaje en español → en supabase-js
 | `tasks_archivar` | `p_actor text, p_id uuid, p_archivar boolean = true` | `tasks` |
 | `tasks_comentar` | `p_actor text, p_id uuid, p_comentario text` | `task_events` |
 | `tasks_set_color` | `p_actor text, p_username text, p_color text` (`#RRGGBB`; `null` = volver al automático) | `task_user_preferences` |
-| `tasks_contador` (opcional) | `p_username text` | `{activas, vencidas, proximas}` (asignadas a él, no archivadas ni completadas) |
+| `tasks_borrar` | `p_actor text, p_task uuid` | `tasks` (borrado lógico: `deleted_at = now()`) |
+| `tasks_compartir` | `p_actor text, p_task uuid, p_usuarios text[]` (lista final; `{}` = nadie) | `tasks` |
+| `tasks_contador` (opcional) | `p_username text` | `{activas, vencidas, proximas}` (responsable o compartida, no archivadas, borradas ni completadas) |
 
 Comportamientos a tener en cuenta:
 - Si la acción no cambia nada (mismo estado, mismo responsable, mismas fechas, archivar ya archivada,
@@ -115,9 +119,37 @@ Comportamientos a tener en cuenta:
 - Hora sin fecha (planificada o deadline) → error. Título se guarda recortado (`trim`); descripción vacía → null.
 - Payloads de `task_events`: `created {assignee, group_id}`, `updated {changes:{campo:{from,to}}}`,
   `status_changed|completed|reopened {from,to}`, `reassigned {from,to}`,
-  `moved {from:{planned_date,planned_time}, to:{…}}`, `commented {comment}`, `archived|unarchived {}`.
+  `moved {from:{planned_date,planned_time}, to:{…}}`, `commented {comment}`, `archived|unarchived {}`,
+  `deleted {}`, `shared {added:[…], removed:[…]}`.
 - Realtime: `tasks` (REPLICA IDENTITY FULL → UPDATE/DELETE con fila completa) y `task_events` están en
   `supabase_realtime`.
+
+## Borrar y compartir (2026-10-29)
+
+- `tasks.deleted_at` (borrado lógico) y `tasks.shared_with text[] NOT NULL DEFAULT '{}'` (usernames; nunca
+  incluye al responsable). Índice GIN `tasks_shared_with_idx`. CHECK de `task_events.type` ampliado con
+  `deleted` y `shared`.
+- `tasks_borrar`: creador o admin (el responsable que no la creó, no). Borrar dos veces no falla ni duplica el
+  evento. Funciona aunque esté archivada. Conserva `pendientes_lote`: el índice único sigue cubriendo la tarea
+  borrada y `tasks_crear_pendientes` la devuelve en vez de crear otra (reimportar el Excel no duplica).
+- `tasks_compartir`: creador, responsable o admin; no con el responsable ni con usuarios de baja; lista
+  normalizada (trim, sin duplicados, ordenada). Sin cambios → sin evento.
+- Compartidos: pueden cambiar el estado (`tasks_cambiar_estado`) y comentar (`tasks_comentar`); no editar,
+  mover, archivar, reasignar, compartir ni borrar.
+- Tarea borrada: `_tasks_bloquear` y `tasks_comentar` lanzan "La tarea ha sido borrada." (no se puede modificar).
+- Nuevas versiones (misma firma) de `_tasks_bloquear`, `tasks_cambiar_estado`, `tasks_comentar` y `tasks_contador`.
+- Aplicada el 2026-10-29 en pruebas (rkqgttpiojjorgwikivr) y en producción (ndcslcsuavjdctqhkrfu), dentro de
+  `BEGIN … COMMIT`, con `npx supabase db query --linked --project-ref <ref> -f …`. Antes se comparó el esquema
+  de Tareas de ambos (columnas, CHECK, índices, funciones con md5, trigger, publicación): idéntico.
+- `tests/sql/tasks_permisos.sql` (ahora también compartir y borrar) se ejecutó en pruebas con
+  `supabase db query` (sin las líneas `\set`/`\echo` y terminando con una excepción para deshacerlo todo).
+- **Rollback**: `npx supabase db query --linked --project-ref <ref> -f supabase/rollback/20261029000000_tasks_borrar_compartir_down.sql`.
+  Las borradas no reaparecen (se archivan), se pierde con quién estaba compartida cada tarea y se eliminan los
+  eventos `deleted`/`shared`. Probado en pruebas: deja el esquema idéntico al anterior (las 4 funciones solo
+  difieren en finales de línea CRLF).
+- Frontend: las consultas de `tasks` añaden `.is('deleted_at', null)` y el filtro de visibilidad incluye
+  `shared_with.cs.{yo}`. Al crear, "Compartida con" se aplica llamando a `tasks_compartir` en cada tarea creada
+  (`tasks_crear` no cambia).
 
 ## Producción (aplicado el 2026-10-27)
 

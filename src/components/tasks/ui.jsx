@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { AlertCircle, CheckCircle2, Flag, X, CalendarClock } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Flag, X, CalendarClock, Trash2, Loader2 } from 'lucide-react';
 import { iniciales } from '../../lib/tasksColores';
 import { alertaDeadline, etiquetaDeadline } from '../../lib/tasksFechas';
 import { PRIORIDAD_LABEL } from '../../lib/tasksLogica';
@@ -140,6 +140,36 @@ export function Modal({ titulo, onClose, children, ancho = 'max-w-lg', icono: Ic
         {children}
       </div>
     </div>
+  );
+}
+
+/* ── Confirmar borrado de una tarea ───────────────────────────────────────── */
+export function ConfirmarBorrado({ task, onConfirm, onClose }) {
+  const [borrando, setBorrando] = useState(false);
+  const confirmar = async () => {
+    setBorrando(true);
+    const ok = await onConfirm();
+    if (!ok) setBorrando(false);
+  };
+  return (
+    <Modal titulo="Borrar tarea" icono={Trash2} onClose={onClose} ancho="max-w-md">
+      <div className="px-5 py-4 text-sm text-google-dark">
+        ¿Seguro que quieres borrar «<strong>{task.title}</strong>»? Desaparecerá de las listas, del calendario y de los
+        contadores de todas las personas que la ven.
+      </div>
+      <div className="px-5 py-4 border-t border-google-border flex justify-end gap-2">
+        <button type="button" onClick={onClose} className="btn-secondary">Cancelar</button>
+        <button
+          type="button"
+          data-autofocus
+          onClick={confirmar}
+          disabled={borrando}
+          className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium flex items-center gap-1.5 disabled:opacity-60"
+        >
+          {borrando ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Sí, borrar
+        </button>
+      </div>
+    </Modal>
   );
 }
 

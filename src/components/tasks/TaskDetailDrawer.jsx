@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Archive, ArchiveRestore, Loader2, Lock, Send, X, History, FileSpreadsheet } from 'lucide-react';
+import { Archive, ArchiveRestore, Loader2, Lock, Send, X, History, FileSpreadsheet, Trash2, Users } from 'lucide-react';
 import { useTasks } from '../../context/TasksContext';
 import { permisosTarea } from '../../lib/tasksPermisos';
 import { ESTADOS, PRIORIDADES, PRIORIDAD_LABEL, describirEvento, diffCambios } from '../../lib/tasksLogica';
 import { fechaCorta, fechaHora, haceCuanto, horaCorta } from '../../lib/tasksFechas';
 import AssigneePicker from './AssigneePicker';
 import { CheckCompletar } from './TaskRow';
-import { Avatar, DeadlineChip, Etiqueta, useEscape, useToast } from './ui';
+import { Avatar, ConfirmarBorrado, DeadlineChip, Etiqueta, useEscape, useToast } from './ui';
 
 const textoFecha = (fecha, hora, ahora) => (fecha ? `${fechaCorta(fecha, ahora)}${hora ? ` · ${horaCorta(hora)}` : ''}` : 'Sin fecha');
 
@@ -30,9 +30,10 @@ export default function TaskDetailDrawer({ taskId, onClose, onVerPendientes }) {
   const [eventos, setEventos] = useState(null);
   const [comentario, setComentario] = useState('');
   const [ocupado, setOcupado] = useState('');
+  const [confirmarBorrar, setConfirmarBorrar] = useState(false);
   const panelRef = useRef(null);
 
-  useEscape(onClose);
+  useEscape(onClose, !confirmarBorrar);
 
   // Si la tarea deja de ser visible (reasignada, etc.), se cierra el panel.
   useEffect(() => { if (!task && !cargando) onClose(); }, [task, cargando, onClose]);
@@ -112,6 +113,50 @@ export default function TaskDetailDrawer({ taskId, onClose, onVerPendientes }) {
     if (ok) setComentario('');
   };
 
+  const borrarTarea = async () => {
+    try {
+      await acciones.borrar(task.id);
+      toast('Tarea borrada');
+      onClose();
+      return true;
+    } catch (e) { toast(e.message, 'error'); return false; }
+  };
+
+  const compartida = task.shared_with || [];
+  const puedeCompartirAhora = p.compartir && !task.archived_at;
+  const campoCompartida = (
+    <div className="col-span-2">
+      <Etiqueta htmlFor="td-share">Compartida con</Etiqueta>
+      {puedeCompartirAhora ? (
+        <>
+          <AssigneePicker
+            id="td-share"
+            usuarios={usuarios.filter((u) => u.username !== task.assignee)}
+            value={compartida}
+            colorDe={colorDe}
+            nombreDe={nombreDe}
+            yo={user.username}
+            disabled={ocupado === 'compartir'}
+            placeholder="Nadie"
+            permitirVacio
+            onChange={(lista) => ejecutar('compartir', () => acciones.compartir(task.id, lista), 'Compartidos actualizados')}
+          />
+          <p className="text-[11px] text-google-gray mt-1">{nombreDe(task.assignee)} sigue siendo responsable. Para pasarle la tarea a otra persona, cambia el responsable.</p>
+        </>
+      ) : compartida.length ? (
+        <div className="flex flex-wrap gap-1.5 py-1">
+          {compartida.map((u) => (
+            <span key={u} className="inline-flex items-center gap-1 bg-google-bg border border-google-border rounded-full pl-0.5 pr-2 py-0.5 text-xs">
+              <Avatar nombre={nombreDe(u)} color={colorDe(u)} size={18} /> {nombreDe(u)}{u === user.username ? ' (tú)' : ''}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-google-gray italic py-1">Nadie</p>
+      )}
+    </div>
+  );
+
   const historial = [...(eventos || [])].reverse();
   const soloLectura = !p.editar || !!task.archived_at;
 
@@ -158,6 +203,17 @@ export default function TaskDetailDrawer({ taskId, onClose, onVerPendientes }) {
                 {task.archived_at ? <ArchiveRestore size={17} /> : <Archive size={17} />}
               </button>
             )}
+            {p.borrar && (
+              <button
+                type="button"
+                onClick={() => setConfirmarBorrar(true)}
+                className="p-2 rounded-md text-google-gray hover:bg-red-50 hover:text-red-600"
+                title="Borrar tarea"
+                aria-label="Borrar tarea"
+              >
+                <Trash2 size={17} />
+              </button>
+            )}
             <button type="button" onClick={onClose} className="p-2 rounded-md text-google-gray hover:bg-google-bg hover:text-google-dark" aria-label="Cerrar detalle">
               <X size={18} />
             </button>
@@ -172,7 +228,7 @@ export default function TaskDetailDrawer({ taskId, onClose, onVerPendientes }) {
           )}
           {!p.editar && (
             <div className="mx-5 mt-4 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-center gap-2">
-              <Lock size={13} /> Solo {nombreDe(task.created_by)} o un administrador pueden editar esta tarea. Tú puedes cambiar su estado y comentar.
+              <Lock size={13} /> Solo {nombreDe(task.created_by)} o un administrador pueden editar esta tarea. Tú puedes cambiar su estado y comentar{p.compartir ? ', y compartirla' : ''}.
             </div>
           )}
 
@@ -201,6 +257,7 @@ export default function TaskDetailDrawer({ taskId, onClose, onVerPendientes }) {
                     <dt className="text-[10px] font-semibold uppercase tracking-wider text-google-gray mb-1">Responsable</dt>
                     <dd className="flex items-center gap-2 text-sm text-google-dark"><Avatar nombre={nombreDe(task.assignee)} color={colorDe(task.assignee)} size={22} /> {nombreDe(task.assignee)}</dd>
                   </div>
+                  {campoCompartida}
                   <div>
                     <dt className="text-[10px] font-semibold uppercase tracking-wider text-google-gray mb-1">Prioridad</dt>
                     <dd className="text-sm text-google-dark">{PRIORIDAD_LABEL[task.priority] || task.priority}</dd>
@@ -243,6 +300,7 @@ export default function TaskDetailDrawer({ taskId, onClose, onVerPendientes }) {
                       </div>
                     )}
                   </div>
+                  {campoCompartida}
                   <div className="col-span-2 sm:col-span-1">
                     <Etiqueta htmlFor="td-prio">Prioridad</Etiqueta>
                     <select id="td-prio" value={form.priority} onChange={(e) => set('priority', e.target.value)} className="input-field">
@@ -341,6 +399,7 @@ export default function TaskDetailDrawer({ taskId, onClose, onVerPendientes }) {
           </div>
         </div>
       </aside>
+      {confirmarBorrar && <ConfirmarBorrado task={task} onConfirm={borrarTarea} onClose={() => setConfirmarBorrar(false)} />}
     </>
   );
 }

@@ -58,7 +58,42 @@ test('cambiar estado: admin, creador o responsable; comentar: quien ve', () => {
 test('responsable no creador: solo estado y comentarios', () => {
   assert.deepEqual(P.permisosTarea(com, deMan), {
     ver: true, editar: false, mover: false, archivar: false, reasignar: false, cambiarEstado: true, comentar: true,
+    borrar: false, compartir: true,
   });
+});
+
+const compartida = { created_by: 'man1', assignee: 'com1', shared_with: ['com2', 'man2'] };
+
+test('compartida: ve, comenta y cambia estado; no edita, reasigna, comparte ni borra', () => {
+  assert.ok(P.esCompartida(com2, compartida));
+  assert.ok(!P.esCompartida(com2, deMan));
+  assert.deepEqual(P.permisosTarea(com2, compartida), {
+    ver: true, editar: false, mover: false, archivar: false, reasignar: false, cambiarEstado: true, comentar: true,
+    borrar: false, compartir: false,
+  });
+  assert.ok(!P.puedeReasignar(man2, compartida), 'manager compartido no reasigna');
+  assert.ok(!P.puedeBorrar(man2, compartida));
+  assert.ok(!P.puedeVer(com2, { ...compartida, shared_with: [] }), 'al quitarlo deja de verla');
+});
+
+test('borrar: creador o admin; el responsable no creador no', () => {
+  assert.ok(P.puedeBorrar(admin, deMan));
+  assert.ok(P.puedeBorrar(man, deMan));
+  assert.ok(!P.puedeBorrar(com, deMan));
+  assert.ok(P.puedeBorrar(com, personalCom));
+  assert.ok(!P.puedeBorrar(man2, deMan));
+});
+
+test('compartir: creador, responsable o admin', () => {
+  assert.ok(P.puedeCompartir(admin, deMan));
+  assert.ok(P.puedeCompartir(man, deMan));
+  assert.ok(P.puedeCompartir(com, deMan));
+  assert.ok(!P.puedeCompartir(com2, deMan));
+});
+
+test('borrada: nadie la ve (ni admin)', () => {
+  const borrada = { ...deMan, deleted_at: '2026-10-29T10:00:00Z' };
+  for (const u of [admin, man, com]) assert.ok(!P.puedeVer(u, borrada));
 });
 
 test('color, equipo, pestañas y vistas por rol', () => {

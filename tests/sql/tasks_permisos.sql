@@ -210,9 +210,83 @@ SELECT pg_temp.ok((SELECT activas >= 1 FROM public.tasks_contador('t_com1')), 't
 SELECT pg_temp.ok((SELECT count(*) > 0 FROM public.tasks WHERE assignee LIKE 't\_%'), 'anon puede leer tasks (SELECT directo)');
 SELECT pg_temp.ok((SELECT count(*) > 0 FROM public.task_events WHERE actor LIKE 't\_%'), 'anon puede leer task_events');
 
+-- ── Compartir ───────────────────────────────────────────────────────────────
+INSERT INTO ids SELECT 'sh', id FROM public.tasks_crear('t_man1', 'Compartible', NULL, ARRAY['t_com1']);
+SELECT pg_temp.ok((SELECT shared_with = '{}' AND deleted_at IS NULL FROM public.tasks WHERE id = (SELECT id FROM ids WHERE k='sh')),
+  'tarea nueva: shared_with vacío y sin deleted_at');
+SELECT pg_temp.debe_fallar(format($q$ SELECT public.tasks_compartir('t_com2', %L, ARRAY['t_com2']) $q$, (SELECT id FROM ids WHERE k='sh')),
+  'Solo el creador, el responsable', 'ajeno no comparte');
+SELECT pg_temp.debe_fallar(format($q$ SELECT public.tasks_compartir('t_man1', %L, ARRAY['t_com1']) $q$, (SELECT id FROM ids WHERE k='sh')),
+  'ya es el responsable', 'no se comparte con el responsable');
+SELECT pg_temp.debe_fallar(format($q$ SELECT public.tasks_compartir('t_man1', %L, ARRAY['t_baja']) $q$, (SELECT id FROM ids WHERE k='sh')),
+  'dado de baja', 'no se comparte con usuario de baja');
+SELECT pg_temp.ok((SELECT shared_with = ARRAY['t_com2','t_man2']
+                     FROM public.tasks_compartir('t_com1', (SELECT id FROM ids WHERE k='sh'), ARRAY['t_man2',' t_com2 ','t_man2'])),
+  'responsable comparte (lista normalizada, sin duplicados)');
+SELECT pg_temp.ok((SELECT payload = '{"added":["t_com2","t_man2"],"removed":[]}'::jsonb FROM public.task_events
+                    WHERE task_id = (SELECT id FROM ids WHERE k='sh') AND type='shared'),
+  'evento shared con la lista añadida');
+SELECT public.tasks_compartir('t_man1', (SELECT id FROM ids WHERE k='sh'), ARRAY['t_man2','t_com2']);
+SELECT pg_temp.ok((SELECT count(*) = 1 FROM public.task_events WHERE task_id = (SELECT id FROM ids WHERE k='sh') AND type='shared'),
+  'compartir con la misma lista no registra evento');
+-- compartido: estado y comentarios sí; editar, reasignar, compartir, borrar, mover y archivar no
+SELECT pg_temp.ok((SELECT status = 'in_progress' FROM public.tasks_cambiar_estado('t_com2', (SELECT id FROM ids WHERE k='sh'), 'in_progress')),
+  'compartido cambia el estado');
+SELECT pg_temp.ok((SELECT actor = 't_com2' FROM public.tasks_comentar('t_com2', (SELECT id FROM ids WHERE k='sh'), 'Lo miro yo')),
+  'compartido comenta');
+SELECT pg_temp.debe_fallar(format($q$ SELECT public.tasks_editar('t_com2', %L, '{"title":"z"}') $q$, (SELECT id FROM ids WHERE k='sh')),
+  'Solo el creador', 'compartido no edita');
+SELECT pg_temp.debe_fallar(format($q$ SELECT public.tasks_reasignar('t_man2', %L, 't_com2') $q$, (SELECT id FROM ids WHERE k='sh')),
+  'Solo un administrador, o el manager', 'compartido (manager) no reasigna');
+SELECT pg_temp.debe_fallar(format($q$ SELECT public.tasks_compartir('t_com2', %L, '{}') $q$, (SELECT id FROM ids WHERE k='sh')),
+  'Solo el creador, el responsable', 'compartido no comparte');
+SELECT pg_temp.debe_fallar(format($q$ SELECT public.tasks_borrar('t_com2', %L) $q$, (SELECT id FROM ids WHERE k='sh')),
+  'Solo el creador', 'compartido no borra');
+SELECT pg_temp.debe_fallar(format($q$ SELECT public.tasks_mover('t_com2', %L, current_date, NULL) $q$, (SELECT id FROM ids WHERE k='sh')),
+  'Solo el creador', 'compartido no mueve');
+SELECT pg_temp.debe_fallar(format($q$ SELECT public.tasks_archivar('t_com2', %L, true) $q$, (SELECT id FROM ids WHERE k='sh')),
+  'Solo el creador', 'compartido no archiva');
+SELECT pg_temp.ok((SELECT activas >= 1 FROM public.tasks_contador('t_man2')), 'tasks_contador cuenta las compartidas');
+SELECT pg_temp.ok((SELECT shared_with = ARRAY['t_man2']
+                     FROM public.tasks_compartir('t_admin', (SELECT id FROM ids WHERE k='sh'), ARRAY['t_man2'])),
+  'admin quita a un compartido');
+SELECT pg_temp.ok((SELECT payload = '{"added":[],"removed":["t_com2"]}'::jsonb FROM public.task_events
+                    WHERE task_id = (SELECT id FROM ids WHERE k='sh') AND type='shared' ORDER BY id DESC LIMIT 1),
+  'evento shared con la lista quitada');
+SELECT pg_temp.debe_fallar(format($q$ SELECT public.tasks_cambiar_estado('t_com2', %L, 'pending') $q$, (SELECT id FROM ids WHERE k='sh')),
+  'Solo el creador, el responsable', 'quitado de la lista ya no cambia el estado');
+
+-- ── Borrar ──────────────────────────────────────────────────────────────────
+SELECT pg_temp.debe_fallar(format($q$ SELECT public.tasks_borrar('t_com1', %L) $q$, (SELECT id FROM ids WHERE k='sh')),
+  'Solo el creador', 'responsable que no la creó no borra');
+SELECT pg_temp.debe_fallar(format($q$ SELECT public.tasks_borrar('t_man2', %L) $q$, (SELECT id FROM ids WHERE k='sh')),
+  'Solo el creador', 'otro manager (compartido) no borra');
+SELECT pg_temp.ok((SELECT deleted_at IS NOT NULL FROM public.tasks_borrar('t_man1', (SELECT id FROM ids WHERE k='sh'))),
+  'creador borra (deleted_at)');
+SELECT pg_temp.ok((SELECT count(*) = 1 FROM public.task_events WHERE task_id = (SELECT id FROM ids WHERE k='sh') AND type='deleted' AND actor='t_man1'),
+  'evento deleted');
+SELECT pg_temp.ok((SELECT deleted_at IS NOT NULL FROM public.tasks_borrar('t_admin', (SELECT id FROM ids WHERE k='sh'))),
+  'borrar de nuevo no falla');
+SELECT pg_temp.ok((SELECT count(*) = 1 FROM public.task_events WHERE task_id = (SELECT id FROM ids WHERE k='sh') AND type='deleted'),
+  'borrar de nuevo no duplica el evento');
+SELECT pg_temp.debe_fallar(format($q$ SELECT public.tasks_cambiar_estado('t_com1', %L, 'completed') $q$, (SELECT id FROM ids WHERE k='sh')),
+  'ha sido borrada', 'borrada no cambia de estado');
+SELECT pg_temp.debe_fallar(format($q$ SELECT public.tasks_editar('t_man1', %L, '{"title":"z"}') $q$, (SELECT id FROM ids WHERE k='sh')),
+  'ha sido borrada', 'borrada no se edita');
+SELECT pg_temp.debe_fallar(format($q$ SELECT public.tasks_comentar('t_man1', %L, 'hola') $q$, (SELECT id FROM ids WHERE k='sh')),
+  'ha sido borrada', 'borrada no se comenta');
+SELECT pg_temp.debe_fallar(format($q$ SELECT public.tasks_compartir('t_man1', %L, '{}') $q$, (SELECT id FROM ids WHERE k='sh')),
+  'ha sido borrada', 'borrada no se comparte');
+SELECT pg_temp.ok((SELECT activas = 0 FROM public.tasks_contador('t_man2')), 'tasks_contador no cuenta borradas');
+SELECT pg_temp.ok((SELECT deleted_at IS NOT NULL FROM public.tasks_borrar('t_admin', (SELECT id FROM ids WHERE k='man2_com2'))),
+  'admin borra tarea ajena');
+SELECT pg_temp.ok((SELECT deleted_at IS NOT NULL FROM public.tasks_borrar('t_com1', (SELECT id FROM ids WHERE k='personal_com1'))),
+  'comercial borra su tarea personal');
+SELECT pg_temp.debe_fallar($q$ SELECT public.tasks_borrar('t_admin', gen_random_uuid()) $q$, 'no existe', 'borrar tarea inexistente');
+
 RESET ROLE;
 -- Sin borrados físicos desde RPC: todas las tareas de prueba siguen ahí.
-SELECT pg_temp.ok((SELECT count(*) = 7 FROM public.tasks WHERE created_by LIKE 't\_%'), 'ninguna tarea borrada físicamente (7 creadas)');
+SELECT pg_temp.ok((SELECT count(*) = 8 FROM public.tasks WHERE created_by LIKE 't\_%'), 'ninguna tarea borrada físicamente (8 creadas, 3 con borrado lógico)');
 
 \echo '==> TODAS LAS PRUEBAS DE tasks_permisos.sql HAN PASADO'
 ROLLBACK;

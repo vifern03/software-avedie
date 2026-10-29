@@ -26,9 +26,24 @@ Sustituye a las secciones "Identidad" y "Gestión de usuarios":
 - Frontend: sin pantalla de "inicia sesión de nuevo". `DEFAULT_PERMISSIONS.tasks = true` lo añade el frontend.
 - Backend: solo Supabase local (Docker) + migración de Tasks + rollback + seed ficticio + pruebas.
 
+## CAMBIO v3 (2026-10-29): borrar y compartir
+
+- **Borrar** (borrado lógico, `tasks.deleted_at`): creador o admin. El responsable que no la creó solo puede
+  completarla. Las borradas no las ve nadie (ni admin): desaparecen de listas, calendario, contadores y badge.
+  RPC `tasks_borrar(p_actor, p_task)`; evento `deleted`. Las tareas de Pendientes conservan `pendientes_lote`.
+- **Compartir** (además del responsable, que no cambia): `tasks.shared_with text[]`.
+  RPC `tasks_compartir(p_actor, p_task, p_usuarios)` con la lista final; la pueden usar creador, responsable y
+  admin. Evento `shared {added, removed}`.
+- Compartido = ve la tarea en "Mis tareas" con la etiqueta "Compartida", cuenta en su badge, puede cambiar el
+  estado y comentar; NO puede editar, mover, archivar, reasignar, compartir ni borrar.
+- Visibilidad: admin todo; resto `created_by = yo`, `assignee = yo` o `yo ∈ shared_with`; nunca `deleted_at`.
+- "Pasar la tarea" sigue siendo reasignar (admin o manager creador): cambia el responsable. "Compartir" mantiene
+  al responsable. Crear con varios responsables sigue creando una tarea por persona; "Compartida con" en el
+  formulario se aplica a cada una.
+
 ---
 
-(Lo siguiente es la v1; lo que contradiga el CAMBIO v2 queda anulado.)
+(Lo siguiente es la v1; lo que contradiga el CAMBIO v2 o v3 queda anulado.)
 
 Documento de coordinación. Backend y frontend trabajan en paralelo contra este contrato.
 Si algo del contrato es imposible, se cambia aquí y se avisa en el informe del agente.

@@ -3,10 +3,10 @@ import { Check, ChevronDown, Search, X } from 'lucide-react';
 import { Avatar } from './ui';
 import { normalizar } from '../../lib/tasksLogica';
 
-/** Selector de responsables. `multiple` → varios (una tarea por persona). */
+/** Selector de usuarios. `multiple` → varios. `permitirVacio` → los chips se pueden quitar todos (Compartida con). */
 const ROL_LABEL = { admin: 'Admin', manager: 'Manager', comercial: 'Comercial' };
 
-export default function AssigneePicker({ usuarios, value, onChange, colorDe, nombreDe, multiple = true, disabled = false, id, yo }) {
+export default function AssigneePicker({ usuarios, value, onChange, colorDe, nombreDe, multiple = true, disabled = false, id, yo, placeholder = 'Elige responsable…', permitirVacio = false }) {
   const [abierto, setAbierto] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const ref = useRef(null);
@@ -50,12 +50,12 @@ export default function AssigneePicker({ usuarios, value, onChange, colorDe, nom
         aria-expanded={abierto}
         className="input-field flex items-center gap-1.5 flex-wrap min-h-[38px] text-left disabled:bg-google-bg disabled:cursor-not-allowed"
       >
-        {value.length === 0 && <span className="text-google-gray">Elige responsable…</span>}
+        {value.length === 0 && <span className="text-google-gray">{placeholder}</span>}
         {value.map((u) => (
           <span key={u} className="inline-flex items-center gap-1 bg-google-bg border border-google-border rounded-full pl-0.5 pr-2 py-0.5 text-xs">
             <Avatar nombre={nombreDe(u)} color={colorDe(u)} size={18} />
             {nombreDe(u)}{u === yo ? ' (tú)' : ''}
-            {multiple && !disabled && value.length > 1 && (
+            {multiple && !disabled && (value.length > 1 || permitirVacio) && (
               <X size={12} className="text-google-gray hover:text-google-dark" onClick={(e) => { e.stopPropagation(); toggle(u); }} aria-label={`Quitar ${nombreDe(u)}`} />
             )}
           </span>

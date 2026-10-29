@@ -5,7 +5,7 @@ import TaskRow from './TaskRow';
 
 const COLOR_GRUPO = { vencidas: 'text-red-600', hoy: 'text-google-blue' };
 
-export default function TaskList({ tareas, user, ahora, colorDe, nombreDe, comentarios, onOpen, onToggle, seleccionada }) {
+export default function TaskList({ tareas, user, ahora, colorDe, nombreDe, comentarios, onOpen, onToggle, onDelete, seleccionada }) {
   const grupos = useMemo(() => agruparPorFecha(tareas, ahora), [tareas, ahora]);
   const [plegados, setPlegados] = useState({});
 
@@ -38,6 +38,7 @@ export default function TaskList({ tareas, user, ahora, colorDe, nombreDe, comen
                     comentarios={comentarios[t.id] || 0}
                     onOpen={onOpen}
                     onToggle={onToggle}
+                    onDelete={onDelete}
                     seleccionada={seleccionada === t.id}
                   />
                 ))}

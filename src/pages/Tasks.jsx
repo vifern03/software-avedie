@@ -10,7 +10,7 @@ import TaskCreateForm from '../components/tasks/TaskCreateForm';
 import TaskDetailDrawer from '../components/tasks/TaskDetailDrawer';
 import TeamStats from '../components/tasks/TeamStats';
 import PersonalHistory from '../components/tasks/PersonalHistory';
-import { EstadoVacio, Modal, SkeletonLista, ToastProvider, hayCapaAbierta, useToast } from '../components/tasks/ui';
+import { ConfirmarBorrado, EstadoVacio, Modal, SkeletonLista, ToastProvider, hayCapaAbierta, useToast } from '../components/tasks/ui';
 
 const TaskCalendar = lazy(() => import('../components/tasks/TaskCalendar'));
 
@@ -60,6 +60,7 @@ function TasksPage({ onNavigate }) {
   const [detalleId, setDetalleId] = useState(null);
   const [crear, setCrear] = useState(null); // null | { inicial }
   const [historial, setHistorial] = useState(false);
+  const [borrar, setBorrar] = useState(null); // tarea pendiente de confirmar borrado
   const [filtrosAbiertos, setFiltrosAbiertos] = useState(false); // solo móvil
   const busquedaRef = useRef(null);
 
@@ -96,6 +97,15 @@ function TasksPage({ onNavigate }) {
       toast(status === 'completed' ? 'Tarea completada' : 'Tarea reabierta');
     } catch (e) { toast(e.message, 'error'); }
   }, [acciones, toast]);
+
+  const confirmarBorrado = async () => {
+    try {
+      await acciones.borrar(borrar.id);
+      toast('Tarea borrada');
+      setBorrar(null);
+      return true;
+    } catch (e) { toast(e.message, 'error'); return false; }
+  };
 
   const cerrarDetalle = useCallback(() => setDetalleId(null), []);
   const filtrosActivos = [trabajador, prioridad, estado].filter(Boolean).length;
@@ -252,6 +262,7 @@ function TasksPage({ onNavigate }) {
             comentarios={comentarios}
             onOpen={setDetalleId}
             onToggle={onToggle}
+            onDelete={setBorrar}
             seleccionada={detalleId}
           />
         )}
@@ -276,6 +287,7 @@ function TasksPage({ onNavigate }) {
           <TaskCreateForm inicial={crear.inicial} onCreated={() => setCrear(null)} onCancel={() => setCrear(null)} />
         </Modal>
       )}
+      {borrar && <ConfirmarBorrado task={borrar} onConfirm={confirmarBorrado} onClose={() => setBorrar(null)} />}
       {historial && <PersonalHistory onClose={() => setHistorial(false)} onOpenTask={setDetalleId} />}
     </div>
   );

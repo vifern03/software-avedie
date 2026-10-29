@@ -3,7 +3,7 @@ import {
   alertaDeadline, deadlineDe, fechaReferencia, hoyMadrid, sumarDias, diffDias,
   fechaAbsoluta, horaCorta,
 } from './tasksFechas.js';
-import { puedeVer } from './tasksPermisos.js';
+import { puedeVer, esCompartida } from './tasksPermisos.js';
 
 export const PRIORIDADES = [
   { id: 'low', label: 'Baja' },
@@ -32,15 +32,15 @@ export const PESTANAS = {
   archivadas: 'Archivadas',
 };
 
-export const esActiva = (t) => !!t && !t.archived_at && t.status !== 'completed';
+export const esActiva = (t) => !!t && !t.archived_at && !t.deleted_at && t.status !== 'completed';
 
 /* ── Contadores del Sidebar ───────────────────────────────────────────────── */
 
-/** Tareas activas cuyo responsable es `username` (incluye personales) y sus alertas. */
+/** Tareas activas cuyo responsable es `username` o que le han compartido (incluye personales) y sus alertas. */
 export function contadoresUsuario(tasks, username, ahora = new Date()) {
   let activas = 0, vencidas = 0, proximas = 0;
   for (const t of tasks || []) {
-    if (t.assignee !== username || !esActiva(t)) continue;
+    if ((t.assignee !== username && !esCompartida({ username }, t)) || !esActiva(t)) continue;
     activas++;
     const a = alertaDeadline(t, ahora);
     if (a === 'vencida') vencidas++;
@@ -81,7 +81,7 @@ export function filtrarTareas(tasks, user, filtros = {}, ahora = new Date()) {
   const yo = user?.username;
   const hoy = hoyMadrid(ahora);
   const q = normalizar(busqueda);
-  const participo = (t) => t.assignee === yo || t.created_by === yo;
+  const participo = (t) => t.assignee === yo || t.created_by === yo || esCompartida(user, t);
 
   return (tasks || []).filter((t) => {
     if (!puedeVer(user, t)) return false;
@@ -96,7 +96,7 @@ export function filtrarTareas(tasks, user, filtros = {}, ahora = new Date()) {
     if (ocultarCompletadas && completada) return false;
 
     switch (pestana) {
-      case 'mis': if (t.assignee !== yo) return false; break;
+      case 'mis': if (t.assignee !== yo && !esCompartida(user, t)) return false; break;
       case 'proximas': {
         if (t.assignee !== yo) return false;
         const ref = fechaReferencia(t);
@@ -285,6 +285,14 @@ export function describirEvento(ev, nombreDe = (u) => u, ahora = new Date()) {
     case 'archived': return `${quien} archivó la tarea`;
     case 'unarchived': return `${quien} desarchivó la tarea`;
     case 'commented': return `${quien} comentó`;
+    case 'deleted': return `${quien} borró la tarea`;
+    case 'shared': {
+      const lista = (us) => unirFrases((us || []).map((u) => nombreDe(u)));
+      const partes = [];
+      if (p.added?.length) partes.push(`compartió la tarea con ${lista(p.added)}`);
+      if (p.removed?.length) partes.push(`dejó de compartirla con ${lista(p.removed)}`);
+      return partes.length ? `${quien} ${partes.join(' y ')}` : `${quien} cambió con quién se comparte`;
+    }
     default: return `${quien} modificó la tarea`;
   }
 }
