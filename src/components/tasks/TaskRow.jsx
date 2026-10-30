@@ -97,8 +97,8 @@ function TaskRow({ task, user, ahora, colorDe, nombreDe, comentarios, onOpen, on
         </div>
       </div>
 
-      {/* Responsables (principal primero), uno debajo de otro y centrados */}
-      <div className="self-center flex flex-col items-center gap-1">
+      {/* Responsables (principal primero), uno debajo de otro; avatares alineados junto a la papelera */}
+      <div className="self-center flex flex-col items-end gap-1">
         {responsablesDe(task).map((u, i) => (
           <div key={u} className="flex items-center gap-2">
             <span className="hidden sm:inline text-xs text-google-gray truncate max-w-[110px]">{nombreDe(u)}{u === yo ? ' (tú)' : ''}</span>
