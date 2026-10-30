@@ -3,6 +3,7 @@ import { Archive, Check, CalendarDays, Loader, MessageSquare, Pencil, Trash2, Us
 import { Avatar, DeadlineChip, PrioridadChip } from './ui';
 import { puedeCambiarEstado, puedeBorrar, esCompartida } from '../../lib/tasksPermisos';
 import { fechaCorta, horaCorta } from '../../lib/tasksFechas';
+import { responsablesDe } from '../../lib/tasksLogica';
 
 /** Checkbox redondo para completar / reabrir, con animación sutil. */
 export function CheckCompletar({ task, user, onToggle, size = 20 }) {
@@ -55,8 +56,17 @@ function TaskRow({ task, user, ahora, colorDe, nombreDe, comentarios, onOpen, on
       <div className="pt-0.5"><CheckCompletar task={task} user={user} onToggle={onToggle} /></div>
 
       <div className="flex-1 min-w-0">
-        <p className={`text-sm leading-snug break-words ${completada ? 'line-through text-google-gray' : 'text-google-dark'}`}>
-          {task.title}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <p className={`text-sm leading-snug break-words min-w-0 ${completada ? 'line-through text-google-gray' : 'text-google-dark'}`}>
+            {task.title}
+          </p>
+          {/* Siempre visible en móvil; en escritorio al pasar el ratón */}
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-google-blue bg-blue-50 text-[11px] font-medium text-google-blue leading-none md:opacity-0 md:group-hover:opacity-100 md:group-focus-visible:opacity-100 transition-opacity">
+            <Pencil size={10} /> Pincha para editar
+          </span>
+        </div>
+        <p className="text-[13px] text-google-gray mt-1">
+          Creado por <span className="font-semibold text-google-dark">{nombreDe(task.created_by)}{task.created_by === yo ? ' (tú)' : ''}</span>
         </p>
         <div className="flex flex-wrap items-center gap-1.5 mt-1">
           {task.status === 'in_progress' && (
@@ -71,9 +81,6 @@ function TaskRow({ task, user, ahora, colorDe, nombreDe, comentarios, onOpen, on
               <CalendarDays size={11} /> Plan. {plan}
             </span>
           )}
-          {task.created_by !== yo && (
-            <span className="text-[11px] text-google-gray">de {nombreDe(task.created_by)}</span>
-          )}
           {comentarios > 0 && (
             <span className="inline-flex items-center gap-0.5 text-[11px] text-google-gray" title={`${comentarios} comentario(s)`}>
               <MessageSquare size={11} /> {comentarios}
@@ -87,26 +94,25 @@ function TaskRow({ task, user, ahora, colorDe, nombreDe, comentarios, onOpen, on
               <Users size={10} /> Compartida
             </span>
           )}
-          {/* Siempre visible en móvil; en escritorio al pasar el ratón */}
-          <span className="inline-flex items-center gap-1 text-[11px] text-google-blue md:opacity-0 md:group-hover:opacity-100 md:group-focus-visible:opacity-100 transition-opacity">
-            <Pencil size={10} /> Pincha para editar
-          </span>
         </div>
       </div>
 
-      {task.assignee !== yo && (
-        <div className="flex items-center gap-2 pt-0.5">
-          <span className="hidden sm:inline text-xs text-google-gray truncate max-w-[110px]">{nombreDe(task.assignee)}</span>
-          <Avatar nombre={nombreDe(task.assignee)} color={colorDe(task.assignee)} size={24} title={`Responsable: ${nombreDe(task.assignee)}`} />
-        </div>
-      )}
+      {/* Responsables (principal primero), uno debajo de otro y centrados */}
+      <div className="self-center flex flex-col items-center gap-1">
+        {responsablesDe(task).map((u, i) => (
+          <div key={u} className="flex items-center gap-2">
+            <span className="hidden sm:inline text-xs text-google-gray truncate max-w-[110px]">{nombreDe(u)}{u === yo ? ' (tú)' : ''}</span>
+            <Avatar nombre={nombreDe(u)} color={colorDe(u)} size={24} title={`${i === 0 ? 'Responsable principal' : 'Responsable'}: ${nombreDe(u)}`} />
+          </div>
+        ))}
+      </div>
 
       {onDelete && puedeBorrar(user, task) && (
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onDelete(task); }}
           onKeyDown={(e) => e.stopPropagation()}
-          className="flex-shrink-0 p-1.5 -my-0.5 rounded-md text-google-gray hover:text-red-600 hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+          className="flex-shrink-0 self-center p-1.5 rounded-md text-google-gray hover:text-red-600 hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
           title="Borrar tarea"
           aria-label={`Borrar «${task.title}»`}
         >

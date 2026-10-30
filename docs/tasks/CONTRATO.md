@@ -41,6 +41,14 @@ Sustituye a las secciones "Identidad" y "Gestión de usuarios":
   al responsable. Crear con varios responsables sigue creando una tarea por persona; "Compartida con" en el
   formulario se aplica a cada una.
 
+## CAMBIO v3.1 (2026-10-30): un solo campo "Responsables"
+
+- Crear con varios responsables crea UNA tarea: el primero es el principal (`assignee`) y el resto se comparte
+  (`shared_with`). Ya no se crea una tarea por persona ni existe el campo "Compartida con" aparte.
+- En el detalle, "Responsables" muestra principal + compartidos. Añadir/quitar = `tasks_compartir`; quitar o
+  cambiar al primero = `tasks_reasignar` (solo admin o manager creador; si no, el principal no se puede quitar).
+- Sin cambios en BD ni en las RPC.
+
 ---
 
 (Lo siguiente es la v1; lo que contradiga el CAMBIO v2 o v3 queda anulado.)

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Archive, ArchiveRestore, Loader2, Lock, Send, X, History, FileSpreadsheet, Trash2, Users } from 'lucide-react';
+import { Archive, ArchiveRestore, Loader2, Lock, Send, X, History, FileSpreadsheet, Trash2 } from 'lucide-react';
 import { useTasks } from '../../context/TasksContext';
 import { permisosTarea } from '../../lib/tasksPermisos';
-import { ESTADOS, PRIORIDADES, PRIORIDAD_LABEL, describirEvento, diffCambios } from '../../lib/tasksLogica';
+import { ESTADOS, PRIORIDADES, PRIORIDAD_LABEL, describirEvento, diffCambios, planResponsables, responsablesDe } from '../../lib/tasksLogica';
 import { fechaCorta, fechaHora, haceCuanto, horaCorta } from '../../lib/tasksFechas';
 import AssigneePicker from './AssigneePicker';
 import { CheckCompletar } from './TaskRow';
@@ -122,37 +122,46 @@ export default function TaskDetailDrawer({ taskId, onClose, onVerPendientes }) {
     } catch (e) { toast(e.message, 'error'); return false; }
   };
 
-  const compartida = task.shared_with || [];
-  const puedeCompartirAhora = p.compartir && !task.archived_at;
-  const campoCompartida = (
+  // "Responsables": el primero es el principal (assignee); el resto, compartidos (shared_with).
+  const responsables = responsablesDe(task);
+  const puedeEditarResp = (p.compartir || p.reasignar) && !task.archived_at;
+  const cambiarResponsables = (lista) => {
+    const plan = planResponsables(task, lista, p.reasignar);
+    if (!plan.reasignar && !plan.compartir) return;
+    ejecutar('responsables', async () => {
+      if (plan.reasignar) await acciones.reasignar(task.id, plan.principal);
+      if (plan.compartir) await acciones.compartir(task.id, plan.compartidos);
+    }, 'Responsables actualizados');
+  };
+  const campoResponsables = (
     <div className="col-span-2">
-      <Etiqueta htmlFor="td-share">Compartida con</Etiqueta>
-      {puedeCompartirAhora ? (
+      <Etiqueta htmlFor="td-resp">Responsables</Etiqueta>
+      {puedeEditarResp ? (
         <>
           <AssigneePicker
-            id="td-share"
-            usuarios={usuarios.filter((u) => u.username !== task.assignee)}
-            value={compartida}
+            id="td-resp"
+            usuarios={usuarios}
+            value={responsables}
             colorDe={colorDe}
             nombreDe={nombreDe}
             yo={user.username}
-            disabled={ocupado === 'compartir'}
-            placeholder="Nadie"
-            permitirVacio
-            onChange={(lista) => ejecutar('compartir', () => acciones.compartir(task.id, lista), 'Compartidos actualizados')}
+            disabled={ocupado === 'responsables'}
+            fijos={p.reasignar ? [] : [task.assignee]}
+            onChange={cambiarResponsables}
           />
-          <p className="text-[11px] text-google-gray mt-1">{nombreDe(task.assignee)} sigue siendo responsable. Para pasarle la tarea a otra persona, cambia el responsable.</p>
+          <p className="text-[11px] text-google-gray mt-1">
+            {nombreDe(task.assignee)} es el principal (el primero). Los demás pueden cambiar el estado y comentar.
+            {p.reasignar ? ' Para pasarle la tarea a otra persona, añádela y quita al principal.' : ''}
+          </p>
         </>
-      ) : compartida.length ? (
+      ) : (
         <div className="flex flex-wrap gap-1.5 py-1">
-          {compartida.map((u) => (
+          {responsables.map((u) => (
             <span key={u} className="inline-flex items-center gap-1 bg-google-bg border border-google-border rounded-full pl-0.5 pr-2 py-0.5 text-xs">
               <Avatar nombre={nombreDe(u)} color={colorDe(u)} size={18} /> {nombreDe(u)}{u === user.username ? ' (tú)' : ''}
             </span>
           ))}
         </div>
-      ) : (
-        <p className="text-sm text-google-gray italic py-1">Nadie</p>
       )}
     </div>
   );
@@ -253,11 +262,7 @@ export default function TaskDetailDrawer({ taskId, onClose, onVerPendientes }) {
                   <dd className={`text-sm whitespace-pre-wrap break-words ${task.description ? 'text-google-dark' : 'text-google-gray italic'}`}>{task.description || 'Sin descripción'}</dd>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <dt className="text-[10px] font-semibold uppercase tracking-wider text-google-gray mb-1">Responsable</dt>
-                    <dd className="flex items-center gap-2 text-sm text-google-dark"><Avatar nombre={nombreDe(task.assignee)} color={colorDe(task.assignee)} size={22} /> {nombreDe(task.assignee)}</dd>
-                  </div>
-                  {campoCompartida}
+                  {campoResponsables}
                   <div>
                     <dt className="text-[10px] font-semibold uppercase tracking-wider text-google-gray mb-1">Prioridad</dt>
                     <dd className="text-sm text-google-dark">{PRIORIDAD_LABEL[task.priority] || task.priority}</dd>
@@ -280,27 +285,7 @@ export default function TaskDetailDrawer({ taskId, onClose, onVerPendientes }) {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2 sm:col-span-1">
-                    <Etiqueta htmlFor="td-resp">Responsable</Etiqueta>
-                    {p.reasignar ? (
-                      <AssigneePicker
-                        id="td-resp"
-                        multiple={false}
-                        usuarios={usuarios}
-                        value={[task.assignee]}
-                        colorDe={colorDe}
-                        nombreDe={nombreDe}
-                        yo={user.username}
-                        disabled={ocupado === 'reasignar'}
-                        onChange={([u]) => { if (u && u !== task.assignee) ejecutar('reasignar', () => acciones.reasignar(task.id, u), `Reasignada a ${nombreDe(u)}`); }}
-                      />
-                    ) : (
-                      <div className="flex items-center gap-2 py-2 text-sm text-google-dark">
-                        <Avatar nombre={nombreDe(task.assignee)} color={colorDe(task.assignee)} size={22} /> {nombreDe(task.assignee)}
-                      </div>
-                    )}
-                  </div>
-                  {campoCompartida}
+                  {campoResponsables}
                   <div className="col-span-2 sm:col-span-1">
                     <Etiqueta htmlFor="td-prio">Prioridad</Etiqueta>
                     <select id="td-prio" value={form.priority} onChange={(e) => set('priority', e.target.value)} className="input-field">

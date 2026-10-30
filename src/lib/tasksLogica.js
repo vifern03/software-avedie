@@ -34,6 +34,28 @@ export const PESTANAS = {
 
 export const esActiva = (t) => !!t && !t.archived_at && !t.deleted_at && t.status !== 'completed';
 
+/* ── Responsables: el principal (assignee) + los compartidos (shared_with) ──── */
+
+/** Lista de responsables de una tarea: primero el principal, luego los compartidos. */
+export const responsablesDe = (t) =>
+  t ? [t.assignee, ...(t.shared_with || []).filter((u) => u !== t.assignee)] : [];
+
+/**
+ * Traduce la lista editada en el campo "Responsables" a llamadas: el primero es el principal
+ * (cambiarlo = reasignar, solo si `puedeReasignar`; si no, se mantiene el actual) y el resto se comparte.
+ * Devuelve { principal, compartidos, reasignar, compartir } (reasignar/compartir = hay que llamar).
+ */
+export function planResponsables(task, lista, puedeReasignar) {
+  const limpia = [...new Set((lista || []).filter(Boolean))];
+  let principal = task.assignee;
+  if (puedeReasignar && limpia.length) principal = limpia[0];
+  const compartidos = limpia.filter((u) => u !== principal);
+  const antes = (task.shared_with || []).filter((u) => u !== principal);
+  const igual = compartidos.length === antes.length && compartidos.every((u) => antes.includes(u));
+  const reasignar = principal !== task.assignee;
+  return { principal, compartidos, reasignar, compartir: reasignar ? (task.shared_with || []).length > 0 || compartidos.length > 0 : !igual };
+}
+
 /* ── Contadores del Sidebar ───────────────────────────────────────────────── */
 
 /** Tareas activas cuyo responsable es `username` o que le han compartido (incluye personales) y sus alertas. */

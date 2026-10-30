@@ -3,10 +3,10 @@ import { Check, ChevronDown, Search, X } from 'lucide-react';
 import { Avatar } from './ui';
 import { normalizar } from '../../lib/tasksLogica';
 
-/** Selector de usuarios. `multiple` → varios. `permitirVacio` → los chips se pueden quitar todos (Compartida con). */
+/** Selector de usuarios. `multiple` → varios. `permitirVacio` → los chips se pueden quitar todos. `fijos` → usuarios que no se pueden quitar. */
 const ROL_LABEL = { admin: 'Admin', manager: 'Manager', comercial: 'Comercial' };
 
-export default function AssigneePicker({ usuarios, value, onChange, colorDe, nombreDe, multiple = true, disabled = false, id, yo, placeholder = 'Elige responsable…', permitirVacio = false }) {
+export default function AssigneePicker({ usuarios, value, onChange, colorDe, nombreDe, multiple = true, disabled = false, id, yo, placeholder = 'Elige responsable…', permitirVacio = false, fijos = [] }) {
   const [abierto, setAbierto] = useState(false);
   const [busqueda, setBusqueda] = useState('');
   const ref = useRef(null);
@@ -28,6 +28,7 @@ export default function AssigneePicker({ usuarios, value, onChange, colorDe, nom
 
   const toggle = (u) => {
     if (!multiple) { onChange([u]); setAbierto(false); return; }
+    if (value.includes(u) && fijos.includes(u)) return;
     onChange(value.includes(u) ? value.filter((x) => x !== u) : [...value, u]);
   };
 
@@ -55,7 +56,7 @@ export default function AssigneePicker({ usuarios, value, onChange, colorDe, nom
           <span key={u} className="inline-flex items-center gap-1 bg-google-bg border border-google-border rounded-full pl-0.5 pr-2 py-0.5 text-xs">
             <Avatar nombre={nombreDe(u)} color={colorDe(u)} size={18} />
             {nombreDe(u)}{u === yo ? ' (tú)' : ''}
-            {multiple && !disabled && (value.length > 1 || permitirVacio) && (
+            {multiple && !disabled && !fijos.includes(u) && (value.length > 1 || permitirVacio) && (
               <X size={12} className="text-google-gray hover:text-google-dark" onClick={(e) => { e.stopPropagation(); toggle(u); }} aria-label={`Quitar ${nombreDe(u)}`} />
             )}
           </span>

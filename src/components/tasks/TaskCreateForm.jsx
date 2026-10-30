@@ -7,7 +7,7 @@ import AssigneePicker from './AssigneePicker';
 import { Etiqueta, useToast } from './ui';
 
 const vacio = (yo, inicial = {}) => ({
-  title: '', description: '', assignees: [yo], shared_with: [], priority: 'normal',
+  title: '', description: '', assignees: [yo], priority: 'normal',
   planned_date: '', planned_time: '', due_date: '', due_time: '',
   ...inicial,
 });
@@ -35,9 +35,12 @@ export default function TaskCreateForm({ inicial, compacto = false, onCreated, o
     if (title.length > 200) { toast('El título no puede superar 200 caracteres.', 'error'); return; }
     setGuardando(true);
     try {
-      const assignees = paraOtros ? form.assignees : [user.username];
-      const rows = await acciones.crear({ ...form, title, assignees, shared_with: form.shared_with.filter((u) => !assignees.includes(u)) });
-      toast(rows.length > 1 ? `${rows.length} tareas creadas` : 'Tarea creada');
+      // Una sola tarea: el primero es el responsable principal; el resto se comparte.
+      // Un comercial solo crea tareas propias: él es siempre el principal.
+      const lista = paraOtros ? form.assignees : [user.username, ...form.assignees.filter((u) => u !== user.username)];
+      const [principal, ...resto] = lista.length ? lista : [user.username];
+      const rows = await acciones.crear({ ...form, title, assignees: [principal], shared_with: resto });
+      toast('Tarea creada');
       setForm(vacio(user.username, compacto ? {} : inicial));
       if (compacto) setOpciones(false);
       onCreated?.(rows);
@@ -96,24 +99,17 @@ export default function TaskCreateForm({ inicial, compacto = false, onCreated, o
             <Etiqueta htmlFor="tc-desc">Descripción</Etiqueta>
             <textarea id="tc-desc" rows={compacto ? 2 : 3} maxLength={5000} value={form.description} onChange={(e) => set('description', e.target.value)} className="input-field resize-y" placeholder="Detalles (opcional)" />
           </div>
-          {paraOtros && (
-            <div className="sm:col-span-2">
-              <Etiqueta htmlFor="tc-resp">Responsables {form.assignees.length > 1 && <span className="normal-case tracking-normal font-normal">· se creará una tarea por persona</span>}</Etiqueta>
-              <AssigneePicker id="tc-resp" usuarios={usuarios} value={form.assignees} onChange={(v) => set('assignees', v.length ? v : [user.username])} colorDe={colorDe} nombreDe={nombreDe} yo={user.username} />
-            </div>
-          )}
           <div className="sm:col-span-2">
-            <Etiqueta htmlFor="tc-share">Compartida con <span className="normal-case tracking-normal font-normal">· el responsable no cambia; ellos pueden cambiar el estado y comentar</span></Etiqueta>
+            <Etiqueta htmlFor="tc-resp">Responsables {form.assignees.length > 1 && <span className="normal-case tracking-normal font-normal">· {nombreDe(paraOtros ? form.assignees[0] : user.username)} es el principal; los demás pueden cambiar el estado y comentar</span>}</Etiqueta>
             <AssigneePicker
-              id="tc-share"
-              usuarios={usuarios.filter((u) => !(paraOtros ? form.assignees : [user.username]).includes(u.username))}
-              value={form.shared_with}
-              onChange={(v) => set('shared_with', v)}
+              id="tc-resp"
+              usuarios={usuarios}
+              value={paraOtros ? form.assignees : [user.username, ...form.assignees.filter((u) => u !== user.username)]}
+              onChange={(v) => set('assignees', v.length ? v : [user.username])}
               colorDe={colorDe}
               nombreDe={nombreDe}
               yo={user.username}
-              placeholder="Nadie (opcional)"
-              permitirVacio
+              fijos={paraOtros ? [] : [user.username]}
             />
           </div>
           <div>

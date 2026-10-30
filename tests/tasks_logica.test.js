@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   contadoresUsuario, alertaSidebar, textoBadge, filtrarTareas, agruparPorFecha, grupoDeTarea,
   estadisticasEquipo, describirEvento, diffCambios, enSegundaPersona, domingoDeSemana,
+  responsablesDe, planResponsables,
 } from '../src/lib/tasksLogica.js';
 import { PALETA, colorAutomatico, colorDeUsuario, hashTexto, iniciales } from '../src/lib/tasksColores.js';
 
@@ -139,4 +140,20 @@ test('color por usuario: estable, de la paleta, preferencia válida prevalece', 
   assert.equal(colorDeUsuario('x', { x: 'rojo' }), colorAutomatico('x'));
   assert.equal(iniciales('Ana López'), 'AL');
   assert.equal(iniciales('comercial1'), 'CO');
+});
+
+test('responsables: principal primero y luego compartidos', () => {
+  assert.deepEqual(responsablesDe({ assignee: 'a', shared_with: ['b', 'c'] }), ['a', 'b', 'c']);
+  assert.deepEqual(responsablesDe({ assignee: 'a' }), ['a']);
+});
+
+test('planResponsables: añadir/quitar comparte; cambiar el primero reasigna (si se puede)', () => {
+  const t = { assignee: 'a', shared_with: ['b'] };
+  assert.deepEqual(planResponsables(t, ['a', 'b'], true), { principal: 'a', compartidos: ['b'], reasignar: false, compartir: false });
+  assert.deepEqual(planResponsables(t, ['a', 'b', 'c'], false), { principal: 'a', compartidos: ['b', 'c'], reasignar: false, compartir: true });
+  assert.deepEqual(planResponsables(t, ['b'], true), { principal: 'b', compartidos: [], reasignar: true, compartir: true });
+  assert.deepEqual(planResponsables(t, ['b', 'a'], true), { principal: 'b', compartidos: ['a'], reasignar: true, compartir: true });
+  // Sin permiso de reasignar, el principal se mantiene aunque lo quiten de la lista.
+  assert.deepEqual(planResponsables(t, ['b', 'c'], false), { principal: 'a', compartidos: ['b', 'c'], reasignar: false, compartir: true });
+  assert.deepEqual(planResponsables({ assignee: 'a', shared_with: [] }, ['c'], true), { principal: 'c', compartidos: [], reasignar: true, compartir: false });
 });
