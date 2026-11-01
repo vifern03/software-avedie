@@ -13,6 +13,7 @@ const PAGES = [
   { id: 'radar',        label: 'Radar'           },
   { id: 'b2c',          label: 'Alta B2C'        },
   { id: 'b2b',          label: 'Alta B2B'        },
+  { id: 'documentacion_b2b', label: 'Documentación B2B' },
   { id: 'visitas',      label: 'Visitas Tienda'  },
   { id: 'visitas_pymes', label: 'Visitas PYME'   },
   { id: 'llamadas',     label: 'Reg. Llamadas'  },

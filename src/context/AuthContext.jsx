@@ -1,13 +1,14 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { abrirSesion as abrirSesionDocB2B, cerrarSesion as cerrarSesionDocB2B } from '../lib/documentacionB2B/api';
 import { initializeDB } from '../lib/initDB';
 
 const AuthContext = createContext(null);
 
 export const DEFAULT_PERMISSIONS = {
-  admin:     { dashboard: true,  historica: true,  radar: true,  b2c: true, b2b: true, historial: true,  visitas: true,  visitas_pymes: true,  fichajes: true,  reportes: true,  llamadas: true,  tarifas: true,  pendientes: true, tasks: true },
-  manager:   { dashboard: false, historica: false, radar: true,  b2c: true, b2b: true, historial: false, visitas: true,  visitas_pymes: true,  fichajes: true,  reportes: true,  llamadas: true,  tarifas: true,  pendientes: true, tasks: true },
-  comercial: { dashboard: false, historica: false, radar: false, b2c: true, b2b: true, historial: false, visitas: true,  visitas_pymes: true,  fichajes: true,  reportes: true,  llamadas: true,  tarifas: true,  pendientes: true, tasks: true },
+  admin:     { dashboard: true,  historica: true,  radar: true,  b2c: true, b2b: true, historial: true,  visitas: true,  visitas_pymes: true,  fichajes: true,  reportes: true,  llamadas: true,  tarifas: true,  pendientes: true, tasks: true, documentacion_b2b: true },
+  manager:   { dashboard: false, historica: false, radar: true,  b2c: true, b2b: true, historial: false, visitas: true,  visitas_pymes: true,  fichajes: true,  reportes: true,  llamadas: true,  tarifas: true,  pendientes: true, tasks: true, documentacion_b2b: true },
+  comercial: { dashboard: false, historica: false, radar: false, b2c: true, b2b: true, historial: false, visitas: true,  visitas_pymes: true,  fichajes: true,  reportes: true,  llamadas: true,  tarifas: true,  pendientes: true, tasks: true, documentacion_b2b: false },
 };
 
 const SESSION_KEY = 'crm_avedie_user';
@@ -132,12 +133,14 @@ export function AuthProvider({ children }) {
     const safeUser = dbToUser(data[0]);
     setCurrentUser(safeUser);
     localStorage.setItem(SESSION_KEY, JSON.stringify(safeUser));
+    abrirSesionDocB2B(data[0].username, password).catch(() => {}); // si falla, la sección pide la contraseña
     return true;
   }, []);
 
   const logout = useCallback(() => {
     setCurrentUser(null);
     localStorage.removeItem(SESSION_KEY);
+    cerrarSesionDocB2B();
   }, []);
 
   const updateProvinciaAccess = useCallback((username, provincia, enabled) => {

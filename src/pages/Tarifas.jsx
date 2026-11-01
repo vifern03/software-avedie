@@ -1,5 +1,7 @@
-import { useState } from 'react';
-import { Zap, Flame, Factory, Info, X, AlertTriangle, Calculator, Sun, TrendingUp } from 'lucide-react';
+import { createContext, useContext, useState } from 'react';
+import { Zap, Flame, Factory, Info, X, AlertTriangle, Calculator, Sun, TrendingUp, RefreshCw } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import ActualizarTarifaModal from '../components/tarifas/ActualizarTarifaModal';
 import EstudioComparativo from './EstudioComparativo';
 import EstudioComparativoGas from './EstudioComparativoGas';
 import EstudioComparativoB2B from './EstudioComparativoB2B';
@@ -44,6 +46,38 @@ function fmt(num) {
 }
 
 /* ── Componentes compartidos ────────────────────────────────────────────────── */
+
+const TarifaGuardada = createContext(() => {});
+
+/* «Actualizar tarifa»: solo admin. Va a la derecha del nombre de cada tarifa. */
+function BotonActualizarTarifa({ tarifaId }) {
+  const { currentUser } = useAuth();
+  const refrescar = useContext(TarifaGuardada);
+  const [abierto, setAbierto] = useState(false);
+  if (currentUser?.role !== 'admin') return null;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setAbierto(true)}
+        className="inline-flex items-center gap-1 text-[11px] font-medium text-google-blue hover:bg-blue-50 rounded-md px-1.5 py-0.5 whitespace-nowrap print:hidden"
+        data-testid={`actualizar-${tarifaId}`}
+      >
+        <RefreshCw size={11} /> Actualizar tarifa
+      </button>
+      {abierto && <ActualizarTarifaModal tarifaId={tarifaId} onClose={() => setAbierto(false)} onGuardada={refrescar} />}
+    </>
+  );
+}
+
+function NombreTarifa({ tarifaId, children }) {
+  return (
+    <div className="flex items-center gap-2 flex-wrap min-w-0">
+      {children}
+      <BotonActualizarTarifa tarifaId={tarifaId} />
+    </div>
+  );
+}
 
 function MiniToggle({ on, onToggle }) {
   return (
@@ -142,7 +176,7 @@ function LuzCard({ tarifa }) {
       <div className="bg-white border border-google-border rounded-xl shadow-sm flex flex-col">
         <div className="px-4 pt-4 pb-3 border-b border-gray-100">
           <div className="flex items-center justify-between gap-2 mb-1">
-            <h3 className="text-sm font-semibold text-google-dark leading-tight">{tarifa.title}</h3>
+            <NombreTarifa tarifaId={tarifa.id}><h3 className="text-sm font-semibold text-google-dark leading-tight">{tarifa.title}</h3></NombreTarifa>
             <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0 ${tarifa.canalColor}`}>
               {tarifa.canal}
             </span>
@@ -224,7 +258,7 @@ function SolarLuzCard({ tarifa }) {
       <div className="bg-white border border-google-border rounded-xl shadow-sm flex flex-col">
         <div className="px-5 pt-5 pb-4 border-b border-gray-100">
           <div className="flex items-start justify-between gap-2 mb-1.5">
-            <h3 className="text-base font-semibold text-google-dark leading-tight">{tarifa.title}</h3>
+            <NombreTarifa tarifaId={tarifa.id}><h3 className="text-base font-semibold text-google-dark leading-tight">{tarifa.title}</h3></NombreTarifa>
             <div className="flex flex-col items-end gap-1 flex-shrink-0">
               <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${tarifa.badgeColor}`}>
                 {tarifa.badge}
@@ -348,7 +382,7 @@ function GasCard({ tarifa }) {
     <div className="bg-white border border-google-border rounded-xl shadow-sm flex flex-col">
       <div className="px-5 pt-5 pb-4 border-b border-gray-100">
         <div className="flex items-start justify-between gap-2 mb-1">
-          <h3 className="text-base font-semibold text-google-dark leading-tight">{tarifa.title}</h3>
+          <NombreTarifa tarifaId={tarifa.id}><h3 className="text-base font-semibold text-google-dark leading-tight">{tarifa.title}</h3></NombreTarifa>
           <div className="flex flex-col items-end gap-1 flex-shrink-0">
             <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 whitespace-nowrap">
               {tarifa.consumo}
@@ -412,7 +446,7 @@ function GasEmpresaCard({ tarifa }) {
     <div className="bg-white border border-google-border rounded-xl shadow-sm flex flex-col">
       <div className="px-5 pt-5 pb-4 border-b border-gray-100">
         <div className="flex items-start justify-between gap-2 mb-1">
-          <h3 className="text-base font-semibold text-google-dark leading-tight">{tarifa.title}</h3>
+          <NombreTarifa tarifaId={tarifa.id}><h3 className="text-base font-semibold text-google-dark leading-tight">{tarifa.title}</h3></NombreTarifa>
           <div className="flex flex-col items-end gap-1 flex-shrink-0">
             <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 whitespace-nowrap">
               {tarifa.consumo}
@@ -478,7 +512,7 @@ function TempoSection() {
         <div className="lg:col-span-2 bg-white border border-google-border rounded-xl shadow-sm p-5">
           <div className="flex items-start justify-between gap-3 mb-4">
             <div>
-              <h3 className="text-base font-semibold text-google-dark">Tarifa TEMPO 2.0TD</h3>
+              <NombreTarifa tarifaId="tempo"><h3 className="text-base font-semibold text-google-dark">Tarifa TEMPO 2.0TD</h3></NombreTarifa>
               <p className="text-xs text-google-gray mt-0.5">Un solo precio las 24 horas del día · Potencia ≤ 15 kW</p>
             </div>
             <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -554,7 +588,7 @@ function SimplySection({ datos }) {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <div className="lg:col-span-2 bg-white border border-google-border rounded-xl shadow-sm p-5">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="text-base font-semibold text-google-dark">Tarifa {datos.nombre}</h3>
+            <NombreTarifa tarifaId={datos.id}><h3 className="text-base font-semibold text-google-dark">Tarifa {datos.nombre}</h3></NombreTarifa>
             {datos.precioSinActualizar && <SinActualizarBadge />}
           </div>
           <p className="text-xs text-google-gray mt-0.5 mb-4">Solo suministros con autoconsumo instalado · No aplican descuentos</p>
@@ -622,7 +656,7 @@ function OpenSection({ datos, titulo, subtitulo }) {
           <div className="bg-white border border-google-border rounded-xl shadow-sm p-5">
             <div className="flex items-start justify-between gap-3 mb-5">
               <div>
-                <h3 className="text-base font-semibold text-google-dark">{titulo}</h3>
+                <NombreTarifa tarifaId={datos.id || 'indexada20'}><h3 className="text-base font-semibold text-google-dark">{titulo}</h3></NombreTarifa>
                 <p className="text-xs text-google-gray mt-0.5">{subtitulo}</p>
               </div>
               <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -833,7 +867,7 @@ function IndexadaSection({ datos, titulo, subtitulo }) {
           <div className="bg-white border border-google-border rounded-xl shadow-sm p-5">
             <div className="flex items-start justify-between gap-3 mb-5">
               <div>
-                <h3 className="text-base font-semibold text-google-dark">{titulo}</h3>
+                <NombreTarifa tarifaId={datos.id || 'indexada20'}><h3 className="text-base font-semibold text-google-dark">{titulo}</h3></NombreTarifa>
                 <p className="text-xs text-google-gray mt-0.5">{subtitulo}</p>
               </div>
               <div className="flex flex-col items-end gap-1 flex-shrink-0">
@@ -932,8 +966,10 @@ function IndexadaSection({ datos, titulo, subtitulo }) {
 export default function Tarifas() {
   const [tab,    setTab]    = useState('luz');
   const [b2bSub, setB2bSub] = useState('tempo');
+  const [, setVersionTarifas] = useState(0);
 
   return (
+    <TarifaGuardada.Provider value={() => setVersionTarifas((v) => v + 1)}>
     <div className="p-4 sm:p-6 max-w-7xl mx-auto print:p-0 print:max-w-none">
 
       {/* Cabecera */}
@@ -1142,5 +1178,6 @@ export default function Tarifas() {
       {/* Tab: Estudio Comparativo Gas */}
       {tab === 'estudio-gas' && <EstudioComparativoGas />}
     </div>
+    </TarifaGuardada.Provider>
   );
 }

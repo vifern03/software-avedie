@@ -1,0 +1,13 @@
+{
+ "valida_desde": "2026-10-19",
+ "valida_hasta": "2026-10-28",
+ "valores": {
+  "descuento": 28,
+  "energia.promo": 0.148741,
+  "energia.base": 0.206585,
+  "potencia.0.anyo": 44.704416,
+  "potencia.0.mes": 3.725368,
+  "potencia.1.anyo": 17.725428,
+  "potencia.1.mes": 1.477119
+ }
+}

@@ -20,6 +20,8 @@ import RegistroLlamadas from './pages/RegistroLlamadas';
 import Tarifas from './pages/Tarifas';
 import Pendientes from './pages/Pendientes';
 import Tasks from './pages/Tasks';
+import DocumentacionB2B from './pages/DocumentacionB2B';
+import { sincronizarTarifas } from './lib/tarifas/obtenerTarifa';
 
 function LoadingScreen() {
   return (
@@ -86,10 +88,15 @@ export default function App() {
   const [activeSection, setActiveSection] = useState('b2c');
   const [pendientesLote, setPendientesLote] = useState(null); // lote abierto desde una tarea
   const [isAIOpen, setIsAIOpen] = useState(false);
+  const [, setTarifasListas] = useState(0);
+
+  useEffect(() => {
+    sincronizarTarifas().then((n) => { if (n > 0) setTarifasListas((v) => v + 1); });
+  }, []);
 
   useEffect(() => {
     if (!currentUser) return;
-    const SECTIONS = ['dashboard', 'historica', 'radar', 'b2c', 'b2b', 'historial', 'visitas', 'visitas_pymes', 'llamadas', 'tarifas', 'fichajes', 'reportes', 'pendientes', 'gestion', 'tasks'];
+    const SECTIONS = ['dashboard', 'historica', 'radar', 'b2c', 'b2b', 'historial', 'visitas', 'visitas_pymes', 'llamadas', 'tarifas', 'fichajes', 'reportes', 'pendientes', 'gestion', 'tasks', 'documentacion_b2b'];
     const first = SECTIONS.find(s => hasAccess(s));
     if (first) setActiveSection(first);
   }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -112,6 +119,7 @@ export default function App() {
       case 'radar':     return <RadarRenovaciones />;
       case 'b2c':       return <AltaClientes tipo="B2C" />;
       case 'b2b':       return <AltaClientes tipo="B2B" />;
+      case 'documentacion_b2b': return <DocumentacionB2B />;
       case 'historial': return <HistorialActividades />;
       case 'visitas':       return <RegistroVisitas />;
       case 'visitas_pymes': return <RegistroVisitasPymes />;
