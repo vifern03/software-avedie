@@ -1,0 +1,193 @@
+{
+  "doc": "puntos_suministro",
+  "version_plantilla": "CMT-00354",
+  "page": 0,
+  "max_suministros": 3,
+  "pitch": 203.0,
+  "bloque": [
+    49.0,
+    145.6,
+    560.4,
+    335.6
+  ],
+  "cabecera": {
+    "x": 138.3,
+    "baseline": 105.95,
+    "size": 8.0,
+    "max_width": 540.0,
+    "etiqueta_nif": "NIF:",
+    "separacion": 12.0
+  },
+  "fields": [
+    {
+      "id": "direccion",
+      "x": 163.15,
+      "baseline": 155.84,
+      "size": 7.0,
+      "bold": false,
+      "align": "left",
+      "max_width": 394.4
+    },
+    {
+      "id": "cups",
+      "x": 163.15,
+      "baseline": 169.91,
+      "size": 7.0,
+      "bold": false,
+      "align": "left",
+      "max_width": 394.4
+    },
+    {
+      "id": "producto",
+      "x": 163.15,
+      "baseline": 183.98,
+      "size": 7.0,
+      "bold": false,
+      "align": "left",
+      "max_width": 173.3
+    },
+    {
+      "id": "tarifa_acceso",
+      "x": 455.1,
+      "baseline": 183.98,
+      "size": 7.0,
+      "bold": false,
+      "align": "left",
+      "max_width": 102.5
+    },
+    {
+      "id": "tension",
+      "x": 163.15,
+      "baseline": 198.05,
+      "size": 7.0,
+      "bold": false,
+      "align": "left",
+      "max_width": 173.3
+    },
+    {
+      "id": "distribuidora",
+      "x": 451.88,
+      "baseline": 198.05,
+      "size": 7.0,
+      "bold": false,
+      "align": "left",
+      "max_width": 105.7,
+      "max_lines": 2,
+      "line_height": 8.4
+    },
+    {
+      "id": "potencia_p1",
+      "x": 230.48,
+      "baseline": 237.45,
+      "size": 6.0,
+      "bold": false,
+      "align": "center",
+      "center_x": 234.33,
+      "max_width": 47.5
+    },
+    {
+      "id": "potencia_p2",
+      "x": 280.08,
+      "baseline": 237.45,
+      "size": 6.0,
+      "bold": false,
+      "align": "center",
+      "center_x": 283.93,
+      "max_width": 47.5
+    },
+    {
+      "id": "potencia_p3",
+      "x": 329.68,
+      "baseline": 237.45,
+      "size": 6.0,
+      "bold": false,
+      "align": "center",
+      "center_x": 333.53,
+      "max_width": 47.5
+    },
+    {
+      "id": "potencia_p4",
+      "x": 379.28,
+      "baseline": 237.45,
+      "size": 6.0,
+      "bold": false,
+      "align": "center",
+      "center_x": 383.13,
+      "max_width": 47.5
+    },
+    {
+      "id": "potencia_p5",
+      "x": 428.88,
+      "baseline": 237.45,
+      "size": 6.0,
+      "bold": false,
+      "align": "center",
+      "center_x": 432.73,
+      "max_width": 47.5
+    },
+    {
+      "id": "potencia_p6",
+      "x": 478.48,
+      "baseline": 237.45,
+      "size": 6.0,
+      "bold": false,
+      "align": "center",
+      "center_x": 482.33,
+      "max_width": 47.5
+    },
+    {
+      "id": "equipo_medida",
+      "x": 163.15,
+      "baseline": 260.03,
+      "size": 7.0,
+      "bold": false,
+      "align": "left",
+      "max_width": 394.4
+    },
+    {
+      "id": "iban",
+      "x": 163.15,
+      "baseline": 274.1,
+      "size": 7.0,
+      "bold": false,
+      "align": "left",
+      "max_width": 394.5
+    },
+    {
+      "id": "autoconsumo",
+      "x": 163.15,
+      "baseline": 288.16,
+      "size": 7.0,
+      "bold": false,
+      "align": "left",
+      "max_width": 394.5
+    },
+    {
+      "id": "energia_verde",
+      "x": 163.15,
+      "baseline": 302.23,
+      "size": 7.0,
+      "bold": false,
+      "align": "left",
+      "max_width": 394.5
+    },
+    {
+      "id": "mantenimiento",
+      "x": 163.15,
+      "baseline": 316.3,
+      "size": 7.0,
+      "bold": false,
+      "align": "left",
+      "max_width": 394.5
+    },
+    {
+      "id": "ref_catastral",
+      "x": 163.15,
+      "baseline": 330.37,
+      "size": 7.0,
+      "bold": false,
+      "align": "left",
+      "max_width": 394.5
+    }
+  ]
+}

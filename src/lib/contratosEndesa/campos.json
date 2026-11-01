@@ -1,0 +1,825 @@
+{
+  "fuente": "PDF originales de Endesa (Quadient Inspire), ejemplo TEL3T - TEMPO OPEN 3.0TD. Ejemplos de este fichero: datos ficticios.",
+  "version_plantilla": {
+    "contrato": "CMT-00350",
+    "anexo": "CMT-00351"
+  },
+  "coordenadas": "puntos PDF; baseline medido desde arriba (pdf-lib: y = alto - baseline)",
+  "contrato": {
+    "doc": "contrato",
+    "page_size": [
+      595.2755737304688,
+      841.8897705078125
+    ],
+    "pages": 7,
+    "fields": [
+      {
+        "id": "oferta_numero",
+        "page": 0,
+        "x": 530.51,
+        "baseline": 60.08,
+        "size": 7.0,
+        "bold": true,
+        "align": "left",
+        "ejemplo": "0000000",
+        "max_width": 43.0
+      },
+      {
+        "id": "titular_nombre",
+        "page": 0,
+        "x": 147.94,
+        "baseline": 116.47,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "TALLERES DEMOSTRACIÓN DEL NORTE, S.L.",
+        "max_width": 403.7
+      },
+      {
+        "id": "tipo_documento",
+        "page": 0,
+        "x": 123.7,
+        "baseline": 128.27,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "IDENTIFICADOR FISCAL",
+        "max_width": 199.0
+      },
+      {
+        "id": "documento_numero",
+        "page": 0,
+        "x": 347.74,
+        "baseline": 128.27,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "B00000000",
+        "max_width": 69.7
+      },
+      {
+        "id": "idioma",
+        "page": 0,
+        "x": 452.04,
+        "baseline": 128.27,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "CASTELLANO",
+        "max_width": 99.6
+      },
+      {
+        "id": "cnae",
+        "page": 0,
+        "x": 65.5,
+        "baseline": 140.07,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "max_width": 225.0,
+        "ejemplo": "4520"
+      },
+      {
+        "id": "actividad",
+        "page": 0,
+        "x": 337.43,
+        "baseline": 140.07,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "COMERCIAL",
+        "max_width": 214.2
+      },
+      {
+        "id": "telefono1",
+        "page": 0,
+        "x": 88.44,
+        "baseline": 151.87,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "600000000",
+        "max_width": 202.1
+      },
+      {
+        "id": "telefono2",
+        "page": 0,
+        "x": 348.3,
+        "baseline": 151.87,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "max_width": 203.3,
+        "ejemplo": ""
+      },
+      {
+        "id": "email",
+        "page": 0,
+        "x": 75.1,
+        "baseline": 163.67,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "max_width": 128.3,
+        "ejemplo": "administracion@ejemplo.es"
+      },
+      {
+        "id": "horario_contacto",
+        "page": 0,
+        "x": 272.9,
+        "baseline": 163.67,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "max_width": 104.6,
+        "ejemplo": ""
+      },
+      {
+        "id": "fecha_nacimiento",
+        "page": 0,
+        "x": 454.2,
+        "baseline": 163.67,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "max_width": 97.4,
+        "ejemplo": ""
+      },
+      {
+        "id": "fiscal_via",
+        "page": 0,
+        "x": 70.82,
+        "baseline": 175.48,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "CALLE MAYOR",
+        "max_width": 125.5
+      },
+      {
+        "id": "fiscal_numero",
+        "page": 0,
+        "x": 224.33,
+        "baseline": 175.48,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "1",
+        "max_width": 13.9
+      },
+      {
+        "id": "fiscal_escalera",
+        "page": 0,
+        "x": 283.7,
+        "baseline": 175.48,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "max_width": 59.0,
+        "ejemplo": ""
+      },
+      {
+        "id": "fiscal_piso",
+        "page": 0,
+        "x": 370.51,
+        "baseline": 175.48,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "2",
+        "max_width": 76.6
+      },
+      {
+        "id": "fiscal_puerta",
+        "page": 0,
+        "x": 478.3,
+        "baseline": 175.48,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "max_width": 73.3,
+        "ejemplo": "B"
+      },
+      {
+        "id": "fiscal_cp",
+        "page": 0,
+        "x": 94.66,
+        "baseline": 187.28,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "34001",
+        "max_width": 31.8
+      },
+      {
+        "id": "fiscal_localidad",
+        "page": 0,
+        "x": 170.71,
+        "baseline": 187.28,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "PALENCIA",
+        "max_width": 206.8
+      },
+      {
+        "id": "fiscal_provincia",
+        "page": 0,
+        "x": 422.29,
+        "baseline": 187.28,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "PALENCIA ESPAÑA",
+        "max_width": 129.3
+      },
+      {
+        "id": "sum_via",
+        "page": 0,
+        "x": 69.21,
+        "baseline": 235.41,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "AVENIDA DE PRUEBA",
+        "max_width": 127.1
+      },
+      {
+        "id": "sum_numero",
+        "page": 0,
+        "x": 222.72,
+        "baseline": 235.41,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "25",
+        "max_width": 15.5
+      },
+      {
+        "id": "sum_escalera",
+        "page": 0,
+        "x": 283.7,
+        "baseline": 235.41,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "max_width": 59.0,
+        "ejemplo": ""
+      },
+      {
+        "id": "sum_piso",
+        "page": 0,
+        "x": 368.9,
+        "baseline": 235.41,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "max_width": 78.2,
+        "ejemplo": ""
+      },
+      {
+        "id": "sum_puerta",
+        "page": 0,
+        "x": 478.3,
+        "baseline": 235.41,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "max_width": 73.3,
+        "ejemplo": ""
+      },
+      {
+        "id": "sum_cp",
+        "page": 0,
+        "x": 83.16,
+        "baseline": 247.21,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "34004",
+        "max_width": 43.3
+      },
+      {
+        "id": "sum_localidad",
+        "page": 0,
+        "x": 169.1,
+        "baseline": 247.21,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "PALENCIA",
+        "max_width": 208.4
+      },
+      {
+        "id": "sum_provincia",
+        "page": 0,
+        "x": 420.68,
+        "baseline": 247.21,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "PALENCIA",
+        "max_width": 130.9
+      },
+      {
+        "id": "sum_ref_catastral",
+        "page": 0,
+        "x": 131.6,
+        "baseline": 259.01,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "max_width": 420.0,
+        "ejemplo": ""
+      },
+      {
+        "id": "contacto_nombre",
+        "page": 0,
+        "x": 147.94,
+        "baseline": 314.01,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "Persona De Contacto Ficticia",
+        "max_width": 403.7
+      },
+      {
+        "id": "contacto_dni",
+        "page": 0,
+        "x": 94.66,
+        "baseline": 325.81,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "00000000T",
+        "max_width": 45.7
+      },
+      {
+        "id": "contacto_cargo",
+        "page": 0,
+        "x": 183.5,
+        "baseline": 325.81,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "max_width": 183.2,
+        "ejemplo": "Administrador"
+      },
+      {
+        "id": "contacto_idioma",
+        "page": 0,
+        "x": 420.7,
+        "baseline": 325.81,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "max_width": 130.9,
+        "ejemplo": ""
+      },
+      {
+        "id": "contacto_telefono",
+        "page": 0,
+        "x": 94.66,
+        "baseline": 337.62,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "600000000",
+        "max_width": 46.4
+      },
+      {
+        "id": "contacto_email",
+        "page": 0,
+        "x": 185.82,
+        "baseline": 337.62,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "contacto@ejemplo.es",
+        "max_width": 180.9
+      },
+      {
+        "id": "contacto_horario",
+        "page": 0,
+        "x": 450.5,
+        "baseline": 337.62,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "max_width": 101.1,
+        "ejemplo": ""
+      },
+      {
+        "id": "direccion_alternativa",
+        "page": 0,
+        "x": 153.2,
+        "baseline": 404.62,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "max_width": 401.0,
+        "ejemplo": ""
+      },
+      {
+        "id": "tipo_solicitud",
+        "page": 0,
+        "x": 161.51,
+        "baseline": 466.78,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "Nuevo Suministro",
+        "max_width": 373.0
+      },
+      {
+        "id": "cups",
+        "page": 0,
+        "x": 106.58,
+        "baseline": 483.58,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "ES0021000000000000XX0F",
+        "max_width": 427.9
+      },
+      {
+        "id": "distribuidora",
+        "page": 0,
+        "x": 139.32,
+        "baseline": 491.98,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "BZZ - I-DE REDES ELECTRIC INTELI SAU - ES0021",
+        "max_width": 395.2
+      },
+      {
+        "id": "equipo_medida",
+        "page": 0,
+        "x": 131.93,
+        "baseline": 500.38,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "ICP Instalado",
+        "max_width": 402.6
+      },
+      {
+        "id": "producto",
+        "page": 0,
+        "x": 117.56,
+        "baseline": 508.78,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "TEL3T - TEMPO OPEN 3.0TD",
+        "max_width": 416.9
+      },
+      {
+        "id": "tarifa_acceso",
+        "page": 0,
+        "x": 78.81,
+        "baseline": 566.88,
+        "size": 7.0,
+        "bold": false,
+        "align": "center",
+        "ejemplo": "3.0TD",
+        "center_x": 88.25,
+        "max_width": 54.5
+      },
+      {
+        "id": "tramo_potencia",
+        "page": 0,
+        "x": 145.03,
+        "baseline": 566.88,
+        "size": 7.0,
+        "bold": false,
+        "align": "center",
+        "ejemplo": "> 15kW (3.0TD)",
+        "center_x": 168.79,
+        "max_width": 95.6
+      },
+      {
+        "id": "potencia_p1",
+        "page": 0,
+        "x": 247.11,
+        "baseline": 558.48,
+        "size": 7.0,
+        "bold": false,
+        "align": "center",
+        "ejemplo": "20",
+        "center_x": 254.07,
+        "max_width": 66.1
+      },
+      {
+        "id": "potencia_p2",
+        "page": 0,
+        "x": 322.91,
+        "baseline": 558.48,
+        "size": 7.0,
+        "bold": false,
+        "align": "center",
+        "ejemplo": "20",
+        "center_x": 329.87,
+        "max_width": 70.3
+      },
+      {
+        "id": "potencia_p3",
+        "page": 0,
+        "x": 398.71,
+        "baseline": 558.48,
+        "size": 7.0,
+        "bold": false,
+        "align": "center",
+        "ejemplo": "20",
+        "center_x": 405.67,
+        "max_width": 70.7
+      },
+      {
+        "id": "potencia_p4",
+        "page": 0,
+        "x": 247.11,
+        "baseline": 585.28,
+        "size": 7.0,
+        "bold": false,
+        "align": "center",
+        "ejemplo": "20",
+        "center_x": 254.07,
+        "max_width": 66.1
+      },
+      {
+        "id": "potencia_p5",
+        "page": 0,
+        "x": 322.91,
+        "baseline": 585.28,
+        "size": 7.0,
+        "bold": false,
+        "align": "center",
+        "ejemplo": "20",
+        "center_x": 329.87,
+        "max_width": 70.3
+      },
+      {
+        "id": "potencia_p6",
+        "page": 0,
+        "x": 398.71,
+        "baseline": 585.28,
+        "size": 7.0,
+        "bold": false,
+        "align": "center",
+        "ejemplo": "20",
+        "center_x": 405.67,
+        "max_width": 70.7
+      },
+      {
+        "id": "tension",
+        "page": 0,
+        "x": 467.57,
+        "baseline": 566.88,
+        "size": 7.0,
+        "bold": false,
+        "align": "center",
+        "ejemplo": "3X400/230",
+        "center_x": 486.21,
+        "max_width": 82.4
+      },
+      {
+        "id": "cuenta_titular",
+        "page": 0,
+        "x": 114.39,
+        "baseline": 707.75,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "TALLERES DEMOSTRACIÓN DEL NORTE, S.L.",
+        "max_width": 437.2
+      },
+      {
+        "id": "iban",
+        "page": 0,
+        "x": 114.39,
+        "baseline": 719.55,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "ES0000000000000000000000",
+        "max_width": 437.2
+      },
+      {
+        "id": "fecha_firma",
+        "page": 1,
+        "x": 71.07,
+        "baseline": 244.25,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "02-11-2026",
+        "max_width": 127.4
+      },
+      {
+        "id": "fecha_firma",
+        "page": 6,
+        "x": 362.12,
+        "baseline": 582.12,
+        "size": 8.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "02-11-2026",
+        "max_width": 106.4
+      }
+    ],
+    "checks": [
+      {
+        "id": "check_tipo_solicitud",
+        "page": 0,
+        "rect": [
+          149.94,
+          456.86,
+          159.9,
+          466.76
+        ]
+      },
+      {
+        "id": "check_cargo_cuenta_renovacion",
+        "page": 0,
+        "rect": [
+          30.86,
+          734.46,
+          40.82,
+          744.36
+        ]
+      },
+      {
+        "id": "check_acepta_comunicaciones",
+        "page": 1,
+        "rect": [
+          36.04,
+          112.28,
+          46.0,
+          122.18
+        ]
+      }
+    ],
+    "price_block": null
+  },
+  "anexo": {
+    "doc": "anexo",
+    "page_size": [
+      595.2755737304688,
+      841.8897705078125
+    ],
+    "pages": 3,
+    "fields": [
+      {
+        "id": "validez_desde",
+        "page": 0,
+        "x": 35.3,
+        "baseline": 39.84,
+        "size": 6.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "29-10-2026",
+        "max_width": 43.2
+      },
+      {
+        "id": "validez_desde",
+        "page": 1,
+        "x": 35.3,
+        "baseline": 39.84,
+        "size": 6.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "29-10-2026",
+        "max_width": 43.2
+      },
+      {
+        "id": "validez_desde",
+        "page": 2,
+        "x": 35.3,
+        "baseline": 39.84,
+        "size": 6.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "29-10-2026",
+        "max_width": 43.2
+      },
+      {
+        "id": "validez_hasta",
+        "page": 0,
+        "x": 92.94,
+        "baseline": 39.84,
+        "size": 6.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "03-11-2026",
+        "max_width": 65.6
+      },
+      {
+        "id": "validez_hasta",
+        "page": 1,
+        "x": 92.94,
+        "baseline": 39.84,
+        "size": 6.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "03-11-2026",
+        "max_width": 65.6
+      },
+      {
+        "id": "validez_hasta",
+        "page": 2,
+        "x": 92.94,
+        "baseline": 39.84,
+        "size": 6.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "03-11-2026",
+        "max_width": 65.6
+      },
+      {
+        "id": "titular_nombre",
+        "page": 0,
+        "x": 179.09,
+        "baseline": 122.92,
+        "size": 9.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "TALLERES DEMOSTRACIÓN DEL NORTE, S.L.",
+        "max_width": 374.4
+      },
+      {
+        "id": "documento_numero",
+        "page": 0,
+        "x": 61.28,
+        "baseline": 144.52,
+        "size": 9.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "B00000000",
+        "max_width": 492.2
+      },
+      {
+        "id": "sum_direccion_completa",
+        "page": 0,
+        "x": 205.92,
+        "baseline": 231.79,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "AVENIDA DE PRUEBA 25 34004 PALENCIA PALENCIA PALENCIA",
+        "max_width": 350.6
+      },
+      {
+        "id": "cups",
+        "page": 0,
+        "x": 76.44,
+        "baseline": 245.86,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "ES0021000000000000XX0F",
+        "max_width": 118.1
+      },
+      {
+        "id": "tarifa_acceso",
+        "page": 0,
+        "x": 268.92,
+        "baseline": 245.86,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "3.0TD",
+        "max_width": 92.6
+      },
+      {
+        "id": "producto",
+        "page": 0,
+        "x": 416.45,
+        "baseline": 245.86,
+        "size": 7.0,
+        "bold": false,
+        "align": "left",
+        "ejemplo": "TEL3T - TEMPO OPEN 3.0TD",
+        "max_width": 140.0
+      }
+    ],
+    "checks": [],
+    "price_block": {
+      "page": 0,
+      "x": 42.07,
+      "first_baseline": 266.18,
+      "line_height": 7.2,
+      "size": 6,
+      "max_baseline": 361.0,
+      "max_width": 515.0
+    },
+    "max_suministros": 3,
+    "recuadro_suministro": [
+      33.0,
+      221.5,
+      562.5,
+      365.0
+    ],
+    "pitch_suministro": 153.8
+  }
+}
