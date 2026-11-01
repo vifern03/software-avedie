@@ -88,8 +88,7 @@ async function escribirCups(p, cups) {
   for (let i = 0; i < cups.length; i++) await campos.nth(i).fill(cups[i]);
   await p.click('[data-testid="cups-continuar"]');
 }
-async function cerrar(p, conCambios = false) {
-  if (conCambios) p.once('dialog', (d) => d.accept());
+async function cerrar(p) {
   await p.click('[data-testid="cerrar-generar"]');
   await p.waitForSelector('[data-testid="generar-modal"]', { state: 'detached' });
   await p.waitForTimeout(800);
@@ -108,6 +107,7 @@ async function generar(p, cups) {
   const t0 = Date.now();
   await p.click('[data-testid="confirmar-generar"]');
   await p.waitForSelector('[data-testid="resultado"]', { timeout: 90000 });
+  await p.waitForSelector('[data-testid="generar-modal"]', { state: 'detached' });
   console.log(`  generar: ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   await p.waitForSelector('[data-testid^="campo-"]', { timeout: 60000 });
   await p.waitForTimeout(500);
@@ -193,7 +193,6 @@ async function escenario(nombre, fn) {
     await admin.waitForTimeout(1200);
     const marcos = await admin.evaluate(() => [...document.querySelectorAll('iframe[src^="blob:"]')].map((f) => window.__pdfs[f.src]));
     ok(marcos.length >= 2 && marcos.every((n) => n > 1000), 'Imprimir abre el PDF de los 2 documentos');
-    await cerrar(admin);
   });
 
   await escenario('2. 3 CUPS mismo CIF', async () => {
@@ -212,13 +211,21 @@ async function escenario(nombre, fn) {
     const ps = await textoPdf(await descargar(admin, 'e2_puntos.pdf'));
     ok(ps.texto.includes('NZZ - UNION FENOSA') && ps.texto.includes('BZZ - I-DE'), 'anexo de puntos con cada distribuidora');
     await admin.screenshot({ path: path.join(salida, 'e2_puntos.png'), fullPage: true });
-    await cerrar(admin);
+    const activo = () => admin.locator('[data-testid^="doc-"].bg-google-blue').getAttribute('data-testid');
+    ok(await admin.locator('[data-testid="doc-siguiente"]').isDisabled(), 'último documento: sin flecha siguiente');
+    await admin.click('[data-testid="doc-anterior"]');
+    ok(await activo() === 'doc-anexo_precios', 'flecha anterior');
+    await admin.click('[data-testid="doc-anterior"]');
+    ok(await activo() === 'doc-contrato' && await admin.locator('[data-testid="doc-anterior"]').isDisabled(), 'primer documento: sin flecha anterior');
+    await admin.click('[data-testid="doc-siguiente"]');
+    ok(await activo() === 'doc-anexo_precios', 'flecha siguiente');
   });
 
   await escenario('3. CUPS ya documentado, borrar y regenerar', async () => {
     await admin.reload();
     await admin.waitForTimeout(1500);
     await abrirSeccion(admin);
+    ok(await admin.locator('[data-testid="resultado"]').count() === 0, 'al recargar, la documentación queda solo en el historial');
     await debeRechazar(admin, ['ES0021000000000901XX0F'], 'Ya tiene documentación', 'CUPS documentado bloqueado');
     await debeRechazar(admin, ['ES0021000000000906XX0F'], 'TEMPO 2.0TD', 'TEMPO: indica el producto y no continúa');
     await debeRechazar(admin, ['ES0021000000000999XX0F'], 'No existe en Alta B2B', 'CUPS inexistente: no continúa');
@@ -226,6 +233,12 @@ async function escenario(nombre, fn) {
     await admin.click('[data-testid="anadir-cups"]');
     await admin.click('[data-testid="anadir-cups"]');
     ok(await admin.locator('[data-testid="anadir-cups"]').count() === 0, 'máximo 3 CUPS');
+    await admin.locator('[data-testid="campo-cups"]').nth(1).fill('QUITAR');
+    await admin.locator('[data-testid="quitar-cups"]').nth(1).click();
+    ok(await admin.locator('[data-testid="campo-cups"]').count() === 2, 'la X quita ese CUPS');
+    ok(await admin.locator('[data-testid="campo-cups"]').nth(1).inputValue() === '', 'quita el CUPS elegido');
+    await admin.locator('[data-testid="quitar-cups"]').first().click();
+    ok(await admin.locator('[data-testid="campo-cups"]').count() === 1 && await admin.locator('[data-testid="quitar-cups"]').count() === 0, 'siempre queda un campo');
     await cerrar(admin);
     await admin.fill('[data-testid="historial-buscar"]', 'E2E UNO');
     await admin.waitForTimeout(1200);
@@ -251,7 +264,16 @@ async function escenario(nombre, fn) {
     ok((await e.locator('[data-testid="borrado-por"]').innerText()).includes('Borrado por: E2E Admin'), 'muestra Borrado por');
     await generar(admin, ['ES0021000000000901XX0F']);
     ok(await admin.locator('[data-testid="aviso-1"]').isVisible(), 'regenerar permitido');
-    await cerrar(admin);
+    ok(await admin.locator('[data-testid="resultado"] ~ [data-testid="historial"]').count() === 1, 'el historial sigue debajo de la documentación');
+    ok(await admin.locator('[data-testid="selector-cambiar-modalidad"]').inputValue() === 'plana', 'Cambiar modalidad: Plana por defecto');
+    ok(await admin.locator('[data-testid="guardar-cambios"]').isDisabled(), 'sin cambios, Guardar desactivado');
+    await admin.selectOption('[data-testid="selector-cambiar-modalidad"]', 'noche');
+    await admin.waitForTimeout(800);
+    ok((await admin.locator('[data-testid="aviso-2"]').innerText()).includes('Modalidad: Noche'), 'el aviso muestra la modalidad seleccionada');
+    ok(!(await admin.locator('[data-testid="guardar-cambios"]').isDisabled()), 'Cambiar modalidad activa Guardar cambios');
+    await admin.click('[data-testid="doc-anexo_precios"]');
+    await admin.waitForTimeout(800);
+    ok((await textoPdf(await descargar(admin, 'e3_noche.pdf'))).texto.includes('Descuento Indefinido: 55 %'), 'precios recalculados como con el lápiz');
     await admin.fill('[data-testid="historial-buscar"]', '');
     await escribirCups(admin, ['ES0021000000000905XX0F']);
     await admin.waitForSelector('[data-testid="resumen"]', { timeout: 60000 });
@@ -279,7 +301,6 @@ async function escenario(nombre, fn) {
     await com.waitForSelector('[data-testid="historial"]');
     ok(await com.locator('[data-testid="tab-global"]').count() === 0, 'comercial no ve la pestaña global');
     await generar(com, ['ES0021000000000907XX0F']);
-    await cerrar(com);
     await com.fill('[data-testid="historial-buscar"]', '');
     await com.waitForTimeout(1500);
     ok(await com.locator('[data-testid="entrada-historial"]').count() === 1, 'solo ve lo suyo');
@@ -360,7 +381,6 @@ async function escenario(nombre, fn) {
     const c61 = await textoPdf(await descargar(admin, 'e5_contrato61.pdf'));
     ok(c61.texto.includes('TEMPO OPEN 6.1TD') && c61.texto.includes('> 15kW (6.1TD)'), 'textos propios de 6.1TD');
     ok(c61.texto.includes('20 kV') && !c61.texto.includes('3X400/230'), 'tensión de 6.1TD, sin 3X400/230');
-    await cerrar(admin, true);
 
     await admin.fill('[data-testid="historial-buscar"]', 'E2E COM');
     await admin.waitForTimeout(1200);
@@ -376,7 +396,6 @@ async function escenario(nombre, fn) {
     ok(a.texto.includes('PRECIO POTENCIA P1: 22,5 Eur/kW'), 'el generador usa los precios nuevos');
     ok(a.texto.includes('01-11-2026') && a.texto.includes('31-12-2026'), 'validez de la nueva versión');
     ok(await admin.locator('[data-testid="aviso-caducada"]').count() === 0, 'tarifa vigente: sin aviso de caducidad');
-    await cerrar(admin);
   });
 
   await escenario('6. Fotos y escaneados grandes', async () => {

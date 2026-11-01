@@ -1,31 +1,24 @@
 import { useRef, useState } from 'react';
 import { Loader2, Plus, X } from 'lucide-react';
-import { buscarAltas, generarDocumentacion, guardarVersion, leerDocumentos } from '../../lib/documentacionB2B/flujo';
+import { buscarAltas, generarDocumentacion, leerDocumentos } from '../../lib/documentacionB2B/flujo';
 import { MAX_CUPS, limpiarCups } from '../../lib/documentacionB2B/seleccion';
 import { normalizarCups } from '../../lib/distribuidoras';
-import EditorDocumentacion from './EditorDocumentacion';
-import PantallaCarga from './PantallaCarga';
 
 const PROGRESO = { plantillas: 10, tarifa: 30, pdf: 55, guardar: 80 };
 const TIEMPO_GENERAR = '10 segundos';
-const PASOS_GUARDAR = [{ id: 'guardar', label: 'Guardando', segundos: 3 }];
 
-/** Ventana de generación: CUPS, lectura de datos, confirmación, carga y documentos. */
-export default function GenerarDocumentacionModal({ actor, onCerrar, onGuardado }) {
-  const [fase, setFase] = useState('cups'); // cups | extrayendo | resumen | verificar | generando | resultado
+/** Ventana de generación: CUPS, lectura de datos, confirmación y carga. */
+export default function GenerarDocumentacionModal({ actor, onCerrar, onGenerada }) {
+  const [fase, setFase] = useState('cups'); // cups | extrayendo | resumen | verificar | generando
   const [entradas, setEntradas] = useState(['']);
   const [error, setError] = useState('');
   const [datos, setDatos] = useState(null);
   const [paso, setPaso] = useState('plantillas');
-  const [resultado, setResultado] = useState(null);
-  const [guardando, setGuardando] = useState(false);
-  const [sucio, setSucio] = useState(false);
   const abierta = useRef(true);
 
   const cups = limpiarCups(entradas);
 
   const cerrar = () => {
-    if (sucio && !window.confirm('Tienes cambios sin guardar. ¿Salir sin guardar?')) return;
     abierta.current = false;
     onCerrar();
   };
@@ -50,38 +43,16 @@ export default function GenerarDocumentacionModal({ actor, onCerrar, onGuardado 
     setError('');
     setFase('generando');
     try {
-      const r = await generarDocumentacion({ ...datos, actor, onPaso: setPaso });
-      setResultado(r);
-      onGuardado();
-      setFase('resultado');
+      onGenerada(await generarDocumentacion({ ...datos, actor, onPaso: setPaso }));
     } catch (err) {
       setError(err.message);
       setFase('verificar');
     }
   };
 
-  const guardarCambios = async ({ modelo, editados, pdfs }) => {
-    setGuardando(true);
-    setError('');
-    try {
-      const { version } = await guardarVersion({ actor, id: resultado.id, versionBase: resultado.version, modelo, editados, pdfs });
-      setResultado((r) => ({ ...r, modelo, pdfs, version }));
-      onGuardado();
-      return true;
-    } catch (err) {
-      setError(err.message);
-      return false;
-    } finally {
-      setGuardando(false);
-    }
-  };
-
-  const ancho = fase === 'resultado' ? 'max-w-5xl' : 'max-w-lg';
-
   return (
     <div className="fixed inset-0 z-[55] bg-black/30 backdrop-blur-sm overflow-y-auto p-4 flex" data-testid="generar-modal">
-      {guardando && <PantallaCarga titulo="Guardando" pasos={PASOS_GUARDAR} actual="guardar" />}
-      <div className={`relative bg-white rounded-2xl shadow-google w-full m-auto ${ancho}`}>
+      <div className="relative bg-white rounded-2xl shadow-google w-full m-auto max-w-lg">
         {fase !== 'generando' && (
           <button onClick={cerrar} className="absolute right-3 top-3 z-40 p-1.5 rounded-lg hover:bg-gray-100 text-google-gray" aria-label="Cerrar" data-testid="cerrar-generar"><X size={18} /></button>
         )}
@@ -92,9 +63,15 @@ export default function GenerarDocumentacionModal({ actor, onCerrar, onGuardado 
             <form onSubmit={extraer} className="space-y-3" data-testid="paso-cups">
               <p className="text-sm font-medium text-google-dark pr-8">Introduzca el CUPS o los CUPS sobre los que quiere generar documentación</p>
               {entradas.map((v, i) => (
-                <input key={i} autoFocus={i === entradas.length - 1} value={v} placeholder="CUPS" aria-label={`CUPS ${i + 1}`} data-testid="campo-cups"
-                  onChange={(e) => setEntradas((l) => l.map((x, j) => (j === i ? e.target.value : x)))}
-                  className="input-field w-full text-sm font-mono" />
+                <div key={i} className="flex items-center gap-2">
+                  <input autoFocus={i === entradas.length - 1} value={v} placeholder="CUPS" aria-label={`CUPS ${i + 1}`} data-testid="campo-cups"
+                    onChange={(e) => setEntradas((l) => l.map((x, j) => (j === i ? e.target.value : x)))}
+                    className="input-field w-full text-sm font-mono" />
+                  {entradas.length > 1 && (
+                    <button type="button" onClick={() => setEntradas((l) => l.filter((_, j) => j !== i))} data-testid="quitar-cups"
+                      className="p-1.5 rounded-lg hover:bg-gray-100 text-google-gray" aria-label={`Quitar CUPS ${i + 1}`}><X size={16} /></button>
+                  )}
+                </div>
               ))}
               <div className="flex items-center justify-between gap-3 pt-1">
                 {entradas.length < MAX_CUPS
@@ -145,12 +122,6 @@ export default function GenerarDocumentacionModal({ actor, onCerrar, onGuardado 
               <div className="h-2 bg-gray-100 rounded-full overflow-hidden mt-5">
                 <div className="h-full bg-google-blue rounded-full transition-all duration-700" style={{ width: `${PROGRESO[paso]}%` }} />
               </div>
-            </div>
-          )}
-
-          {fase === 'resultado' && (
-            <div className="pt-6" data-testid="resultado">
-              <EditorDocumentacion inicial={resultado.modelo} pdfsIniciales={resultado.pdfs} plantillas={resultado.plantillas} onGuardar={guardarCambios} onCambios={setSucio} />
             </div>
           )}
         </div>
