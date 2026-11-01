@@ -106,11 +106,19 @@ export default function VisorDocumento({ bytes, nombreArchivo, capa, modelo, avi
     a.click();
   };
   const imprimir = () => {
-    const f = document.createElement('iframe');
-    f.style.display = 'none';
-    f.src = url();
-    f.onload = () => { f.contentWindow?.print(); };
-    document.body.appendChild(f);
+    // Mismo método que el informe de las comparativas (src/lib/exportPdf.js)
+    const direccion = url();
+    if (/iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent || '') || window.innerWidth < 768) { window.open(direccion, '_blank'); return; }
+    const marco = document.createElement('iframe');
+    Object.assign(marco.style, { position: 'fixed', right: '0', bottom: '0', width: '0', height: '0', border: '0' });
+    marco.src = direccion;
+    marco.onload = () => {
+      setTimeout(() => {
+        try { marco.contentWindow.focus(); marco.contentWindow.print(); } catch { window.open(direccion, '_blank'); }
+      }, 150);
+    };
+    document.body.appendChild(marco);
+    setTimeout(() => { marco.remove(); URL.revokeObjectURL(direccion); }, 5 * 60 * 1000);
   };
 
   const zonas = (capa || []).filter((z) => z.page === pagina - 1);

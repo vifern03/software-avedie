@@ -55,11 +55,11 @@ async function sesion(navegador, usuario) {
   const p = await ctx.newPage();
   p.on('pageerror', (e) => console.log('  [pageerror]', e.message));
   await p.addInitScript(() => {
-    window.__impresiones = 0;
-    const d = Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype, 'contentWindow');
-    Object.defineProperty(HTMLIFrameElement.prototype, 'contentWindow', {
-      get() { const w = d.get.call(this); try { if (w) w.print = () => { window.__impresiones++; }; } catch { /* sin acceso */ } return w; },
-    });
+    // Chromium sin ventana no tiene visor de PDF: el iframe no llega a cargar y print() no se
+    // puede observar. Se comprueba que Imprimir crea el marco con un PDF real.
+    window.__pdfs = {};
+    const crear = URL.createObjectURL.bind(URL);
+    URL.createObjectURL = (blob) => { const u = crear(blob); if (blob?.type === 'application/pdf') window.__pdfs[u] = blob.size; return u; };
   });
   await p.route('**/api/gemini', async (r) => {
     const b = r.request().postDataJSON();
@@ -170,7 +170,8 @@ async function escenario(nombre, fn) {
     ok(c.texto.includes('BZZ - I-DE REDES'), 'distribuidora de Endesa');
     await admin.click('[data-testid="imprimir"]');
     await admin.waitForTimeout(1200);
-    ok(await admin.evaluate(() => window.__impresiones) >= 2, 'impresión de los 2 documentos');
+    const marcos = await admin.evaluate(() => [...document.querySelectorAll('iframe[src^="blob:"]')].map((f) => window.__pdfs[f.src]));
+    ok(marcos.length >= 2 && marcos.every((n) => n > 1000), 'Imprimir abre el PDF de los 2 documentos');
   });
 
   await escenario('2. 3 CUPS mismo CIF', async () => {
@@ -226,8 +227,8 @@ async function escenario(nombre, fn) {
     await admin.click('[data-testid="cerrar-edicion"]');
     await e.locator('[data-testid="entrada-borrar"]').click();
     await admin.locator('button.bg-red-600').click();
-    await admin.waitForTimeout(1800);
-    ok(await e.getAttribute('data-estado') === 'borrada', 'entrada borrada');
+    await admin.waitForSelector('[data-testid="entrada-historial"][data-titular="E2E UNO, S.L."][data-estado="borrada"]', { timeout: 15000 });
+    ok(true, 'entrada borrada');
     ok((await e.locator('p').first().evaluate((n) => getComputedStyle(n).textDecorationLine)).includes('line-through'), 'tachada');
     ok((await e.locator('[data-testid="borrado-por"]').innerText()).includes('Borrado por: E2E Admin'), 'muestra Borrado por');
     await marcar(admin, 'ES0021000000000901XX0F');

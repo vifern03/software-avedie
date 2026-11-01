@@ -60,6 +60,12 @@ export default function EditorDocumentacion({ inicial, pdfsIniciales, plantillas
     }
   };
 
+  // Tras guardar se sigue en el mismo documento, sin cambios pendientes.
+  const guardar = async () => {
+    const ok = await onGuardar({ modelo, editados, pdfs, plantillas });
+    if (ok) { setEditados({}); onCambios?.(false); }
+  };
+
   const vacios = camposVaciosAviso(modelo);
   const modalidad = MODALIDADES.find((m) => m.id === modelo.modalidad);
   const docs = DOCS.filter((d) => pdfs[d.tipo]);
@@ -103,7 +109,7 @@ export default function EditorDocumentacion({ inicial, pdfsIniciales, plantillas
             </button>
           ))}
         </div>
-        <button onClick={() => onGuardar({ modelo, editados, pdfs, plantillas })} disabled={!hayCambios} data-testid="guardar-cambios"
+        <button onClick={guardar} disabled={!hayCambios} data-testid="guardar-cambios"
           className="btn-primary text-sm px-4 py-2 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed">
           <Save size={15} /> {textoGuardar}
         </button>

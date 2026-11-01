@@ -83,7 +83,7 @@ export default function DocumentacionB2B() {
       const r = await prepararDocumentacion({ clientes: seleccion, modalidad, actor, onPaso: setPaso });
       setPaso('guardar');
       const { id } = await guardarNueva({ actor, clientes: seleccion, modelo: r.modelo, pdfs: r.pdfs });
-      setResultado({ ...r, id, version: 1, clave: id });
+      setResultado({ ...r, id, version: 1 });
       setSeleccion([]);
       refrescar();
     } catch (e) {
@@ -99,11 +99,13 @@ export default function DocumentacionB2B() {
     setError('');
     try {
       const { version } = await guardarVersion({ actor, id: resultado.id, versionBase: resultado.version, modelo, editados, pdfs });
-      setResultado((r) => ({ ...r, modelo, pdfs, version, clave: `${r.id}-${version}` }));
+      setResultado((r) => ({ ...r, modelo, pdfs, version }));
       refrescar();
+      return true;
     } catch (e) {
       if (e instanceof SesionRequerida) pedirSesion();
       else setError(e.message);
+      return false;
     } finally {
       setPaso(null);
     }
@@ -206,7 +208,7 @@ export default function DocumentacionB2B() {
 
       {resultado && (
         <section className="mt-6" data-testid="resultado">
-          <EditorDocumentacion key={resultado.clave} inicial={resultado.modelo} pdfsIniciales={resultado.pdfs} plantillas={resultado.plantillas} onGuardar={guardarCambios} />
+          <EditorDocumentacion key={resultado.id} inicial={resultado.modelo} pdfsIniciales={resultado.pdfs} plantillas={resultado.plantillas} onGuardar={guardarCambios} />
         </section>
       )}
 
