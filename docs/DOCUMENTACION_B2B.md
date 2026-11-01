@@ -26,7 +26,7 @@ Decisiones tomadas durante la construcción: `DECISIONES.md`. Distribuidoras: `d
 | Ruta | Qué es |
 |---|---|
 | `src/pages/DocumentacionB2B.jsx` | Selección y resultado |
-| `src/components/documentacionB2B/` | Visor, editor, historial, carga, confirmar contraseña |
+| `src/components/documentacionB2B/` | Visor, editor, historial, carga |
 | `src/components/tarifas/ActualizarTarifaModal.jsx` | «Actualizar tarifa» (solo admin) |
 | `src/lib/contratosEndesa/` | Generador, ensamblado, constantes, prompts y esquemas de IA, coordenadas |
 | `src/lib/documentacionB2B/` | Sesión, RPC, archivos, orquestación, capa del visor |
@@ -55,7 +55,8 @@ Todas reciben `p_actor` y `p_token`, salvo las de sesión.
 
 | RPC | Quién |
 |---|---|
-| `doc_b2b_abrir_sesion`, `doc_b2b_cerrar_sesion` | Cualquier usuario, con su contraseña o su token |
+| `doc_b2b_abrir_sesion` | Cualquier usuario, con su contraseña; se llama en el login del CRM |
+| `doc_b2b_renovar_sesion`, `doc_b2b_cerrar_sesion` | Con un token vigente; renovar deja la sesión en 30 días y se llama al arrancar el CRM |
 | `doc_b2b_crear` | Con acceso a la sección y a los contratos |
 | `doc_b2b_nueva_version`, `doc_b2b_borrar` | Admin, manager o quien lo generó |
 | `doc_b2b_compartir` | Admin y manager |
@@ -96,7 +97,7 @@ node e2e/documentacion_b2b_datos.mjs rkqgttpiojjorgwikivr limpiar
 
 1. Código: revertir los commits en `main`, o volver al despliegue anterior en Vercel.
 2. Edge Function: `npx supabase functions delete doc-b2b-archivos --project-ref <ref>`.
-3. Base de datos: `npx supabase db query --linked --project-ref <ref> -f supabase/rollback/20261031000000_documentacion_b2b_down.sql`.
+3. Base de datos: `npx supabase db query --linked --project-ref <ref> -f supabase/rollback/20261101000000_doc_b2b_renovar_sesion_down.sql` y después lo mismo con `supabase/rollback/20261031000000_documentacion_b2b_down.sql`.
 
 El paso 3 borra expedientes, versiones de tarifa, distribuidoras y sesiones. Los PDF y los buckets se quedan: Supabase no deja borrarlos por SQL. Son privados y no tienen políticas; para quitarlos, hay que vaciarlos desde Storage. Las filas de Historial de Actividades se conservan. Si se aplica una versión de tarifa y luego se revierte, Consulta de Tarifas vuelve a los valores de `src/data/`.
 

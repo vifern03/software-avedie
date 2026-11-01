@@ -6,7 +6,7 @@ Decisiones tomadas sin consulta, siempre por la opción más conservadora. Fecha
 ## D1. Identidad en el servidor (§0.6)
 - **Qué:** tabla `doc_b2b_sesiones` y RPC `doc_b2b_abrir_sesion(usuario, contraseña)`, que valida con `verificar_login` y devuelve un token opaco (7 días, solo se guarda su hash). Todas las RPC de la sección exigen `p_actor` + `p_token`.
 - **Por qué:** `p_actor` no es una identidad verificada y estos datos llevan DNI e IBAN. El JWT de `verificar_login` solo existe en producción (en pruebas no), el frontend no lo guarda, y `verificar_login` no se puede modificar.
-- **Sesiones ya abiertas:** el resto del CRM sigue igual. Solo esta sección pide confirmar la contraseña; no se fuerza ningún cierre de sesión (causa de la rotura de RLS Fase 2).
+- **Sesiones ya abiertas:** el resto del CRM sigue igual. No se fuerza ningún cierre de sesión (causa de la rotura de RLS Fase 2). Ver D10.
 - **Alternativas:** usar el JWT existente (no probable en pruebas); solo `p_actor` (incumple §0.6).
 
 ## D2. URLs firmadas en Edge Function de Supabase
@@ -41,3 +41,8 @@ Decisiones tomadas sin consulta, siempre por la opción más conservadora. Fecha
 ## D9. Comprobación en producción
 - **Qué:** usuario administrador temporal con contraseña aleatoria y cliente ficticio, borrados después junto con todo lo que generaron. No se usan cuentas ni contratos reales.
 - **Por qué:** la especificación pide generar con un CUPS ficticio y borrarlo después; esas filas las crea la propia prueba, así que no son datos existentes.
+
+## D10. Sin contraseña en la sección (01-11-2026)
+- **Qué:** se retira el cuadro de contraseña, por indicación del usuario. El token se abre en el login del CRM y `doc_b2b_renovar_sesion` lo renueva a 30 días cada vez que arranca el CRM. Sin token, la sección muestra un aviso con «Cerrar sesión», no fuerza el cierre.
+- **Por qué:** §0.6 exige comprobar en el servidor quién pide las URL firmadas. Abrir sesión solo con el usuario dejaría a cualquiera con la clave pública descargar documentos con DNI e IBAN.
+- **Coste:** quien ya tenía la sesión abierta antes del despliegue, o pase más de 30 días sin abrir el CRM, tiene que volver a entrar una vez.

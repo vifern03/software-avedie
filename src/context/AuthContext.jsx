@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { abrirSesion as abrirSesionDocB2B, cerrarSesion as cerrarSesionDocB2B } from '../lib/documentacionB2B/api';
+import { abrirSesion as abrirSesionDocB2B, cerrarSesion as cerrarSesionDocB2B, renovarSesion as renovarSesionDocB2B } from '../lib/documentacionB2B/api';
 import { initializeDB } from '../lib/initDB';
 
 const AuthContext = createContext(null);
@@ -105,6 +105,7 @@ export function AuthProvider({ children }) {
             const { password: _pw, ...freshSafe } = normalized;
             setCurrentUser(freshSafe);
             localStorage.setItem(SESSION_KEY, JSON.stringify(freshSafe));
+            renovarSesionDocB2B(freshSafe.username);
           }
         } catch {
           localStorage.removeItem(SESSION_KEY);
@@ -133,7 +134,7 @@ export function AuthProvider({ children }) {
     const safeUser = dbToUser(data[0]);
     setCurrentUser(safeUser);
     localStorage.setItem(SESSION_KEY, JSON.stringify(safeUser));
-    abrirSesionDocB2B(data[0].username, password).catch(() => {}); // si falla, la sección pide la contraseña
+    abrirSesionDocB2B(data[0].username, password).catch(() => {}); // si falla, la sección avisa de que hay que volver a entrar
     return true;
   }, []);
 

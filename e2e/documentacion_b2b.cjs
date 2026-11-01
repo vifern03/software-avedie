@@ -252,7 +252,7 @@ async function escenario(nombre, fn) {
     await com.reload();
     await com.waitForTimeout(2000);
     await abrirSeccion(com);
-    await com.waitForSelector('[data-testid="confirmar-sesion"]', { state: 'detached', timeout: 5000 }).catch(() => {});
+    await com.waitForSelector('[data-testid="historial"]');
     ok(await com.locator('[data-testid="tab-global"]').count() === 0, 'comercial no ve la pestaña global');
     await marcar(com, 'ES0021000000000907XX0F');
     await generar(com);
@@ -261,16 +261,23 @@ async function escenario(nombre, fn) {
     ok(await com.locator('[data-testid="entrada-historial"]').count() === 1, 'solo ve lo suyo');
     ok(await entrada(com, 'E2E COM, S.L.').locator('[data-testid="entrada-compartir"]').count() === 0, 'comercial no comparte');
 
-    // Sesión ya abierta sin token: la sección pide la contraseña y no cierra la sesión del CRM
+    // El arranque renueva el token sin pedir nada
+    const expiraAntes = await com.evaluate(() => JSON.parse(localStorage.getItem('crm_avedie_docb2b_token')).expira_at);
+    await com.reload();
+    await com.waitForTimeout(2000);
+    const expiraDespues = await com.evaluate(() => JSON.parse(localStorage.getItem('crm_avedie_docb2b_token')).expira_at);
+    ok(new Date(expiraDespues) > new Date(expiraAntes), 'el arranque renueva la sesión de la sección');
+
+    // Sesión ya abierta sin token: aviso sin contraseña; no cierra la sesión del CRM y no entrega datos
+    const tokenGuardado = await com.evaluate(() => localStorage.getItem('crm_avedie_docb2b_token'));
     await com.evaluate(() => localStorage.removeItem('crm_avedie_docb2b_token'));
     await com.reload();
     await com.waitForTimeout(2000);
     await abrirSeccion(com);
-    await com.waitForSelector('[data-testid="confirmar-sesion"]');
-    await com.fill('[data-testid="confirmar-sesion"] input', CLAVE);
-    await com.click('[data-testid="confirmar-sesion"] button[type=submit]');
-    await com.waitForSelector('[data-testid="historial"]');
-    ok(true, 'sesión vieja: confirma contraseña y sigue');
+    await com.waitForSelector('[data-testid="sesion-requerida"]');
+    ok(await com.locator('input[type=password]').count() === 0, 'sesión vieja: la sección no pide contraseña');
+    ok(await com.locator('[data-testid="historial"]').count() === 0, 'sesión vieja: sin token no hay historial');
+    await com.evaluate((t) => localStorage.setItem('crm_avedie_docb2b_token', t), tokenGuardado);
 
     const { ctx: c3, p: man } = await sesion(b, 'e2e_man');
     await abrirSeccion(man);

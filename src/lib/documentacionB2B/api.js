@@ -1,7 +1,7 @@
 /**
  * Acceso a servidor de Documentación B2B: sesión propia, RPC y Edge Function de archivos.
- * El token se guarda aparte de la sesión del CRM; si falta o caduca, la página pide la
- * contraseña sin cerrar la sesión.
+ * El token se abre en el login del CRM y se guarda aparte de su sesión. Se renueva al
+ * arrancar; si falta o caduca, hay que volver a entrar en el CRM.
  */
 import { supabase } from '../supabase';
 
@@ -9,7 +9,7 @@ const CLAVE_TOKEN = 'crm_avedie_docb2b_token';
 const FUNCION = 'doc-b2b-archivos';
 
 export class SesionRequerida extends Error {
-  constructor() { super('Identifícate para continuar'); this.name = 'SesionRequerida'; }
+  constructor() { super('Cierra sesión y vuelve a entrar en el CRM para usar esta sección.'); this.name = 'SesionRequerida'; }
 }
 
 export function leerToken(username) {
@@ -26,6 +26,19 @@ export async function abrirSesion(username, password) {
   const { data, error } = await supabase.rpc('doc_b2b_abrir_sesion', { p_username: username, p_password: password });
   if (error) throw new Error(error.message);
   localStorage.setItem(CLAVE_TOKEN, JSON.stringify({ username, token: data.token, expira_at: data.expira_at }));
+}
+
+export async function renovarSesion(username) {
+  try {
+    const token = leerToken(username);
+    if (!token) return;
+    const { data, error } = await supabase.rpc('doc_b2b_renovar_sesion', { p_token: token });
+    if (error) {
+      if (/SESION_DOC_B2B/.test(error.message)) localStorage.removeItem(CLAVE_TOKEN);
+      return;
+    }
+    localStorage.setItem(CLAVE_TOKEN, JSON.stringify({ username, token, expira_at: data.expira_at }));
+  } catch { /* renovar nunca debe bloquear el arranque */ }
 }
 
 export async function cerrarSesion() {

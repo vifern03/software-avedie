@@ -76,6 +76,9 @@ SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_listar('t_com', NULL) $q$, 
 SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_listar('t_com', 'x') $q$, 'SESION_DOC_B2B', 'token inventado');
 SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_listar('t_admin', (SELECT v FROM ids WHERE k='tok_t_com')) $q$,
   'SESION_DOC_B2B', 'token de otro usuario: no suplanta al admin');
+SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_renovar_sesion('x') $q$, 'SESION_DOC_B2B', 'renovar con token inventado');
+SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_renovar_sesion(NULL) $q$, 'SESION_DOC_B2B', 'renovar sin token');
+SELECT public.doc_b2b_renovar_sesion((SELECT v FROM ids WHERE k='tok_t_com'));
 
 -- ── Acceso directo a tablas ─────────────────────────────────────────────────
 SELECT pg_temp.debe_fallar($q$ SELECT * FROM public.documentacion_b2b $q$, 'permission denied', 'anon no lee expedientes');

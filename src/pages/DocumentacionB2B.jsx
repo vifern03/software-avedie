@@ -6,7 +6,6 @@ import { leerToken, rpc, SesionRequerida } from '../lib/documentacionB2B/api';
 import { PASOS, guardarNueva, guardarVersion, prepararDocumentacion } from '../lib/documentacionB2B/flujo';
 import { MODALIDADES } from '../lib/contratosEndesa/constantes';
 import { normalizarCups } from '../lib/distribuidoras';
-import ConfirmarSesionModal from '../components/documentacionB2B/ConfirmarSesionModal';
 import EditorDocumentacion from '../components/documentacionB2B/EditorDocumentacion';
 import Historial from '../components/documentacionB2B/Historial';
 import PantallaCarga from '../components/documentacionB2B/PantallaCarga';
@@ -22,7 +21,7 @@ export function bloqueoProducto(c) {
 }
 
 export default function DocumentacionB2B() {
-  const { currentUser } = useAuth();
+  const { currentUser, logout } = useAuth();
   const { clientes } = useData();
   const actor = currentUser.username;
 
@@ -113,7 +112,6 @@ export default function DocumentacionB2B() {
 
   return (
     <div className="p-4 sm:p-6 max-w-6xl mx-auto">
-      {!sesion && <ConfirmarSesionModal onConfirmada={() => setSesion(true)} onCancelar={() => {}} />}
       {paso && <PantallaCarga titulo="Generando documentación" pasos={PASOS} actual={paso} />}
 
       <div className="mb-6 flex items-center gap-3">
@@ -123,6 +121,13 @@ export default function DocumentacionB2B() {
           <p className="text-sm text-google-gray">Contrato y anexos de Endesa a partir de Alta B2B</p>
         </div>
       </div>
+
+      {!sesion && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800" data-testid="sesion-requerida">
+          <span>{new SesionRequerida().message}</span>
+          <button onClick={logout} className="btn-secondary text-sm px-4 py-2">Cerrar sesión</button>
+        </div>
+      )}
 
       <section className="bg-white border border-google-border rounded-xl shadow-sm">
         <div className="p-4 border-b border-gray-100 flex flex-wrap items-center gap-3">

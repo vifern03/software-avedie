@@ -4,8 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { extraerFactura } from '../../lib/energia/geminiCliente';
 import { TARIFAS, aplicarVersion, valoresActuales } from '../../lib/tarifas/registro';
 import { calcularCambios, limpiarRespuesta, promptTarifa, validarActualizacion } from '../../lib/tarifas/actualizador';
-import { archivos, leerToken, rpc, SesionRequerida, subirPdfs } from '../../lib/documentacionB2B/api';
-import ConfirmarSesionModal from '../documentacionB2B/ConfirmarSesionModal';
+import { archivos, rpc, subirPdfs } from '../../lib/documentacionB2B/api';
 
 const ESPERA_IA_MS = 45000;
 
@@ -23,7 +22,6 @@ export default function ActualizarTarifaModal({ tarifaId, onClose, onGuardada })
   const [error, setError] = useState('');
   const [archivo, setArchivo] = useState(null);
   const [res, setRes] = useState(null);
-  const [pedirSesion, setPedirSesion] = useState(!leerToken(currentUser.username));
   const input = useRef(null);
 
   const leer = async (file) => {
@@ -62,8 +60,7 @@ export default function ActualizarTarifaModal({ tarifaId, onClose, onGuardada })
       onGuardada?.();
       onClose();
     } catch (e) {
-      if (e instanceof SesionRequerida) setPedirSesion(true);
-      else setError(e.message);
+      setError(e.message);
       setFase('cambios');
     }
   };
@@ -73,7 +70,6 @@ export default function ActualizarTarifaModal({ tarifaId, onClose, onGuardada })
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 backdrop-blur-sm p-4">
-      {pedirSesion && <ConfirmarSesionModal onConfirmada={() => setPedirSesion(false)} onCancelar={onClose} />}
       <div className="bg-white rounded-2xl shadow-google w-full max-w-2xl max-h-[88vh] flex flex-col" data-testid="actualizar-tarifa">
         <div className="flex items-center justify-between px-6 py-4 border-b border-google-border">
           <div>
