@@ -8,7 +8,7 @@
  *   modelo.avisos       clave → motivo (⚠). Claves: 'titular_nombre' o 's0.sum_via'
  */
 import {
-  MODALIDADES_SIN_VALIDAR, OBLIGATORIOS, CAMPOS_SUMINISTRO_CONTRATO, OBLIGATORIOS_SUMINISTRO_PS,
+  OBLIGATORIOS, CAMPOS_SUMINISTRO_CONTRATO, OBLIGATORIOS_SUMINISTRO_PS,
   bloquePreciosOpen, fechaEndesa, potenciaEndesa,
 } from './generarContratoEndesa.js';
 import {
@@ -47,18 +47,19 @@ function mismoNombre(a, b) {
 }
 
 /**
- * Titular según los documentos. Persona física: DNI (nunca el nombre del Alta, que puede
- * llevar referencias del negocio) y, si no se lee, la factura. Empresa: tarjeta CIF o factura.
+ * Titular: el de la factura, comparado con el DNI (persona física) o la tarjeta CIF o
+ * recibo (empresa). Sin factura legible, el de ese documento con ⚠. Nunca el nombre del
+ * Alta en persona física, que puede llevar referencias del negocio.
  */
 function resolverTitular(documento, c0, { cif, dni, facturas }) {
   const empresa = esCifEmpresa(documento);
   const enFacturas = facturas.map((f) => f?.titular).filter(Boolean);
-  const principal = empresa ? cif?.razon_social : dni?.nombre;
-  const leido = principal || enFacturas[0];
+  const contraste = empresa ? cif?.razon_social : dni?.nombre;
+  const leido = enFacturas[0] || contraste;
   const nombre = mayus(leido || (empresa ? c0.nombre : ''));
-  const otro = leido && [principal, ...enFacturas].find((v) => v && !mismoNombre(v, leido));
+  const otro = [...enFacturas, contraste].find((v) => v && !mismoNombre(v, leido));
   let aviso = null;
-  if (!principal) aviso = MOTIVO.NO_LEIDO;
+  if (!enFacturas.length) aviso = MOTIVO.NO_LEIDO;
   if (otro) aviso = `Los documentos indican otro titular (${mayus(otro)})`;
   return { nombre, aviso };
 }
@@ -93,19 +94,6 @@ function normalizarTension(leida) {
   if (!t) return null;
   const hallada = TENSIONES_30TD.find((v) => t.includes(v.slice(2, 5)));
   return hallada || null;
-}
-
-function avisoModalidad(modalidadId) {
-  const gen = MODALIDADES.find((m) => m.id === modalidadId).generador;
-  return MODALIDADES_SIN_VALIDAR.includes(gen) ? MOTIVO.MODALIDAD : null;
-}
-
-function comprobarPotencias(s, tarifaAcceso) {
-  const v = CLAVES_POTENCIA.map((k) => Number(s[k])).filter((n) => n > 0);
-  if (!v.length) return null;
-  if (tarifaAcceso === '3.0TD' && !v.some((n) => n > 15)) return 'En 3.0TD alguna potencia debe superar 15 kW: revísalas';
-  if (v.some((n, i) => i > 0 && n < v[i - 1])) return 'Las potencias no siguen el orden habitual (P1 ≤ … ≤ P6): revísalas';
-  return null;
 }
 
 /**
@@ -170,10 +158,9 @@ export function ensamblar({ clientes, lecturas = {}, distribuidoras, tarifaInfo,
   marcar('cuenta_titular', avisoTitular);
   for (const k of ['fiscal_via', 'fiscal_numero', 'fiscal_piso', 'fiscal_puerta', 'fiscal_cp', 'fiscal_localidad', 'fiscal_provincia']) {
     const opcional = ['fiscal_numero', 'fiscal_piso', 'fiscal_puerta'].includes(k);
-    if (campos[k]) marcar(k, MOTIVO.IA);
-    else if (!opcional) marcar(k, MOTIVO.NO_LEIDO);
+    if (!campos[k] && !opcional) marcar(k, MOTIVO.NO_LEIDO);
   }
-  for (const k of ['contacto_nombre', 'contacto_dni']) marcar(k, campos[k] ? MOTIVO.IA : MOTIVO.NO_LEIDO);
+  for (const k of ['contacto_nombre', 'contacto_dni']) if (!campos[k]) marcar(k, MOTIVO.NO_LEIDO);
 
   const suministros = clientes.map((c, k) => {
     const f = facturas[k] || null;
@@ -203,29 +190,24 @@ export function ensamblar({ clientes, lecturas = {}, distribuidoras, tarifaInfo,
     for (let i = 0; i < 6; i++) {
       const v = f?.potencias?.[`p${i + 1}`];
       s[CLAVES_POTENCIA[i]] = Number(v) > 0 ? potenciaEndesa(v) : '';
-      marcar(pre + CLAVES_POTENCIA[i], s[CLAVES_POTENCIA[i]] ? MOTIVO.IA : (i === 0 ? MOTIVO.NO_LEIDO : null));
+      if (i === 0 && !s[CLAVES_POTENCIA[i]]) marcar(pre + CLAVES_POTENCIA[i], MOTIVO.NO_LEIDO);
     }
 
     if (tarifaAcceso === '6.1TD') {
       s.tension = txt(f?.tension);
-      marcar(`${pre}tension`, s.tension ? MOTIVO.IA : MOTIVO.NO_LEIDO);
+      if (!s.tension) marcar(`${pre}tension`, MOTIVO.NO_LEIDO);
     } else {
       const t = normalizarTension(f?.tension);
       s.tension = t || TENSION_POR_DEFECTO_30TD;
-      marcar(`${pre}tension`, t ? MOTIVO.IA : MOTIVO.DEFECTO);
+      if (!t) marcar(`${pre}tension`, MOTIVO.DEFECTO);
     }
 
     s.sum_direccion_completa = direccionCompleta(s);
     for (const clave of ['sum_via', 'sum_cp', 'sum_localidad', 'sum_provincia', 'sum_direccion_completa']) if (!s[clave]) marcar(pre + clave, MOTIVO.NO_LEIDO);
 
-    if (dist.estado === 'BAJA' || dist.estado === 'NO_OFICIAL') marcar(`${pre}distribuidora`, `Distribuidora en estado ${dist.estado}: revísala`);
-    else if (dist.error) marcar(`${pre}distribuidora`, dist.error);
-    else if (!dist.texto_endesa) marcar(`${pre}distribuidora`, 'Sin texto de Endesa para esta distribuidora: escríbelo');
-
     // Comprobaciones cruzadas
     if (f?.cups && sinEspacios(f.cups) !== cups) marcar(`${pre}cups`, `La factura indica otro CUPS (${sinEspacios(f.cups)})`);
     if (f?.cif && sinEspacios(f.cif) !== campos.documento_numero) marcar('documento_numero', `La factura indica otro CIF (${sinEspacios(f.cif)})`);
-    marcar(pre + CLAVES_POTENCIA[0], comprobarPotencias(s, tarifaAcceso) || avisos[pre + CLAVES_POTENCIA[0]]);
 
     s.bloque_precios = bloqueSuministro(tarifaInfo.tarifa, tarifaAcceso, modalidad, s);
     return s;
@@ -236,7 +218,6 @@ export function ensamblar({ clientes, lecturas = {}, distribuidoras, tarifaInfo,
 
   const caducada = tarifaInfo.estado !== 'vigente';
   if (caducada) { marcar('validez_desde', MOTIVO.CADUCADA); marcar('validez_hasta', MOTIVO.CADUCADA); }
-  marcar('modalidad', avisoModalidad(modalidad));
 
   return {
     version: 1,
@@ -312,7 +293,7 @@ export function leerClave(modelo, clave) {
 
 /**
  * Aplica una edición y devuelve un modelo nuevo. Quita el ⚠ del campo (ya lo ha revisado
- * una persona), salvo el de modalidad, que depende del texto.
+ * una persona).
  * Cambiar modalidad o potencia recalcula el bloque de precios con `tarifa` (vigente).
  */
 export function aplicarEdicion(modelo, clave, valor, tarifa) {
@@ -323,8 +304,6 @@ export function aplicarEdicion(modelo, clave, valor, tarifa) {
 
   if (clave === 'modalidad') {
     m.modalidad = valor;
-    const a = avisoModalidad(valor);
-    if (a) avisos.modalidad = a;
     m.suministros.forEach((s) => { s.bloque_precios = bloqueSuministro(tarifa, m.tarifa_acceso, valor, s); });
   } else if (sm) {
     const s = m.suministros[Number(sm[1])];

@@ -4,13 +4,14 @@ import { useAuth } from '../context/AuthContext';
 import { cargarPlantillas, rpc, SesionRequerida } from '../lib/documentacionB2B/api';
 import { construirPdfs, guardarVersion } from '../lib/documentacionB2B/flujo';
 import EditorDocumentacion from '../components/documentacionB2B/EditorDocumentacion';
+import ConfirmActionModal from '../components/ConfirmActionModal';
 import GenerarDocumentacionModal from '../components/documentacionB2B/GenerarDocumentacionModal';
 import Historial from '../components/documentacionB2B/Historial';
 import PantallaCarga from '../components/documentacionB2B/PantallaCarga';
 
 const PASOS_GUARDAR = [{ id: 'guardar', label: 'Guardando', segundos: 3 }];
 
-export default function DocumentacionB2B() {
+export default function DocumentacionB2B({ registrarGuarda }) {
   const { currentUser } = useAuth();
   const actor = currentUser.username;
   const [abierta, setAbierta] = useState(false);
@@ -20,6 +21,8 @@ export default function DocumentacionB2B() {
   const [error, setError] = useState('');
   const [carga, setCarga] = useState(0);
   const [avisoEdicion, setAvisoEdicion] = useState(false);
+  const [sucio, setSucio] = useState(false);
+  const [salida, setSalida] = useState(null); // acción pendiente de confirmar
   const zona = useRef(null);
 
   const refrescar = useCallback(() => setRecarga((v) => v + 1), []);
@@ -29,7 +32,26 @@ export default function DocumentacionB2B() {
     setResultado(r);
     setCarga((v) => v + 1);
     setAvisoEdicion(edicion);
+    setSucio(false);
   };
+
+  // Con cambios sin guardar, la acción espera a la confirmación.
+  const salirSiProcede = (accion) => {
+    if (sucio) setSalida(() => accion);
+    else accion();
+  };
+
+  useEffect(() => {
+    registrarGuarda(sucio ? (accion) => setSalida(() => accion) : null);
+    return () => registrarGuarda(null);
+  }, [sucio, registrarGuarda]);
+
+  useEffect(() => {
+    if (!sucio) return undefined;
+    const avisar = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', avisar);
+    return () => window.removeEventListener('beforeunload', avisar);
+  }, [sucio]);
 
   const generada = (r) => {
     mostrar(r, false);
@@ -37,12 +59,14 @@ export default function DocumentacionB2B() {
     refrescar();
   };
 
-  const editar = async (fila) => {
+  const cargarEdicion = async (fila) => {
     const detalle = await rpc('doc_b2b_detalle', actor, { p_id: fila.id });
     const plantillas = await cargarPlantillas(actor);
     const pdfs = await construirPdfs(plantillas, detalle.datos);
     mostrar({ id: fila.id, version: detalle.version_actual, modelo: detalle.datos, pdfs, plantillas }, true);
   };
+
+  const editar = async (fila) => salirSiProcede(() => cargarEdicion(fila).catch((e) => setError(e.message)));
 
   useEffect(() => {
     if (!avisoEdicion) return undefined;
@@ -80,21 +104,29 @@ export default function DocumentacionB2B() {
       </div>
 
       <div className="flex justify-center">
-        <button onClick={() => setAbierta(true)} data-testid="abrir-generar" className="btn-primary text-base px-6 py-3">Generar documentación</button>
+        <button onClick={() => salirSiProcede(() => setAbierta(true))} data-testid="abrir-generar" className="btn-primary text-base px-6 py-3">Generar documentación</button>
       </div>
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
 
       {resultado && (
         <section ref={zona} className="mt-6 scroll-mt-4" data-testid="resultado">
           {avisoEdicion && <p className="mb-3 text-sm text-google-blue bg-blue-50 rounded-lg px-3 py-2" data-testid="aviso-edicion">Se ha cargado la documentación arriba para editarla.</p>}
-          <EditorDocumentacion key={carga} inicial={resultado.modelo} pdfsIniciales={resultado.pdfs} plantillas={resultado.plantillas} onGuardar={guardarCambios} controlesDocumento />
+          <EditorDocumentacion key={carga} inicial={resultado.modelo} pdfsIniciales={resultado.pdfs} plantillas={resultado.plantillas} onGuardar={guardarCambios} onCambios={setSucio} controlesDocumento />
         </section>
       )}
 
       <Historial recarga={recarga} onCambio={refrescar} onSesion={sinSesion} onEditar={editar}
-        onEliminadas={(ids) => setResultado((r) => (r && ids.includes(r.id) ? null : r))} />
+        onEliminadas={(ids) => { if (resultado && ids.includes(resultado.id)) { setResultado(null); setSucio(false); } }} />
 
       {abierta && <GenerarDocumentacionModal actor={actor} onCerrar={() => setAbierta(false)} onGenerada={generada} />}
+      {salida && <ConfirmActionModal
+        title="Cambios sin guardar"
+        message="Tienes cambios sin guardar. ¿Salir sin guardar?"
+        confirmLabel="Salir sin guardar"
+        confirmClassName="bg-red-600 hover:bg-red-700"
+        onConfirm={() => { salida(); setSalida(null); }}
+        onCancel={() => setSalida(null)}
+      />}
     </div>
   );
 }

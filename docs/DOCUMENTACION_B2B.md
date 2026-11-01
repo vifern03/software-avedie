@@ -13,14 +13,15 @@ Decisiones tomadas durante la construcción: `DECISIONES.md`. Distribuidoras: `d
 
 ## Reglas de negocio
 
-- **Titular:** persona física, nombre y apellidos del DNI, nunca el nombre del Alta. Si el DNI no se lee, el de la factura con ⚠. Empresa (documento con formato de CIF), razón social de la tarjeta CIF o de la factura; si no se lee ninguna, el nombre del Alta con ⚠.
+- **Titular:** el de la factura, comparado con el DNI (persona física) o la tarjeta CIF o recibo (empresa); si no coinciden, ⚠. Si la factura no se lee, el de ese documento con ⚠. Si no se lee nada: en persona física queda vacío, nunca el nombre del Alta; en empresa, el nombre del Alta con ⚠.
 - **Nº de documento:** el del Alta; si no lo trae, el de la factura; si tampoco, el DNI.
-- **Dirección de suministro:** se copia de la factura, cada dato en su casilla. Lleva ⚠ solo si no se ha podido leer.
+- **Dirección de suministro:** se copia de la factura, cada dato en su casilla. 
+- **Avisos ⚠:** solo en número de oferta, tensión por defecto, tarifa caducada, dato que la IA no ha podido leer y dato que no coincide entre documentos.
 - **Tramo:** se decide por la potencia contratada máxima (P1–P6).
 - **Precio impreso:** precio base sin descuento, más el 18 % promocional y el % de la modalidad.
-- **3.0TD:** Plana 15, Día 20, Laboral 25, Fin de Semana 45, Noche 55. Producto `TEL3T - TEMPO OPEN 3.0TD`, tramo `> 15kW (3.0TD)`, tensión por defecto `3X400/230` con ⚠.
+- **3.0TD:** Plana 15, Día 20, Laboral 25, Fin de Semana 45, Noche 55. Producto `TEL3T - TEMPO OPEN 3.0TD`, tramo `> 15kW (3.0TD)`, tensión `3X400/230` por defecto, con ⚠, si la factura no la indica.
 - **6.1TD:** igual que 3.0TD, salvo Noche 35. Producto `TEMPO OPEN 6.1TD`, tramo `> 15kW (6.1TD)`. La tensión es la que lea la IA; si no la encuentra, queda vacía, con ⚠ y obligatoria.
-- **Modalidades Día, Fin de Semana y Noche:** su texto sale de la hoja de tarifas y lleva ⚠ («Texto de modalidad sin validar con un anexo real»).
+- **Modalidades Día, Fin de Semana y Noche:** su texto sale de la hoja de tarifas; no se ha validado con un anexo real.
 - **Tarifa caducada:** no bloquea. Se genera con la última versión, el anexo imprime su validez real, hay ⚠ en esos campos y un aviso que no bloquea. Para volver a bloquear: `PERMITIR_TARIFA_CADUCADA = false` en `src/lib/contratosEndesa/constantes.js`.
 - **Obligatorios vacíos:** en rojo. Se guarda, pero no se puede descargar ni imprimir hasta completarlos.
 

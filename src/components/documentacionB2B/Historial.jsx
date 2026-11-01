@@ -216,7 +216,7 @@ export default function Historial({ recarga, onCambio, onSesion, onEditar, onEli
       </div>
       {confirmar && <ConfirmActionModal
         title="Eliminar definitivamente"
-        message={`¿Quieres eliminar definitivamente ${seleccion.length} registros? Esta acción no se puede deshacer.`}
+        message={`¿Quieres eliminar definitivamente ${seleccion.length} ${seleccion.length === 1 ? 'registro' : 'registros'}? Esta acción no se puede deshacer.`}
         confirmLabel="Eliminar"
         confirmClassName="bg-red-600 hover:bg-red-700"
         onConfirm={eliminar}

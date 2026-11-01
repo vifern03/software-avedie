@@ -55,10 +55,8 @@ export const CAMPOS_VACIOS_ENDESA = [
 ];
 
 export const MOTIVO = {
-  IA: 'Deducido por la IA del documento: revísalo',
   DEFECTO: 'Valor por defecto',
   NO_LEIDO: 'No se pudo leer: complétalo',
   OFERTA: 'Número de oferta pendiente',
-  MODALIDAD: 'Texto de modalidad sin validar con un anexo real',
   CADUCADA: 'Tarifa fuera de vigencia: revisa estas fechas',
 };

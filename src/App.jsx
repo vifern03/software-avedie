@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect } from 'react';
+import { lazy, Suspense, useCallback, useRef, useState, useEffect } from 'react';
 import { ShieldOff, Database, Loader2 } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import { useData } from './context/DataContext';
@@ -90,6 +90,8 @@ export default function App() {
   const [pendientesLote, setPendientesLote] = useState(null); // lote abierto desde una tarea
   const [isAIOpen, setIsAIOpen] = useState(false);
   const [, setTarifasListas] = useState(0);
+  const guardaSalida = useRef(null); // la sección puede retener la navegación (cambios sin guardar)
+  const registrarGuarda = useCallback((guarda) => { guardaSalida.current = guarda; }, []);
 
   useEffect(() => {
     sincronizarTarifas().then((n) => { if (n > 0) setTarifasListas((v) => v + 1); });
@@ -108,8 +110,12 @@ export default function App() {
   if (dataLoading)  return <LoadingScreen />;
 
   const handleNavigate = (section, { lote = null } = {}) => {
-    setPendientesLote(section === 'pendientes' ? lote : null);
-    setActiveSection(section);
+    const ir = () => {
+      setPendientesLote(section === 'pendientes' ? lote : null);
+      setActiveSection(section);
+    };
+    if (guardaSalida.current && section !== activeSection) guardaSalida.current(ir);
+    else ir();
   };
 
   const renderPage = () => {
@@ -120,7 +126,7 @@ export default function App() {
       case 'radar':     return <RadarRenovaciones />;
       case 'b2c':       return <AltaClientes tipo="B2C" />;
       case 'b2b':       return <AltaClientes tipo="B2B" />;
-      case 'documentacion_b2b': return <Suspense fallback={<LoadingScreen />}><DocumentacionB2B /></Suspense>;
+      case 'documentacion_b2b': return <Suspense fallback={<LoadingScreen />}><DocumentacionB2B registrarGuarda={registrarGuarda} /></Suspense>;
       case 'historial': return <HistorialActividades />;
       case 'visitas':       return <RegistroVisitas />;
       case 'visitas_pymes': return <RegistroVisitasPymes />;

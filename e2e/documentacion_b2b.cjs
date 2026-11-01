@@ -274,6 +274,9 @@ async function escenario(nombre, fn) {
     await admin.click('[data-testid="doc-anexo_precios"]');
     await admin.waitForTimeout(800);
     ok((await textoPdf(await descargar(admin, 'e3_noche.pdf'))).texto.includes('Descuento Indefinido: 55 %'), 'precios recalculados como con el lápiz');
+    await admin.click('[data-testid="guardar-cambios"]');
+    await admin.waitForSelector('[data-testid="pantalla-carga"]', { state: 'detached', timeout: 30000 });
+    await admin.waitForTimeout(1000);
     await admin.fill('[data-testid="historial-buscar"]', '');
     await escribirCups(admin, ['ES0021000000000905XX0F']);
     await admin.waitForSelector('[data-testid="resumen"]', { timeout: 60000 });
@@ -384,6 +387,36 @@ async function escenario(nombre, fn) {
     ok(c61.texto.includes('TEMPO OPEN 6.1TD') && c61.texto.includes('> 15kW (6.1TD)'), 'textos propios de 6.1TD');
     ok(c61.texto.includes('20 kV') && !c61.texto.includes('3X400/230'), 'tensión de 6.1TD, sin 3X400/230');
 
+    const sinGuardar = () => admin.getByText('Tienes cambios sin guardar. ¿Salir sin guardar?');
+    const cancelar = async () => { await admin.getByRole('button', { name: 'Cancelar', exact: true }).click(); await admin.waitForTimeout(300); };
+    await admin.click('[data-testid="abrir-generar"]');
+    await sinGuardar().waitFor();
+    await cancelar();
+    ok(await admin.locator('[data-testid="generar-modal"]').count() === 0, 'generar con cambios: pregunta y Cancelar se queda');
+    await admin.getByRole('button', { name: 'Consulta de Tarifas', exact: true }).first().click();
+    await sinGuardar().waitFor();
+    await cancelar();
+    ok(await admin.locator('[data-testid="resultado"]').count() === 1, 'cambiar de sección con cambios: pregunta y Cancelar se queda');
+    ok(await admin.evaluate(() => { const e = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(e); return e.defaultPrevented; }), 'recargar con cambios: el navegador pregunta');
+    await admin.fill('[data-testid="historial-buscar"]', 'E2E SEIS');
+    await admin.waitForTimeout(1200);
+    await entrada(admin, 'E2E SEIS, S.L.').locator('[data-testid="entrada-editar"]').click();
+    await sinGuardar().waitFor();
+    await admin.getByRole('button', { name: 'Salir sin guardar', exact: true }).click();
+    await admin.waitForSelector('[data-testid="aviso-edicion"]', { timeout: 20000 });
+    ok(await admin.locator('[data-testid="guardar-cambios"]').isDisabled(), 'otro lápiz con cambios: pregunta y Salir sin guardar carga el otro');
+    await admin.waitForTimeout(1000);
+    await editarCampo(admin, 's0.tension', '25 kV');
+    await admin.waitForTimeout(800);
+    await admin.getByRole('button', { name: 'Consulta de Tarifas', exact: true }).first().click();
+    await sinGuardar().waitFor();
+    await admin.getByRole('button', { name: 'Salir sin guardar', exact: true }).click();
+    await admin.waitForTimeout(800);
+    await abrirSeccion(admin);
+    await admin.click('[data-testid="abrir-generar"]');
+    ok(await admin.locator('[data-testid="generar-modal"]').count() === 1, 'tras salir sin guardar ya no pregunta');
+    await cerrar(admin);
+
     await admin.fill('[data-testid="historial-buscar"]', 'E2E COM');
     await admin.waitForTimeout(1200);
     await admin.click('[data-testid="tab-global"]');
@@ -441,6 +474,9 @@ async function escenario(nombre, fn) {
     ok(await admin.locator('[data-testid="eliminar-definitivo"]').count() === 0, 'sin selección no hay botón');
     await filas.first().locator('[data-testid="entrada-seleccionar"]').check();
     ok((await admin.innerText('[data-testid="eliminar-definitivo"]')) === 'Eliminar definitivamente (1)', 'botón con el número');
+    await admin.click('[data-testid="eliminar-definitivo"]');
+    await admin.getByText('¿Quieres eliminar definitivamente 1 registro? Esta acción no se puede deshacer.').waitFor();
+    await admin.getByRole('button', { name: 'Cancelar', exact: true }).click();
     await admin.check('[data-testid="seleccionar-todo"]');
     ok((await admin.innerText('[data-testid="eliminar-definitivo"]')) === `Eliminar definitivamente (${n})`, 'seleccionar todo');
     await admin.click('[data-testid="eliminar-definitivo"]');
