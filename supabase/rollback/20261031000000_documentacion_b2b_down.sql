@@ -4,9 +4,8 @@
 --  expedientes, versiones de tarifa, distribuidoras y sesiones) y funciones.
 --  Las filas de actividades 'Documentación B2B' se conservan como histórico.
 --
---  Buckets: Supabase no deja borrar un bucket con archivos. Si hay que quitarlos,
---  vaciar antes plantillas-contratos, tarifas-pdf y documentacion-b2b desde Storage;
---  si no están vacíos, los buckets (privados) se quedan y el resto se revierte igual.
+--  Buckets: Supabase no deja borrarlos por SQL. Se quedan (privados, sin políticas) y la
+--  migración los reutiliza. Para quitarlos, vaciarlos y eliminarlos desde Storage.
 --  Edge Function: npx supabase functions delete doc-b2b-archivos --project-ref <ref>
 -- =============================================================================
 DROP FUNCTION IF EXISTS public.doc_b2b_autorizar_archivos(text, text, text, uuid, int, text);
@@ -41,12 +40,3 @@ DROP TABLE IF EXISTS public.documentacion_b2b;
 DROP TABLE IF EXISTS public.doc_b2b_sesiones;
 DROP TABLE IF EXISTS public.tarifas_versiones;
 DROP TABLE IF EXISTS public.distribuidoras_electricidad;
-
-DO $$
-BEGIN
-  DELETE FROM storage.buckets b
-   WHERE b.id IN ('plantillas-contratos', 'tarifas-pdf', 'documentacion-b2b')
-     AND NOT EXISTS (SELECT 1 FROM storage.objects o WHERE o.bucket_id = b.id);
-EXCEPTION WHEN OTHERS THEN
-  RAISE NOTICE 'Buckets no eliminados: %', SQLERRM;
-END $$;

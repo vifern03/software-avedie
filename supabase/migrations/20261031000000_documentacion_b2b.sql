@@ -2,7 +2,7 @@
 --  Documentación B2B: distribuidoras, tarifas versionadas y expedientes.
 --  SOLO AÑADE: tablas, funciones y buckets nuevos. No modifica ningún objeto ni
 --  ninguna fila existente (actividades recibe filas nuevas al usar las RPC).
---  Falla (y no hace nada) si ya existe alguna tabla o bucket con estos nombres.
+--  Falla (y no hace nada) si ya existe alguna tabla con estos nombres o un bucket público.
 --  Rollback: supabase/rollback/20261031000000_documentacion_b2b_down.sql
 -- =============================================================================
 
@@ -116,13 +116,16 @@ CREATE POLICY lectura ON public.tarifas_versiones           FOR SELECT TO anon, 
 -- ── Buckets privados (sin políticas: solo la Edge Function con clave de servicio) ─
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM storage.buckets WHERE id IN ('plantillas-contratos','tarifas-pdf','documentacion-b2b')) THEN
-    RAISE EXCEPTION 'Ya existe alguno de los buckets: revisar antes de continuar.';
+  -- Un rollback conserva los buckets (Supabase no deja borrarlos por SQL): se aceptan
+  -- si ya existen y son privados; uno público aborta la migración.
+  IF EXISTS (SELECT 1 FROM storage.buckets WHERE id IN ('plantillas-contratos','tarifas-pdf','documentacion-b2b') AND public) THEN
+    RAISE EXCEPTION 'Existe un bucket público con el nombre de uno privado: revisar antes de continuar.';
   END IF;
   INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types) VALUES
     ('plantillas-contratos', 'plantillas-contratos', false, 10485760, ARRAY['application/pdf']),
     ('tarifas-pdf',          'tarifas-pdf',          false, 10485760, ARRAY['application/pdf']),
-    ('documentacion-b2b',    'documentacion-b2b',    false, 10485760, ARRAY['application/pdf']);
+    ('documentacion-b2b',    'documentacion-b2b',    false, 10485760, ARRAY['application/pdf'])
+  ON CONFLICT (id) DO NOTHING;
 END $$;
 
 -- ── Sesión ──────────────────────────────────────────────────────────────────
