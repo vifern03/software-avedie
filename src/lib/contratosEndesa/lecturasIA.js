@@ -2,14 +2,15 @@
  * Lecturas con IA de los documentos del Alta: una llamada por documento, con esquema
  * cerrado. La IA solo extrae: nunca decide precios, IBAN, CUPS ni CIF del contrato.
  */
-export const VERSION_LECTURA = 'doc-b2b-2026-10-31.1';
+export const VERSION_LECTURA = 'doc-b2b-2026-11-01.1';
 
-const DIRECCION = '{ "via": "", "numero": "", "piso": "", "puerta": "", "cp": "", "localidad": "", "provincia": "" }';
+const DIRECCION = '{ "via": "", "numero": "", "escalera": "", "piso": "", "puerta": "", "cp": "", "localidad": "", "provincia": "" }';
 
 export const PROMPT_FACTURA = `Lees una factura española de electricidad. Copia los datos tal como aparecen; no calcules ni inventes.
 Devuelve EXCLUSIVAMENTE este JSON (usa null en lo que no aparezca):
 {
   "cups": "",
+  "titular": "nombre o razón social del titular",
   "cif": "NIF o CIF del titular",
   "domicilio_titular": ${DIRECCION},
   "suministro": ${DIRECCION},
@@ -17,6 +18,7 @@ Devuelve EXCLUSIVAMENTE este JSON (usa null en lo que no aparezca):
   "tension": "tensión de suministro tal como aparezca, por ejemplo 3X400/230"
 }
 "suministro" es la dirección del punto de suministro, no la del titular. "via" es solo la calle, sin el número.
+Copia cada dato de la dirección en su clave tal como venga en la factura, sin deducir ni desarrollar abreviaturas. Si aparecen escalera, piso o puerta, van en su clave (por ejemplo piso "BAJ").
 "potencias": potencias contratadas en kW, como números con punto decimal.`;
 
 export const PROMPT_CIF = `Lees una tarjeta de identificación fiscal española (CIF/NIF de empresa). Copia los datos tal como aparecen.
@@ -26,13 +28,13 @@ Devuelve EXCLUSIVAMENTE este JSON (usa null en lo que no aparezca):
 
 export const PROMPT_DNI = `Lees un DNI o NIE español. Copia los datos tal como aparecen.
 Devuelve EXCLUSIVAMENTE este JSON (usa null en lo que no aparezca):
-{ "nombre": "nombre y apellidos", "dni": "" }`;
+{ "nombre": "solo el nombre", "apellidos": "solo los apellidos", "dni": "" }`;
 
 const texto = (v) => (typeof v === 'string' && v.trim() ? v.trim() : typeof v === 'number' ? String(v) : null);
 
 function direccion(d) {
   const o = d && typeof d === 'object' ? d : {};
-  return Object.fromEntries(['via', 'numero', 'piso', 'puerta', 'cp', 'localidad', 'provincia'].map((k) => [k, texto(o[k])]));
+  return Object.fromEntries(['via', 'numero', 'escalera', 'piso', 'puerta', 'cp', 'localidad', 'provincia'].map((k) => [k, texto(o[k])]));
 }
 
 function numero(v) {
@@ -46,6 +48,7 @@ export function limpiarFactura(j) {
   const p = o.potencias && typeof o.potencias === 'object' ? o.potencias : {};
   return {
     cups: texto(o.cups),
+    titular: texto(o.titular),
     cif: texto(o.cif),
     domicilio_titular: direccion(o.domicilio_titular),
     suministro: direccion(o.suministro),
@@ -61,5 +64,6 @@ export function limpiarCif(j) {
 
 export function limpiarDni(j) {
   const o = typeof j === 'string' ? JSON.parse(j) : (j || {});
-  return { nombre: texto(o.nombre), dni: texto(o.dni) };
+  const nombre = [texto(o.nombre), texto(o.apellidos)].filter(Boolean).join(' ');
+  return { nombre: nombre || null, dni: texto(o.dni) };
 }

@@ -19,10 +19,20 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return responder(405, { error: 'Método no permitido' })
 
   try {
-    const { actor, token, accion, id = null, version = null, tarifaId = null } = await req.json()
+    const { actor, token, accion, id = null, version = null, tarifaId = null, ids = [] } = await req.json()
     const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
       auth: { persistSession: false },
     })
+
+    if (accion === 'eliminar') {
+      const { data, error } = await sb.rpc('doc_b2b_eliminar_definitivo', { p_actor: actor, p_token: token, p_ids: ids })
+      if (error) return responder(403, { error: error.message })
+      if (data.rutas.length) {
+        const { error: e } = await sb.storage.from('documentacion-b2b').remove(data.rutas)
+        if (e) throw e
+      }
+      return responder(200, { eliminados: data.eliminados })
+    }
 
     const { data, error } = await sb.rpc('doc_b2b_autorizar_archivos', {
       p_actor: actor, p_token: token, p_accion: accion, p_id: id, p_version: version, p_tarifa_id: tarifaId,

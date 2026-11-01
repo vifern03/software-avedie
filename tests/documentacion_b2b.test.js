@@ -122,7 +122,7 @@ test('valores por defecto y ⚠ correctos (1 CUPS, 3.0TD)', () => {
   assert.equal(m.avisos['s0.tension'], 'Valor por defecto');
   assert.equal(s.potencia_p1, '20');
   assert.ok(m.avisos.fiscal_via);
-  assert.ok(m.avisos['s0.sum_via']);
+  assert.equal(m.avisos['s0.sum_via'], undefined, 'la dirección leída no lleva aviso');
   assert.equal(m.avisos.validez_desde, undefined);
   assert.equal(m.avisos.modalidad, undefined, 'Plana está validada');
   assert.equal(estaCompleta(m), true);
@@ -283,4 +283,64 @@ test('ventana de generación: comprobación de los CUPS escritos', () => {
   assert.match(comprobarCups([a.cups, 'Y'], [a, alta('Y', 'B2', '3.0TD', 'Open 3.0TD')], {}).error, /mismo CIF/);
   assert.match(comprobarCups([a.cups, 'Y'], [a, alta('Y', 'B1', '6.1TD', 'Open 6.1TD')], {}).error, /misma tarifa/);
   assert.match(comprobarCups([a.cups], [a], { [a.cups]: {} }).error, /Ya tiene documentación/);
+});
+
+const persona = (o = {}) => cliente({ nombre: 'VICTOR RAMIREZ SAGREDO P21', cif_dni: '12345678Z', ...o });
+const lecturaDni = { nombre: 'VICTOR RAMIREZ SAGREDO', dni: '12345678Z' };
+
+test('caso P21: el titular de una persona física sale del DNI, no del Alta', () => {
+  const m = modelo1({ clientes: [persona()], lecturas: { facturas: [factura()], cif: null, dni: lecturaDni } });
+  assert.equal(m.campos.titular_nombre, 'VICTOR RAMIREZ SAGREDO');
+  assert.equal(m.campos.cuenta_titular, 'VICTOR RAMIREZ SAGREDO');
+  assert.equal(derivarDocumentos(m).anexo.titular_nombre, 'VICTOR RAMIREZ SAGREDO');
+  assert.equal(m.campos.documento_numero, '12345678Z');
+  assert.equal(m.avisos.titular_nombre, undefined);
+});
+
+test('persona física sin DNI legible: factura con ⚠, y nunca el nombre del Alta', () => {
+  const conFactura = modelo1({ clientes: [persona()], lecturas: { facturas: [factura(20, { titular: 'RAMIREZ SAGREDO VICTOR' })], cif: null, dni: null } });
+  assert.equal(conFactura.campos.titular_nombre, 'RAMIREZ SAGREDO VICTOR');
+  assert.equal(conFactura.avisos.titular_nombre, 'No se pudo leer: complétalo');
+  const sinNada = modelo1({ clientes: [persona()], lecturas: { facturas: [null], cif: null, dni: null } });
+  assert.equal(sinNada.campos.titular_nombre, '');
+  assert.ok(obligatoriosVacios(sinNada).includes('titular_nombre'));
+});
+
+test('empresa: razón social de la tarjeta CIF o de la factura; ⚠ si no coinciden', () => {
+  const lect = (razon, titular) => ({ facturas: [factura(20, { titular })], cif: razon ? { razon_social: razon } : null, dni: lecturaDni });
+  assert.equal(modelo1({ lecturas: lect('EMPRESA REAL, S.L.', null) }).campos.titular_nombre, 'EMPRESA REAL, S.L.');
+  const f = modelo1({ lecturas: lect(null, 'Empresa De Factura SL') });
+  assert.equal(f.campos.titular_nombre, 'EMPRESA DE FACTURA SL');
+  assert.equal(modelo1({ lecturas: lect('EMPRESA REAL, S.L.', 'EMPRESA REAL SL') }).avisos.titular_nombre, undefined);
+  assert.match(modelo1({ lecturas: lect('EMPRESA REAL, S.L.', 'OTRA, S.A.') }).avisos.titular_nombre, /otro titular \(OTRA, S\.A\.\)/);
+});
+
+test('el orden del nombre no cuenta como discrepancia entre DNI y factura', () => {
+  const m = modelo1({ clientes: [persona()], lecturas: { facturas: [factura(20, { titular: 'RAMÍREZ SAGREDO, VICTOR' })], cif: null, dni: lecturaDni } });
+  assert.equal(m.avisos.titular_nombre, undefined);
+});
+
+test('nº de documento: Alta, luego factura, luego DNI', () => {
+  const sin = cliente({ cif_dni: '' });
+  assert.equal(modelo1({ clientes: [sin], lecturas: { facturas: [factura(20, { cif: 'B22222222' })], cif: null, dni: lecturaDni } }).campos.documento_numero, 'B22222222');
+  assert.equal(modelo1({ clientes: [sin], lecturas: { facturas: [factura(20, { cif: null })], cif: null, dni: lecturaDni } }).campos.documento_numero, '12345678Z');
+  assert.match(modelo1({ clientes: [persona()], lecturas: { facturas: [factura()], cif: null, dni: { ...lecturaDni, dni: '87654321X' } } }).avisos.documento_numero, /otro número/);
+});
+
+test('dirección de suministro: escalera, piso y puerta en su casilla y en el anexo', () => {
+  const suministro = { via: 'CALLE MAYOR', numero: '42', escalera: 'A', piso: 'BAJ', puerta: 'B', cp: '34001', localidad: 'PALENCIA', provincia: 'PALENCIA' };
+  const m = modelo1({ lecturas: lecturas([factura(20, { suministro })]) });
+  const s = m.suministros[0];
+  assert.deepEqual([s.sum_escalera, s.sum_piso, s.sum_puerta], ['A', 'BAJ', 'B']);
+  assert.equal(s.sum_direccion_completa, 'CALLE MAYOR 42 A BAJ B 34001 PALENCIA PALENCIA PALENCIA');
+  assert.equal(m.avisos['s0.sum_piso'], undefined);
+  assert.equal(aplicarEdicion(m, 's0.sum_piso', '2', OPEN_30TD).suministros[0].sum_direccion_completa, 'CALLE MAYOR 42 A 2 B 34001 PALENCIA PALENCIA PALENCIA');
+});
+
+test('lectura del DNI: NOMBRE APELLIDOS; la factura trae titular y escalera', () => {
+  assert.equal(limpiarDni({ nombre: 'VICTOR', apellidos: 'RAMIREZ SAGREDO', dni: '1' }).nombre, 'VICTOR RAMIREZ SAGREDO');
+  const f = limpiarFactura({ titular: 'X', suministro: { escalera: '2', piso: 'BAJ' } });
+  assert.equal(f.titular, 'X');
+  assert.equal(f.suministro.escalera, '2');
+  assert.equal(f.suministro.piso, 'BAJ');
 });

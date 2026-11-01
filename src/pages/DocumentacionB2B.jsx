@@ -1,8 +1,8 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { FileSignature } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { SesionRequerida } from '../lib/documentacionB2B/api';
-import { guardarVersion } from '../lib/documentacionB2B/flujo';
+import { cargarPlantillas, rpc, SesionRequerida } from '../lib/documentacionB2B/api';
+import { construirPdfs, guardarVersion } from '../lib/documentacionB2B/flujo';
 import EditorDocumentacion from '../components/documentacionB2B/EditorDocumentacion';
 import GenerarDocumentacionModal from '../components/documentacionB2B/GenerarDocumentacionModal';
 import Historial from '../components/documentacionB2B/Historial';
@@ -18,15 +18,38 @@ export default function DocumentacionB2B() {
   const [guardando, setGuardando] = useState(false);
   const [recarga, setRecarga] = useState(0);
   const [error, setError] = useState('');
+  const [carga, setCarga] = useState(0);
+  const [avisoEdicion, setAvisoEdicion] = useState(false);
+  const zona = useRef(null);
 
   const refrescar = useCallback(() => setRecarga((v) => v + 1), []);
   const sinSesion = useCallback(() => setError(new SesionRequerida().message), []);
 
-  const generada = (r) => {
+  const mostrar = (r, edicion) => {
     setResultado(r);
+    setCarga((v) => v + 1);
+    setAvisoEdicion(edicion);
+  };
+
+  const generada = (r) => {
+    mostrar(r, false);
     setAbierta(false);
     refrescar();
   };
+
+  const editar = async (fila) => {
+    const detalle = await rpc('doc_b2b_detalle', actor, { p_id: fila.id });
+    const plantillas = await cargarPlantillas(actor);
+    const pdfs = await construirPdfs(plantillas, detalle.datos);
+    mostrar({ id: fila.id, version: detalle.version_actual, modelo: detalle.datos, pdfs, plantillas }, true);
+  };
+
+  useEffect(() => {
+    if (!avisoEdicion) return undefined;
+    zona.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const t = setTimeout(() => setAvisoEdicion(false), 5000);
+    return () => clearTimeout(t);
+  }, [avisoEdicion, carga]);
 
   const guardarCambios = async ({ modelo, editados, pdfs }) => {
     setGuardando(true);
@@ -56,16 +79,20 @@ export default function DocumentacionB2B() {
         </div>
       </div>
 
-      <button onClick={() => setAbierta(true)} data-testid="abrir-generar" className="btn-primary text-base px-6 py-3">Generar documentación</button>
+      <div className="flex justify-center">
+        <button onClick={() => setAbierta(true)} data-testid="abrir-generar" className="btn-primary text-base px-6 py-3">Generar documentación</button>
+      </div>
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
 
       {resultado && (
-        <section className="mt-6" data-testid="resultado">
-          <EditorDocumentacion key={resultado.id} inicial={resultado.modelo} pdfsIniciales={resultado.pdfs} plantillas={resultado.plantillas} onGuardar={guardarCambios} controlesDocumento />
+        <section ref={zona} className="mt-6 scroll-mt-4" data-testid="resultado">
+          {avisoEdicion && <p className="mb-3 text-sm text-google-blue bg-blue-50 rounded-lg px-3 py-2" data-testid="aviso-edicion">Se ha cargado la documentación arriba para editarla.</p>}
+          <EditorDocumentacion key={carga} inicial={resultado.modelo} pdfsIniciales={resultado.pdfs} plantillas={resultado.plantillas} onGuardar={guardarCambios} controlesDocumento />
         </section>
       )}
 
-      <Historial recarga={recarga} onCambio={refrescar} onSesion={sinSesion} />
+      <Historial recarga={recarga} onCambio={refrescar} onSesion={sinSesion} onEditar={editar}
+        onEliminadas={(ids) => setResultado((r) => (r && ids.includes(r.id) ? null : r))} />
 
       {abierta && <GenerarDocumentacionModal actor={actor} onCerrar={() => setAbierta(false)} onGenerada={generada} />}
     </div>

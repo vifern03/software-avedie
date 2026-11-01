@@ -1,16 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ChevronDown, Loader2, Pencil, Search, Share2, Trash2, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { cargarPlantillas, descargarBytes, descargarVersion, rpc, SesionRequerida } from '../../lib/documentacionB2B/api';
-import { construirPdfs, guardarVersion } from '../../lib/documentacionB2B/flujo';
+import { archivos, descargarBytes, descargarVersion, rpc, SesionRequerida } from '../../lib/documentacionB2B/api';
 import Pagination from '../Pagination';
 import ConfirmActionModal from '../ConfirmActionModal';
-import EditorDocumentacion from './EditorDocumentacion';
-import PantallaCarga from './PantallaCarga';
 
 const POR_PAGINA = 15;
 const fecha = (iso) => (iso ? new Date(iso).toLocaleDateString('es-ES') : '');
-const PASOS_GUARDAR = [{ id: 'pdf', label: 'Generando documentos', segundos: 1 }, { id: 'guardar', label: 'Guardando', segundos: 2 }];
 
 function CompartirModal({ fila, onCerrar, onGuardado }) {
   const { currentUser, users } = useAuth();
@@ -46,87 +42,12 @@ function CompartirModal({ fila, onCerrar, onGuardado }) {
   );
 }
 
-/** Ventana de edición superpuesta, con fondo desenfocado, sobre la última versión. */
-function EdicionModal({ fila, onCerrar, onGuardado, onSesion }) {
-  const { currentUser } = useAuth();
-  const actor = currentUser.username;
-  const [estado, setEstado] = useState(null);
-  const [error, setError] = useState('');
-  const [sucio, setSucio] = useState(false);
-  const [guardando, setGuardando] = useState(null);
-
-  useEffect(() => {
-    let vivo = true;
-    (async () => {
-      try {
-        const detalle = await rpc('doc_b2b_detalle', actor, { p_id: fila.id });
-        const plantillas = await cargarPlantillas(actor);
-        const modelo = detalle.datos;
-        const pdfs = await construirPdfs(plantillas, modelo);
-        if (vivo) setEstado({ modelo, pdfs, plantillas, version: detalle.version_actual });
-      } catch (e) {
-        if (e instanceof SesionRequerida) onSesion();
-        else if (vivo) setError(e.message);
-      }
-    })();
-    return () => { vivo = false; };
-  }, [fila.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const cerrar = () => {
-    if (sucio && !window.confirm('Tienes cambios sin guardar. ¿Salir sin guardar?')) return;
-    onCerrar();
-  };
-
-  const guardar = async ({ modelo, editados, pdfs }) => {
-    setGuardando('guardar');
-    setError('');
-    try {
-      await guardarVersion({ actor, id: fila.id, versionBase: estado.version, modelo, editados, pdfs });
-      onGuardado();
-    } catch (e) {
-      if (e instanceof SesionRequerida) onSesion();
-      setError(e.message);
-      setGuardando(null);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[55] bg-black/30 backdrop-blur-sm overflow-y-auto p-4" data-testid="edicion-modal">
-      {guardando && <PantallaCarga titulo="Guardando nueva versión" pasos={PASOS_GUARDAR} actual={guardando} />}
-      <div className="bg-white rounded-2xl shadow-google w-full max-w-5xl mx-auto">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-google-border sticky top-0 bg-white rounded-t-2xl z-40">
-          <div>
-            <h3 className="text-base font-semibold text-google-dark">Documentación de {fila.titular}</h3>
-            <p className="text-xs text-google-gray">Versión {fila.version_actual}</p>
-          </div>
-          <button onClick={cerrar} className="p-1.5 rounded-lg hover:bg-gray-100 text-google-gray" aria-label="Cerrar" data-testid="cerrar-edicion"><X size={18} /></button>
-        </div>
-        <div className="p-6">
-          {error && <p className="mb-3 text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
-          {!estado && !error && <div className="py-16 flex justify-center"><Loader2 size={26} className="animate-spin text-google-blue" /></div>}
-          {estado && (
-            <EditorDocumentacion
-              inicial={estado.modelo}
-              pdfsIniciales={estado.pdfs}
-              plantillas={estado.plantillas}
-              textoGuardar="Guardar datos"
-              onGuardar={guardar}
-              onCambios={setSucio}
-            />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Entrada({ fila, onCambio, onSesion, onError }) {
+function Entrada({ fila, onCambio, onSesion, onError, onEditar, seleccionable, marcada, onMarcar }) {
   const { currentUser } = useAuth();
   const actor = currentUser.username;
   const [abierta, setAbierta] = useState(false);
   const [borrar, setBorrar] = useState(false);
   const [compartir, setCompartir] = useState(false);
-  const [editar, setEditar] = useState(false);
   const borrada = fila.estado === 'borrada';
 
   const bajar = async (doc) => {
@@ -157,6 +78,7 @@ function Entrada({ fila, onCambio, onSesion, onError }) {
   return (
     <div className="border border-google-border rounded-xl bg-white" data-testid="entrada-historial" data-titular={fila.titular} data-estado={fila.estado}>
       <div className="flex items-center gap-3 px-4 py-3">
+        {seleccionable && <input type="checkbox" checked={marcada} onChange={onMarcar} data-testid="entrada-seleccionar" aria-label={`Seleccionar documentación de ${fila.titular}`} />}
         <button onClick={() => setAbierta((a) => !a)} className="flex-1 min-w-0 text-left" data-testid="entrada-desplegar">
           <p className={`text-sm font-medium text-google-dark truncate ${borrada ? 'line-through text-google-gray' : ''}`}>Documentación de {fila.titular}</p>
           <p className="text-xs text-google-gray mt-0.5">
@@ -169,7 +91,7 @@ function Entrada({ fila, onCambio, onSesion, onError }) {
           </p>
         </button>
         <div className="flex items-center gap-1 flex-shrink-0">
-          {fila.puede_editar && <button onClick={() => setEditar(true)} data-testid="entrada-editar" className="p-1.5 rounded-lg hover:bg-gray-100 text-google-gray" title="Editar" aria-label="Editar"><Pencil size={15} /></button>}
+          {fila.puede_editar && <button onClick={() => onEditar(fila).catch((e) => onError(e.message))} data-testid="entrada-editar" className="p-1.5 rounded-lg hover:bg-gray-100 text-google-gray" title="Editar" aria-label="Editar"><Pencil size={15} /></button>}
           {fila.puede_borrar && <button onClick={() => setBorrar(true)} data-testid="entrada-borrar" className="p-1.5 rounded-lg hover:bg-red-50 text-google-gray hover:text-red-600" title="Borrar" aria-label="Borrar"><Trash2 size={15} /></button>}
           {fila.puede_compartir && !borrada && <button onClick={() => setCompartir(true)} data-testid="entrada-compartir" className="p-1.5 rounded-lg hover:bg-gray-100 text-google-gray" title="Compartir" aria-label="Compartir"><Share2 size={15} /></button>}
         </div>
@@ -195,21 +117,23 @@ function Entrada({ fila, onCambio, onSesion, onError }) {
         onCancel={() => setBorrar(false)}
       />}
       {compartir && <CompartirModal fila={fila} onCerrar={() => setCompartir(false)} onGuardado={() => { setCompartir(false); onCambio(); }} />}
-      {editar && <EdicionModal fila={fila} onCerrar={() => setEditar(false)} onSesion={onSesion} onGuardado={() => { setEditar(false); onCambio(); }} />}
     </div>
   );
 }
 
 /** Historial, siempre visible bajo el área principal. */
-export default function Historial({ recarga, onCambio, onSesion, enfoque }) {
+export default function Historial({ recarga, onCambio, onSesion, onEditar, onEliminadas, enfoque }) {
   const { currentUser } = useAuth();
   const puedeGlobal = ['admin', 'manager'].includes(currentUser.role);
+  const esAdmin = currentUser.role === 'admin';
   const [modo, setModo] = useState('mias');
   const [busqueda, setBusqueda] = useState('');
   const [pagina, setPagina] = useState(1);
   const [datos, setDatos] = useState({ total: 0, filas: [] });
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState('');
+  const [seleccion, setSeleccion] = useState([]);
+  const [confirmar, setConfirmar] = useState(false);
 
   useEffect(() => { if (enfoque) { setBusqueda(enfoque); setPagina(1); } }, [enfoque]);
 
@@ -220,6 +144,7 @@ export default function Historial({ recarga, onCambio, onSesion, enfoque }) {
         p_modo: modo, p_busqueda: busqueda || null, p_limite: POR_PAGINA, p_desde: (pagina - 1) * POR_PAGINA,
       });
       setDatos(r);
+      setSeleccion([]);
       setError('');
     } catch (e) {
       if (e instanceof SesionRequerida) onSesion();
@@ -230,6 +155,22 @@ export default function Historial({ recarga, onCambio, onSesion, enfoque }) {
   }, [currentUser.username, modo, busqueda, pagina, onSesion]);
 
   useEffect(() => { const t = setTimeout(cargar, 200); return () => clearTimeout(t); }, [cargar, recarga]);
+
+  const marcar = (id) => setSeleccion((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const todas = datos.filas.length > 0 && seleccion.length === datos.filas.length;
+
+  const eliminar = async () => {
+    setConfirmar(false);
+    try {
+      await archivos(currentUser.username, 'eliminar', { ids: seleccion });
+      onEliminadas(seleccion);
+      setPagina(1);
+      onCambio();
+    } catch (e) {
+      if (e instanceof SesionRequerida) onSesion();
+      else setError(e.message);
+    }
+  };
 
   const pestana = (id, label) => (
     <button onClick={() => { setModo(id); setPagina(1); }} data-testid={`tab-${id}`}
@@ -254,9 +195,33 @@ export default function Historial({ recarga, onCambio, onSesion, enfoque }) {
       {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
       {cargando && datos.filas.length === 0 && <div className="py-8 flex justify-center"><Loader2 size={22} className="animate-spin text-google-blue" /></div>}
       {!cargando && datos.filas.length === 0 && <p className="py-8 text-center text-sm text-google-gray">Todavía no hay documentación generada</p>}
+      {esAdmin && datos.filas.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 mb-2 min-h-[36px]">
+          <label className="flex items-center gap-3 text-sm text-google-gray">
+            <input type="checkbox" checked={todas} onChange={() => setSeleccion(todas ? [] : datos.filas.map((f) => f.id))} data-testid="seleccionar-todo" />
+            Seleccionar todo
+          </label>
+          {seleccion.length > 0 && (
+            <button onClick={() => setConfirmar(true)} data-testid="eliminar-definitivo" className="px-4 py-2 rounded-lg text-white text-sm font-medium bg-red-600 hover:bg-red-700">
+              Eliminar definitivamente ({seleccion.length})
+            </button>
+          )}
+        </div>
+      )}
       <div className="space-y-2">
-        {datos.filas.map((f) => <Entrada key={f.id} fila={f} onCambio={onCambio} onSesion={onSesion} onError={setError} />)}
+        {datos.filas.map((f) => (
+          <Entrada key={f.id} fila={f} onCambio={onCambio} onSesion={onSesion} onError={setError} onEditar={onEditar}
+            seleccionable={esAdmin} marcada={seleccion.includes(f.id)} onMarcar={() => marcar(f.id)} />
+        ))}
       </div>
+      {confirmar && <ConfirmActionModal
+        title="Eliminar definitivamente"
+        message={`¿Quieres eliminar definitivamente ${seleccion.length} registros? Esta acción no se puede deshacer.`}
+        confirmLabel="Eliminar"
+        confirmClassName="bg-red-600 hover:bg-red-700"
+        onConfirm={eliminar}
+        onCancel={() => setConfirmar(false)}
+      />}
       {datos.total > POR_PAGINA && (
         <Pagination currentPage={pagina} totalPages={Math.ceil(datos.total / POR_PAGINA)} onPageChange={setPagina} />
       )}

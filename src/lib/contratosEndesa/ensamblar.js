@@ -31,10 +31,36 @@ export function provinciaEndesa(p) {
   return /\bESPAÑA$/.test(t) ? t : `${t} ESPAÑA`;
 }
 
-/** Dirección del anexo: VIA NUM CP LOCALIDAD LOCALIDAD PROVINCIA. */
-export function direccionCompleta({ sum_via, sum_numero, sum_cp, sum_localidad, sum_provincia }) {
+/** Dirección del anexo: VIA NUM ESC PISO PUERTA CP LOCALIDAD LOCALIDAD PROVINCIA. */
+export function direccionCompleta({ sum_via, sum_numero, sum_escalera, sum_piso, sum_puerta, sum_cp, sum_localidad, sum_provincia }) {
   const l = mayus(sum_localidad);
-  return [mayus(sum_via), mayus(sum_numero), txt(sum_cp), l, l, mayus(sum_provincia)].filter(Boolean).join(' ');
+  return [mayus(sum_via), mayus(sum_numero), mayus(sum_escalera), mayus(sum_piso), mayus(sum_puerta), txt(sum_cp), l, l, mayus(sum_provincia)].filter(Boolean).join(' ');
+}
+
+/** CIF de empresa (letra de organización + 7 dígitos + control), no DNI ni NIE. */
+export const esCifEmpresa = (doc) => /^[A-HJNPQRSUVW]\d{7}[0-9A-J]$/.test(txt(doc).toUpperCase().replace(/[^A-Z0-9]/g, ''));
+
+/** Compara nombres sin tener en cuenta orden, acentos ni puntuación. */
+function mismoNombre(a, b) {
+  const clave = (v) => mayus(v).normalize('NFD').replace(/[\u0300-\u036f.]/g, '').replace(/[^A-Z0-9]+/g, ' ').trim().split(' ').sort().join(' ');
+  return clave(a) === clave(b);
+}
+
+/**
+ * Titular según los documentos. Persona física: DNI (nunca el nombre del Alta, que puede
+ * llevar referencias del negocio) y, si no se lee, la factura. Empresa: tarjeta CIF o factura.
+ */
+function resolverTitular(documento, c0, { cif, dni, facturas }) {
+  const empresa = esCifEmpresa(documento);
+  const enFacturas = facturas.map((f) => f?.titular).filter(Boolean);
+  const principal = empresa ? cif?.razon_social : dni?.nombre;
+  const leido = principal || enFacturas[0];
+  const nombre = mayus(leido || (empresa ? c0.nombre : ''));
+  const otro = leido && [principal, ...enFacturas].find((v) => v && !mismoNombre(v, leido));
+  let aviso = null;
+  if (!principal) aviso = MOTIVO.NO_LEIDO;
+  if (otro) aviso = `Los documentos indican otro titular (${mayus(otro)})`;
+  return { nombre, aviso };
 }
 
 export const potenciaMaxima = (s) => Math.max(0, ...CLAVES_POTENCIA.map((k) => Number(s[k]) || 0));
@@ -104,7 +130,8 @@ export function ensamblar({ clientes, lecturas = {}, distribuidoras, tarifaInfo,
   const cif = lecturas.cif || null;
   const dni = lecturas.dni || null;
 
-  const titular = txt(c0.nombre);
+  const documento = sinEspacios(c0.cif_dni) || sinEspacios(facturas.find((f) => f?.cif)?.cif) || sinEspacios(dni?.dni);
+  const { nombre: titular, aviso: avisoTitular } = resolverTitular(documento, c0, { cif, dni, facturas });
   const domicilio = cif?.domicilio?.via ? cif.domicilio : (facturas.find((f) => f?.domicilio_titular?.via)?.domicilio_titular || {});
 
   const campos = {
@@ -112,7 +139,7 @@ export function ensamblar({ clientes, lecturas = {}, distribuidoras, tarifaInfo,
     titular_nombre: titular,
     cuenta_titular: titular,
     tipo_documento: 'IDENTIFICADOR FISCAL',
-    documento_numero: sinEspacios(c0.cif_dni),
+    documento_numero: documento,
     idioma: 'CASTELLANO',
     actividad: 'COMERCIAL',
     telefono1: txt(c0.telefono),
@@ -139,6 +166,8 @@ export function ensamblar({ clientes, lecturas = {}, distribuidoras, tarifaInfo,
   for (const v of CAMPOS_VACIOS_ENDESA) if (!v.suministro) campos[v.id] = '';
 
   marcar('oferta_numero', MOTIVO.OFERTA);
+  marcar('titular_nombre', avisoTitular);
+  marcar('cuenta_titular', avisoTitular);
   for (const k of ['fiscal_via', 'fiscal_numero', 'fiscal_piso', 'fiscal_puerta', 'fiscal_cp', 'fiscal_localidad', 'fiscal_provincia']) {
     const opcional = ['fiscal_numero', 'fiscal_piso', 'fiscal_puerta'].includes(k);
     if (campos[k]) marcar(k, MOTIVO.IA);
@@ -156,10 +185,13 @@ export function ensamblar({ clientes, lecturas = {}, distribuidoras, tarifaInfo,
       cups,
       sum_via: mayus(d.via),
       sum_numero: mayus(d.numero),
+      sum_escalera: mayus(d.escalera),
+      sum_piso: mayus(d.piso),
+      sum_puerta: mayus(d.puerta),
       sum_cp: txt(d.cp),
       sum_localidad: mayus(d.localidad),
       sum_provincia: mayus(d.provincia),
-      sum_escalera: '', sum_piso: '', sum_puerta: '', sum_ref_catastral: '',
+      sum_ref_catastral: '',
       distribuidora: txt(dist.texto_endesa),
       equipo_medida: 'ICP Instalado',
       producto: PRODUCTO_TEXTO[tarifaAcceso],
@@ -184,9 +216,7 @@ export function ensamblar({ clientes, lecturas = {}, distribuidoras, tarifaInfo,
     }
 
     s.sum_direccion_completa = direccionCompleta(s);
-    for (const clave of ['sum_via', 'sum_cp', 'sum_localidad', 'sum_provincia']) marcar(pre + clave, s[clave] ? MOTIVO.IA : MOTIVO.NO_LEIDO);
-    if (s.sum_numero) marcar(`${pre}sum_numero`, MOTIVO.IA);
-    marcar(`${pre}sum_direccion_completa`, s.sum_direccion_completa ? MOTIVO.IA : MOTIVO.NO_LEIDO);
+    for (const clave of ['sum_via', 'sum_cp', 'sum_localidad', 'sum_provincia', 'sum_direccion_completa']) if (!s[clave]) marcar(pre + clave, MOTIVO.NO_LEIDO);
 
     if (dist.estado === 'BAJA' || dist.estado === 'NO_OFICIAL') marcar(`${pre}distribuidora`, `Distribuidora en estado ${dist.estado}: revísala`);
     else if (dist.error) marcar(`${pre}distribuidora`, dist.error);
@@ -202,6 +232,7 @@ export function ensamblar({ clientes, lecturas = {}, distribuidoras, tarifaInfo,
   });
 
   if (cif?.cif && sinEspacios(cif.cif) !== campos.documento_numero) marcar('documento_numero', `La tarjeta CIF indica otro CIF (${sinEspacios(cif.cif)})`);
+  if (!esCifEmpresa(documento) && dni?.dni && sinEspacios(dni.dni) !== documento) marcar('documento_numero', `El DNI indica otro número (${sinEspacios(dni.dni)})`);
 
   const caducada = tarifaInfo.estado !== 'vigente';
   if (caducada) { marcar('validez_desde', MOTIVO.CADUCADA); marcar('validez_hasta', MOTIVO.CADUCADA); }
@@ -300,7 +331,7 @@ export function aplicarEdicion(modelo, clave, valor, tarifa) {
     const campo = sm[2];
     s[campo] = CLAVES_POTENCIA.includes(campo) ? potenciaEndesa(String(valor).replace(',', '.')) : valor;
     if (CLAVES_POTENCIA.includes(campo)) s.bloque_precios = bloqueSuministro(tarifa, m.tarifa_acceso, m.modalidad, s);
-    if (['sum_via', 'sum_numero', 'sum_cp', 'sum_localidad', 'sum_provincia'].includes(campo)) {
+    if (['sum_via', 'sum_numero', 'sum_escalera', 'sum_piso', 'sum_puerta', 'sum_cp', 'sum_localidad', 'sum_provincia'].includes(campo)) {
       s.sum_direccion_completa = direccionCompleta(s);
       delete avisos[`s${sm[1]}.sum_direccion_completa`];
     }

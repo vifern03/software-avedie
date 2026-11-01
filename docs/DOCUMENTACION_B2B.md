@@ -9,10 +9,13 @@ Decisiones tomadas durante la construcción: `DECISIONES.md`. Distribuidoras: `d
 2. La IA lee factura, CIF y DNI, una llamada por documento, en PDF o imagen. Los archivos de más de 3,1 MB se reducen antes: las fotos se comprimen y de un PDF se envían las 3 primeras páginas como imagen. Si una lectura falla, sus campos quedan vacíos con ⚠ y no se bloquea.
 3. `ensamblar()` construye el modelo con reglas deterministas. La IA nunca decide precios, IBAN, CUPS ni CIF.
 4. El navegador genera los PDF con pdf-lib sobre las plantillas del bucket privado y los guarda como versión 1.
-5. Cada edición guardada crea una versión nueva. El borrado es lógico y libera los CUPS.
+5. Cada edición guardada crea una versión nueva. El borrado es lógico y libera los CUPS. Un administrador puede además eliminar definitivamente expedientes y sus PDF desde el historial.
 
 ## Reglas de negocio
 
+- **Titular:** persona física, nombre y apellidos del DNI, nunca el nombre del Alta. Si el DNI no se lee, el de la factura con ⚠. Empresa (documento con formato de CIF), razón social de la tarjeta CIF o de la factura; si no se lee ninguna, el nombre del Alta con ⚠.
+- **Nº de documento:** el del Alta; si no lo trae, el de la factura; si tampoco, el DNI.
+- **Dirección de suministro:** se copia de la factura, cada dato en su casilla. Lleva ⚠ solo si no se ha podido leer.
 - **Tramo:** se decide por la potencia contratada máxima (P1–P6).
 - **Precio impreso:** precio base sin descuento, más el 18 % promocional y el % de la modalidad.
 - **3.0TD:** Plana 15, Día 20, Laboral 25, Fin de Semana 45, Noche 55. Producto `TEL3T - TEMPO OPEN 3.0TD`, tramo `> 15kW (3.0TD)`, tensión por defecto `3X400/230` con ⚠.
@@ -65,6 +68,7 @@ Todas reciben `p_actor` y `p_token`, salvo las de sesión.
 | `doc_b2b_listar` | `mias`: con acceso. `global`: admin y manager |
 | `doc_b2b_detalle`, `doc_b2b_cups_activos` | Con acceso |
 | `distribuidora_guardar`, `tarifa_guardar_version` | Admin |
+| `doc_b2b_eliminar_definitivo` | Admin; solo la llama la Edge Function, que borra los PDF |
 | `doc_b2b_autorizar_archivos` | Solo `service_role` (la Edge Function) |
 
 Cada acción se registra en Historial de Actividades con el tipo `Documentación B2B`.
@@ -99,7 +103,7 @@ node e2e/documentacion_b2b_datos.mjs rkqgttpiojjorgwikivr limpiar
 
 1. Código: revertir los commits en `main`, o volver al despliegue anterior en Vercel.
 2. Edge Function: `npx supabase functions delete doc-b2b-archivos --project-ref <ref>`.
-3. Base de datos: `npx supabase db query --linked --project-ref <ref> -f supabase/rollback/20261101000001_doc_b2b_generar_por_cups_down.sql`, lo mismo con `supabase/rollback/20261101000000_doc_b2b_renovar_sesion_down.sql` y después lo mismo con `supabase/rollback/20261031000000_documentacion_b2b_down.sql`.
+3. Base de datos: `npx supabase db query --linked --project-ref <ref> -f supabase/rollback/20261101000002_doc_b2b_eliminar_definitivo_down.sql`, lo mismo con `supabase/rollback/20261101000001_doc_b2b_generar_por_cups_down.sql`, con `supabase/rollback/20261101000000_doc_b2b_renovar_sesion_down.sql` y después lo mismo con `supabase/rollback/20261031000000_documentacion_b2b_down.sql`.
 
 El paso 3 borra expedientes, versiones de tarifa, distribuidoras y sesiones. Los PDF y los buckets se quedan: Supabase no deja borrarlos por SQL. Son privados y no tienen políticas; para quitarlos, hay que vaciarlos desde Storage. Las filas de Historial de Actividades se conservan. Si se aplica una versión de tarifa y luego se revierte, Consulta de Tarifas vuelve a los valores de `src/data/`.
 

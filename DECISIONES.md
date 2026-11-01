@@ -52,3 +52,7 @@ Decisiones tomadas sin consulta, siempre por la opción más conservadora. Fecha
 - **Consecuencia:** deja de cumplirse la comprobación de identidad de §0.6. Con la clave pública de la web y un nombre de usuario con acceso se pueden pedir sus documentos, con DNI e IBAN.
 - **Solo añade:** `doc_b2b_crear`, `_doc_b2b_ve_cliente` y el resto de lo existente no se tocan. La generación sin restricción por propietario va por `doc_b2b_crear_por_cups`, una función nueva; `doc_b2b_buscar_cups` busca los CUPS.
 
+
+## D12. Datos según documentos y eliminación definitiva (01-11-2026)
+- **Persona o empresa:** se decide por el formato del nº de documento (letra de organización + 7 dígitos + control = empresa).
+- **Eliminación:** `doc_b2b_eliminar_definitivo` solo la ejecuta `service_role`, a través de la Edge Function, porque Supabase no deja borrar archivos por SQL. Primero borra las filas y después los PDF; si fallara ese segundo paso, quedarían PDF sueltos en el bucket privado.

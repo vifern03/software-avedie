@@ -4,6 +4,7 @@
 //   3) node e2e/documentacion_b2b.cjs <puerto> <carpeta_salida>
 // /api/gemini se simula: devuelve datos ficticios según la marca escrita en cada documento.
 const { chromium } = require('playwright');
+const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -244,18 +245,17 @@ async function escenario(nombre, fn) {
     await admin.waitForTimeout(1200);
     const e = entrada(admin, 'E2E UNO, S.L.');
     await e.locator('[data-testid="entrada-editar"]').click();
-    await admin.waitForSelector('[data-testid="edicion-modal"] [data-testid="pagina-pdf"]', { timeout: 20000 });
-    await admin.waitForTimeout(1200);
+    await admin.waitForSelector('[data-testid="resultado"] [data-testid="pagina-pdf"]', { timeout: 20000 });
+    ok((await admin.innerText('[data-testid="aviso-edicion"]')) === 'Se ha cargado la documentación arriba para editarla.', 'aviso al cargar arriba para editar');
+    await admin.waitForTimeout(1500);
+    ok(await admin.locator('[data-testid="edicion-modal"]').count() === 0 && await admin.locator('[data-testid="generar-modal"]').count() === 0, 'el lápiz no abre ventana');
+    ok((await admin.locator('[data-testid="resultado"]').boundingBox()).y < 200, 'la página se desplaza a la documentación');
     await editarCampo(admin, 'fiscal_numero', '100');
     await admin.waitForTimeout(800);
-    let mensaje = '';
-    admin.once('dialog', async (d) => { mensaje = d.message(); await d.dismiss(); });
-    await admin.click('[data-testid="cerrar-edicion"]');
-    await admin.waitForTimeout(400);
-    ok(mensaje === 'Tienes cambios sin guardar. ¿Salir sin guardar?', 'aviso al cerrar con cambios');
-    ok(await admin.locator('[data-testid="edicion-modal"]').isVisible(), 'la ventana sigue abierta');
-    admin.once('dialog', (d) => d.accept());
-    await admin.click('[data-testid="cerrar-edicion"]');
+    await admin.click('[data-testid="guardar-cambios"]');
+    await admin.waitForSelector('[data-testid="pantalla-carga"]', { state: 'detached', timeout: 30000 });
+    await admin.waitForTimeout(2000);
+    ok((await e.innerText()).includes('v3'), 'editar desde el historial crea una versión nueva');
     await e.locator('[data-testid="entrada-borrar"]').click();
     await admin.locator('button.bg-red-600').click();
     await admin.waitForSelector('[data-testid="entrada-historial"][data-titular="E2E UNO, S.L."][data-estado="borrada"]', { timeout: 15000 });
@@ -320,12 +320,14 @@ async function escenario(nombre, fn) {
     await abrirSeccion(com);
     await com.waitForSelector('[data-testid="entrada-historial"]', { timeout: 15000 });
     ok(await com.locator('input[type=password]').count() === 0, 'sesión vieja: sin contraseña, con historial');
+    ok(await com.locator('[data-testid="seleccionar-todo"]').count() === 0 && await com.locator('[data-testid="entrada-seleccionar"]').count() === 0, 'comercial sin casillas de eliminar');
 
     const { ctx: c3, p: man } = await sesion(b, 'e2e_man');
     await abrirSeccion(man);
     await man.click('[data-testid="tab-global"]');
     await man.fill('[data-testid="historial-buscar"]', 'E2E TRES');
     await man.waitForTimeout(1500);
+    ok(await man.locator('[data-testid="seleccionar-todo"]').count() === 0 && await man.locator('[data-testid="entrada-seleccionar"]').count() === 0, 'manager sin casillas de eliminar');
     await entrada(man, 'E2E TRES, S.L.').locator('[data-testid="entrada-compartir"]').click();
     await man.locator('[data-testid="compartir-modal"] input[value="e2e_com"]').check();
     await man.click('[data-testid="compartir-guardar"]');
@@ -425,6 +427,41 @@ async function escenario(nombre, fn) {
     }, fs.readFileSync(hoja).toString('base64'));
     console.log('  ', JSON.stringify(e));
     ok(e[0] > 3100000 && e[1] <= 3100000 && e[2] === 'image/jpeg', 'PDF grande convertido a imagen');
+  });
+
+  await escenario('7. Eliminar definitivamente (admin)', async () => {
+    const CUPS = 'ES0021000000000907XX0F';
+    await abrirSeccion(admin);
+    await admin.click('[data-testid="tab-global"]');
+    await admin.fill('[data-testid="historial-buscar"]', 'E2E COM');
+    await admin.waitForTimeout(1500);
+    const filas = admin.locator('[data-testid="entrada-historial"]');
+    const n = await filas.count();
+    ok(n >= 2, 'hay entradas activas y borradas');
+    ok(await admin.locator('[data-testid="eliminar-definitivo"]').count() === 0, 'sin selección no hay botón');
+    await filas.first().locator('[data-testid="entrada-seleccionar"]').check();
+    ok((await admin.innerText('[data-testid="eliminar-definitivo"]')) === 'Eliminar definitivamente (1)', 'botón con el número');
+    await admin.check('[data-testid="seleccionar-todo"]');
+    ok((await admin.innerText('[data-testid="eliminar-definitivo"]')) === `Eliminar definitivamente (${n})`, 'seleccionar todo');
+    await admin.click('[data-testid="eliminar-definitivo"]');
+    await admin.getByText(`¿Quieres eliminar definitivamente ${n} registros? Esta acción no se puede deshacer.`).waitFor();
+    await admin.getByRole('button', { name: 'Cancelar', exact: true }).click();
+    ok(await filas.count() === n, 'Cancelar no elimina nada');
+    await admin.click('[data-testid="eliminar-definitivo"]');
+    const [pet] = await Promise.all([
+      admin.waitForRequest((r) => r.url().includes('doc-b2b-archivos') && (r.postData() || '').includes('eliminar')),
+      admin.locator('button.bg-red-600', { hasText: /^Eliminar$/ }).click(),
+    ]);
+    await admin.waitForTimeout(2500);
+    ok(await filas.count() === 0, 'desaparecen del historial');
+    const ids = pet.postDataJSON().ids;
+    const f = path.join(salida, 'e7.sql');
+    fs.writeFileSync(f, `SELECT count(*) AS pdfs FROM storage.objects WHERE bucket_id='documentacion-b2b' AND split_part(name,'/',1) = ANY (ARRAY['${ids.join("','")}']);`);
+    const r = execSync(`npx supabase db query --linked --project-ref ${process.env.E2E_REF} -f "${f}"`, { stdio: ['ignore', 'pipe', 'pipe'] }).toString();
+    ok(/"pdfs":\s*0/.test(r), 'sus PDF desaparecen del bucket');
+    await admin.fill('[data-testid="historial-buscar"]', '');
+    await generar(admin, [CUPS]);
+    ok(true, 'el CUPS queda libre para generar de nuevo');
   });
 
   await b.close();

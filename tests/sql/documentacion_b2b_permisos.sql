@@ -198,6 +198,19 @@ SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_autorizar_archivos('t_com',
 SELECT pg_temp.ok((public.doc_b2b_autorizar_archivos('t_man', (SELECT v FROM ids WHERE k='tok_t_man'), 'descargar', (SELECT v::uuid FROM ids WHERE k='d1')))->>'lectura' = 'true', 'borrada: manager descarga');
 SELECT pg_temp.ok((public.doc_b2b_autorizar_archivos('t_com', (SELECT v FROM ids WHERE k='tok_t_com'), 'subir', (SELECT v::uuid FROM ids WHERE k='d2')))->'rutas'->>0 LIKE '%/v2/contrato.pdf', 'subir: solo la versión siguiente');
 SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_autorizar_archivos('t_com2', (SELECT v FROM ids WHERE k='tok_t_com2'), 'subir', (SELECT v::uuid FROM ids WHERE k='d2')) $q$, 'No puedes editar', 'ajeno no sube');
+
+-- ── Eliminación definitiva: solo admin ──────────────────────────────────────
+SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_eliminar_definitivo('t_man', (SELECT v FROM ids WHERE k='tok_t_man'), ARRAY[(SELECT v::uuid FROM ids WHERE k='d2')]) $q$, 'Solo un administrador', 'manager no elimina definitivamente');
+SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_eliminar_definitivo('t_com', (SELECT v FROM ids WHERE k='tok_t_com'), ARRAY[(SELECT v::uuid FROM ids WHERE k='d2')]) $q$, 'Solo un administrador', 'comercial no elimina definitivamente');
+SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_eliminar_definitivo('t_admin', 'x', ARRAY[(SELECT v::uuid FROM ids WHERE k='d2')]) $q$, 'SESION_DOC_B2B', 'eliminar: token inventado');
+SELECT pg_temp.ok(EXISTS (SELECT 1 FROM public.documentacion_b2b WHERE id = (SELECT v::uuid FROM ids WHERE k='d2')), 'tras los intentos sigue existiendo');
+SELECT pg_temp.ok((public.doc_b2b_eliminar_definitivo('t_admin', (SELECT v FROM ids WHERE k='tok_t_admin'), ARRAY[(SELECT v::uuid FROM ids WHERE k='d1'), (SELECT v::uuid FROM ids WHERE k='d2')]))->>'eliminados' = '2', 'admin elimina definitivamente, activas y borradas');
+SELECT pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.documentacion_b2b_versiones WHERE documentacion_id IN (SELECT v::uuid FROM ids WHERE k IN ('d1','d2'))), 'sin versiones');
+SELECT pg_temp.ok(NOT EXISTS (SELECT 1 FROM public.documentacion_b2b_cups WHERE documentacion_id IN (SELECT v::uuid FROM ids WHERE k IN ('d1','d2'))), 'CUPS libres');
+SELECT pg_temp.ok(EXISTS (SELECT 1 FROM public.actividades WHERE descripcion LIKE 'Documentación eliminada definitivamente%' AND comercial = 't_admin'), 'queda en el Historial de Actividades');
+RESET ROLE;
+SET LOCAL ROLE anon;
+SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_eliminar_definitivo('t_admin', (SELECT v FROM ids WHERE k='tok_t_admin'), ARRAY[(SELECT v::uuid FROM ids WHERE k='d3')]) $q$, 'permission denied', 'la web no llama directamente a la eliminación');
 RESET ROLE;
 
 DO $$ BEGIN RAISE EXCEPTION 'TODO_OK'; END $$;
