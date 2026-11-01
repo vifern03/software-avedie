@@ -6,3 +6,6 @@ dist/
 .DS_Store
 
 .vercel
+
+# Recursos locales de Documentacion B2B (no versionar)
+_recursos_documentacion_b2b/
