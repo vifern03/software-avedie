@@ -30,11 +30,13 @@ export function promptTarifa(tarifaId) {
 Tarifa: ${t.nombre}.
 ${DESCRIPCION[t.tipo] || 'Asocia cada ruta con su precio en la hoja.'}
 
+Antes de nada, identifica de qué tarifa es el documento. "es_esta_tarifa" es true solo si es una hoja de precios de la tarifa ${t.nombre}, con ese mismo producto y peaje. Es false si es de otra tarifa o de otro peaje, o si no es una hoja de tarifas.
+
 Copia cada número exactamente como está impreso, convertido a número JSON con punto decimal, sin redondear.
 No inventes nada: si un dato no aparece, omite su ruta.
 
 Devuelve EXCLUSIVAMENTE un objeto JSON:
-{ "valida_desde": "AAAA-MM-DD", "valida_hasta": "AAAA-MM-DD", "valores": { "<ruta>": número } }
+{ "tarifa_documento": "nombre de la tarifa tal como figura en el documento", "es_esta_tarifa": true, "valida_desde": "AAAA-MM-DD", "valida_hasta": "AAAA-MM-DD", "valores": { "<ruta>": número } }
 
 Rutas permitidas (ninguna otra):
 ${rutas.join(', ')}`;
@@ -45,7 +47,10 @@ export function limpiarRespuesta(tarifaId, respuesta) {
   const r = typeof respuesta === 'string' ? JSON.parse(respuesta) : (respuesta || {});
   const valores = filtrarPermitidas(tarifaId, r.valores);
   const descartadas = Object.keys(r.valores || {}).filter((k) => !(k in valores));
-  return { valores, descartadas, validaDesde: r.valida_desde ?? null, validaHasta: r.valida_hasta ?? null };
+  return {
+    valores, descartadas, validaDesde: r.valida_desde ?? null, validaHasta: r.valida_hasta ?? null,
+    tarifaDocumento: typeof r.tarifa_documento === 'string' ? r.tarifa_documento.trim() : '', esEstaTarifa: r.es_esta_tarifa === true,
+  };
 }
 
 const decimales = (n) => {
@@ -54,14 +59,31 @@ const decimales = (n) => {
   return (s.split('.')[1] || '').length;
 };
 
+/** Peaje que aparece en un nombre: 3.0TD → 30TD, RL.1 → RL1. null si no hay. */
+const peajeDe = (nombre) => /\d\.\d\s?TD|RL\.?\s?\d/i.exec(nombre || '')?.[0].replace(/[\s.]/g, '').toUpperCase() ?? null;
+
+/** Motivo por el que el documento no es de esta tarifa, o null. */
+export function documentoAjeno(tarifaId, { tarifaDocumento, esEstaTarifa }) {
+  const { nombre } = TARIFAS[tarifaId];
+  const pDoc = peajeDe(tarifaDocumento);
+  const pTarifa = peajeDe(nombre);
+  if (esEstaTarifa && !(pDoc && pTarifa && pDoc !== pTarifa)) return null;
+  return `Este documento no es de la tarifa ${nombre}${tarifaDocumento ? ` (parece ser: ${tarifaDocumento})` : ''}. Sube la hoja correcta.`;
+}
+
 /**
  * @returns {{errores:string[], avisos:Object<string,string>}}
  *   errores → bloquean el guardado · avisos → ⚠ por campo, no bloquean
  */
-export function validarActualizacion(tarifaId, { valores, validaDesde, validaHasta }, actuales = valoresActuales(tarifaId)) {
+export function validarActualizacion(tarifaId, { valores, validaDesde, validaHasta, tarifaDocumento, esEstaTarifa }, actuales = valoresActuales(tarifaId)) {
   const t = TARIFAS[tarifaId];
   const errores = [];
   const avisos = {};
+
+  if (esEstaTarifa !== undefined) {
+    const ajeno = documentoAjeno(tarifaId, { tarifaDocumento, esEstaTarifa });
+    if (ajeno) return { errores: [ajeno], avisos };
+  }
 
   if (!ISO.test(validaDesde || '') || !ISO.test(validaHasta || '')) errores.push('Faltan las fechas de validez o no son válidas.');
   else if (validaHasta < validaDesde) errores.push('La fecha "hasta" es anterior a "desde".');

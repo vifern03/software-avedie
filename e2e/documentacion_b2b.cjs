@@ -509,7 +509,7 @@ async function escenario(nombre, fn) {
       admin.waitForRequest((r) => r.url().includes('doc-b2b-archivos') && (r.postData() || '').includes('eliminar')),
       admin.locator('button.bg-red-600', { hasText: /^Eliminar$/ }).click(),
     ]);
-    await admin.waitForTimeout(2500);
+    await admin.waitForSelector('[data-testid="entrada-historial"]', { state: 'detached', timeout: 20000 }).catch(() => {});
     ok(await filas.count() === 0, 'desaparecen del historial');
     const ids = pet.postDataJSON().ids;
     const f = path.join(salida, 'e7.sql');

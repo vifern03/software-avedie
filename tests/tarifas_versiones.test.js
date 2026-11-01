@@ -92,3 +92,20 @@ test('aplicar versión: solo rutas permitidas, sin contagiar a Simply; validez n
   aplicarVersion('open30', { id: null, version: 0, valida_desde: '2026-10-19', valida_hasta: '2026-10-28', valores: base });
   TARIFAS.open30.versionActiva = null;
 });
+
+test('hoja de otra tarifa: se bloquea con un mensaje claro', () => {
+  const hoja30 = fixture('open30');
+  const enOpen61 = validarActualizacion('open61', limpiarRespuesta('open61', { ...hoja30, es_esta_tarifa: false }));
+  assert.equal(enOpen61.errores.length, 1);
+  assert.match(enOpen61.errores[0], /no es de la tarifa Open 6\.1TD \(parece ser: 3\.0TD OPEN\)/);
+});
+
+test('si la IA se equivoca, el peaje del documento la corrige', () => {
+  const r = validarActualizacion('open61', limpiarRespuesta('open61', { ...fixture('open30'), es_esta_tarifa: true }));
+  assert.match(r.errores[0], /no es de la tarifa Open 6\.1TD/);
+});
+
+test('documento que no es una hoja de tarifas: bloqueado aunque traiga números', () => {
+  const r = validarActualizacion('conecta', limpiarRespuesta('open30', { valores: { 'baseEnergia.0': 0.3 }, valida_desde: '2026-11-01', valida_hasta: '2026-12-01' }));
+  assert.match(r.errores[0], /no es de la tarifa/);
+});

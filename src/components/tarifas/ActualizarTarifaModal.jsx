@@ -30,7 +30,7 @@ export default function ActualizarTarifaModal({ tarifaId, onClose, onGuardada })
     setFase('leyendo');
     try {
       const { datos } = await extraerFactura(file, {
-        prompt: promptTarifa(tarifaId), version: `tarifa-${tarifaId}-1`, parse: JSON.parse, esperaMs: ESPERA_IA_MS,
+        prompt: promptTarifa(tarifaId), version: `tarifa-${tarifaId}-2`, parse: JSON.parse, esperaMs: ESPERA_IA_MS,
       });
       const limpio = limpiarRespuesta(tarifaId, datos);
       const actuales = valoresActuales(tarifaId);
