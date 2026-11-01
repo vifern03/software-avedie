@@ -2,6 +2,7 @@
  * Orquestación de la generación: lecturas con IA, ensamblado, PDFs y guardado.
  * Cada lectura de IA es independiente: si una falla, sus campos quedan vacíos con ⚠.
  */
+import { PDFDocument } from 'pdf-lib';
 import campos from '../contratosEndesa/campos.json';
 import camposPS from '../contratosEndesa/campos_puntos_suministro.json';
 import { generarAnexo, generarAnexoPuntos, generarContrato } from '../contratosEndesa/generarContratoEndesa';
@@ -102,7 +103,6 @@ async function sha256(bytes) {
 }
 
 const NOMBRE = { contrato: 'Contrato', anexo_precios: 'Anexo de precios', anexo_puntos: 'Anexo de puntos de suministro' };
-const PAGINAS = { contrato: campos.contrato.pages, anexo_precios: campos.anexo.pages, anexo_puntos: 1 };
 
 async function subir(actor, id, version, pdfs) {
   const { urls, bucket } = await archivos(actor, 'subir', { id });
@@ -111,7 +111,8 @@ async function subir(actor, id, version, pdfs) {
   for (const [tipo, bytes] of Object.entries(pdfs)) {
     const path = `${id}/v${version}/${tipo}.pdf`;
     porRuta[path] = bytes;
-    documentos.push({ tipo, nombre: NOMBRE[tipo], path, sha256: await sha256(bytes), paginas: PAGINAS[tipo] });
+    const paginas = (await PDFDocument.load(bytes)).getPageCount();
+    documentos.push({ tipo, nombre: NOMBRE[tipo], path, sha256: await sha256(bytes), paginas });
   }
   await subirPdfs(urls, bucket, porRuta);
   return documentos;

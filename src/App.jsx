@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { ShieldOff, Database, Loader2 } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import { useData } from './context/DataContext';
@@ -20,8 +20,9 @@ import RegistroLlamadas from './pages/RegistroLlamadas';
 import Tarifas from './pages/Tarifas';
 import Pendientes from './pages/Pendientes';
 import Tasks from './pages/Tasks';
-import DocumentacionB2B from './pages/DocumentacionB2B';
 import { sincronizarTarifas } from './lib/tarifas/obtenerTarifa';
+
+const DocumentacionB2B = lazy(() => import('./pages/DocumentacionB2B'));
 
 function LoadingScreen() {
   return (
@@ -119,7 +120,7 @@ export default function App() {
       case 'radar':     return <RadarRenovaciones />;
       case 'b2c':       return <AltaClientes tipo="B2C" />;
       case 'b2b':       return <AltaClientes tipo="B2B" />;
-      case 'documentacion_b2b': return <DocumentacionB2B />;
+      case 'documentacion_b2b': return <Suspense fallback={<LoadingScreen />}><DocumentacionB2B /></Suspense>;
       case 'historial': return <HistorialActividades />;
       case 'visitas':       return <RegistroVisitas />;
       case 'visitas_pymes': return <RegistroVisitasPymes />;
