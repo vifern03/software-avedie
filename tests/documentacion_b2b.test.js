@@ -1,3 +1,4 @@
+import { destinatariosPermitidos } from '../src/lib/compartir.js';
 import { test } from 'node:test';
 import { describirCambios, etiquetaCampo, fechaHoraES } from '../src/lib/documentacionB2B/modificaciones.js';
 import { comprobarCups, limpiarCups } from '../src/lib/documentacionB2B/seleccion.js';
@@ -381,4 +382,12 @@ test('modificaciones: textos legibles, sin cambios que vuelven al valor inicial'
 test('modificaciones: fecha y hora españolas, en horario de Madrid', () => {
   assert.deepEqual(fechaHoraES('2026-11-01T11:30:00Z'), { fecha: '01/11/2026', hora: '12:30' });
   assert.deepEqual(fechaHoraES('2026-07-01T22:05:00Z'), { fecha: '02/07/2026', hora: '00:05' });
+});
+
+test('compartir: todos con todos por defecto; el bloqueo solo quita a esa persona', () => {
+  const u = ['a', 'b', 'c'].map((username) => ({ username }));
+  const nombres = (bloqueos) => destinatariosPermitidos(u[0], u, bloqueos).map((x) => x.username);
+  assert.deepEqual(nombres({}), ['b', 'c']);
+  assert.deepEqual(nombres({ a: ['b'] }), ['c']);
+  assert.deepEqual(nombres({ b: ['c'] }), ['b', 'c'], 'el bloqueo de otro no afecta');
 });

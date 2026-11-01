@@ -56,3 +56,9 @@ Decisiones tomadas sin consulta, siempre por la opción más conservadora. Fecha
 ## D12. Datos según documentos y eliminación definitiva (01-11-2026)
 - **Persona o empresa:** se decide por el formato del nº de documento (letra de organización + 7 dígitos + control = empresa).
 - **Eliminación:** `doc_b2b_eliminar_definitivo` solo la ejecuta `service_role`, a través de la Edge Function, porque Supabase no deja borrar archivos por SQL. Primero borra las filas y después los PDF; si fallara ese segundo paso, quedarían PDF sueltos en el bucket privado.
+
+## D13. Compartición abierta y edición (01-11-2026)
+- **Solo añade:** tabla `compartir_bloqueos`, funciones y la Edge Function `doc-b2b-subir`. `share_permissions`, `doc_b2b_compartir`, `doc_b2b_nueva_version` y `doc_b2b_modificaciones` no se tocan y quedan sin uso.
+- **Consecuencia:** como `doc_b2b_modificaciones` sigue existiendo, un comercial con conocimientos técnicos aún podría consultarla directamente; la interfaz ya no se la ofrece.
+- **Alcance:** los bloqueos valen para compartir contratos de Alta B2C y B2B, porque comparten el mismo botón. En los contratos el control es solo de interfaz, igual que antes.
+

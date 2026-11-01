@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ChevronDown, Loader2, Pencil, Search, Share2, Trash2, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { destinatariosPermitidos } from '../../lib/compartir';
 import { archivos, descargarBytes, descargarVersion, rpc, SesionRequerida } from '../../lib/documentacionB2B/api';
 import Pagination from '../Pagination';
 import ConfirmActionModal from '../ConfirmActionModal';
@@ -10,13 +11,13 @@ const POR_PAGINA = 15;
 const fecha = (iso) => (iso ? new Date(iso).toLocaleDateString('es-ES') : '');
 
 function CompartirModal({ fila, onCerrar, onGuardado }) {
-  const { currentUser, users } = useAuth();
+  const { currentUser, users, shareBlocks } = useAuth();
   const [sel, setSel] = useState(fila.compartido_con || []);
   const [error, setError] = useState('');
-  const lista = (users || []).filter((u) => u.username !== fila.generado_por);
+  const lista = destinatariosPermitidos(currentUser, users, shareBlocks).filter((u) => u.username !== fila.generado_por);
   const guardar = async () => {
     try {
-      await rpc('doc_b2b_compartir', currentUser.username, { p_id: fila.id, p_usuarios: sel });
+      await rpc('doc_b2b_compartir_abierto', currentUser.username, { p_id: fila.id, p_usuarios: sel });
       onGuardado();
     } catch (e) { setError(e.message); }
   };
@@ -51,6 +52,7 @@ function Entrada({ fila, onCambio, onSesion, onError, onEditar, seleccionable, m
   const [compartir, setCompartir] = useState(false);
   const [modificaciones, setModificaciones] = useState(false);
   const borrada = fila.estado === 'borrada';
+  const gestion = ['admin', 'manager'].includes(currentUser.role);
 
   const bajar = async (doc) => {
     try {
@@ -93,16 +95,18 @@ function Entrada({ fila, onCambio, onSesion, onError, onEditar, seleccionable, m
           </p>
         </button>
         <div className="flex items-center gap-1 flex-shrink-0">
-          {fila.puede_editar && <button onClick={() => onEditar(fila).catch((e) => onError(e.message))} data-testid="entrada-editar" className="p-1.5 rounded-lg hover:bg-gray-100 text-google-gray" title="Editar" aria-label="Editar"><Pencil size={15} /></button>}
+          {!borrada && <button onClick={() => onEditar(fila).catch((e) => onError(e.message))} data-testid="entrada-editar" className="p-1.5 rounded-lg hover:bg-gray-100 text-google-gray" title="Editar" aria-label="Editar"><Pencil size={15} /></button>}
           {fila.puede_borrar && <button onClick={() => setBorrar(true)} data-testid="entrada-borrar" className="p-1.5 rounded-lg hover:bg-red-50 text-google-gray hover:text-red-600" title="Borrar" aria-label="Borrar"><Trash2 size={15} /></button>}
-          {fila.puede_compartir && !borrada && <button onClick={() => setCompartir(true)} data-testid="entrada-compartir" className="p-1.5 rounded-lg hover:bg-gray-100 text-google-gray" title="Compartir" aria-label="Compartir"><Share2 size={15} /></button>}
+          {!borrada && <button onClick={() => setCompartir(true)} data-testid="entrada-compartir" className="p-1.5 rounded-lg hover:bg-gray-100 text-google-gray" title="Compartir" aria-label="Compartir"><Share2 size={15} /></button>}
         </div>
       </div>
       {abierta && (
         <div className="px-4 pb-3 pt-2 border-t border-gray-100 space-y-1.5">
-          <button onClick={() => setModificaciones(true)} data-testid="ver-modificaciones" className="block text-sm font-medium text-google-blue hover:underline mb-2">
-            Pulsa para ver las modificaciones en el contrato
-          </button>
+          {gestion && (
+            <button onClick={() => setModificaciones(true)} data-testid="ver-modificaciones" className="block text-sm font-medium text-google-blue hover:underline mb-2">
+              Pulsa para ver las modificaciones en el contrato
+            </button>
+          )}
           {(fila.documentos || []).map((d) => (
             <p key={d.tipo} className="text-sm text-google-dark">
               <span className="font-medium">{d.nombre}:</span>{' '}

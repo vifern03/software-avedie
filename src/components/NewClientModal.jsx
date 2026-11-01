@@ -74,8 +74,8 @@ function ExistingDocBadge({ clientId, campo, onSustituir }) {
 }
 
 export default function NewClientModal({ tipo, onClose, onSave, initialData, editId, existingDocs }) {
-  const { currentUser, users, sharePermissions } = useAuth();
-  const shareTargets = getShareTargets(currentUser, users, sharePermissions);
+  const { currentUser, users, shareBlocks } = useAuth();
+  const shareTargets = getShareTargets(currentUser, users, shareBlocks);
   const { prescriptores: prescriptoresDB, clientes: clientesCtx } = useData();
   const prescriptoresList = prescriptoresDB.map(p => p.nombre);
   const isB2B       = tipo === 'B2B' || tipo === 'CUR_B2B';
@@ -549,7 +549,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
                   <p className="text-xs text-google-gray">Selecciona los trabajadores con acceso:</p>
                   {shareTargets.length === 0 && (
                     <p className="text-xs text-google-gray italic">
-                      No tienes autorización para compartir con nadie. Pídele al administrador que te asigne destinatarios en Gestión de Usuarios.
+                      No hay usuarios con los que puedas compartir.
                     </p>
                   )}
                   {shareTargets.map(u => (

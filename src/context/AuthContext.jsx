@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { abrirSesion as abrirSesionDocB2B, cerrarSesion as cerrarSesionDocB2B, renovarSesion as renovarSesionDocB2B } from '../lib/documentacionB2B/api';
+import { abrirSesion as abrirSesionDocB2B, cerrarSesion as cerrarSesionDocB2B, renovarSesion as renovarSesionDocB2B, rpc as rpcDocB2B } from '../lib/documentacionB2B/api';
 import { initializeDB } from '../lib/initDB';
 
 const AuthContext = createContext(null);
@@ -36,7 +36,7 @@ export function AuthProvider({ children }) {
   const [pin,             setPin]             = useState('1234');
   const [userPermissions, setUserPermissions] = useState({});
   const [callesPermisos,  setCallesPermisos]  = useState({});
-  const [sharePermissions, setSharePermissions] = useState({}); // { comercial_username: [allowed_username, ...] }
+  const [shareBlocks, setShareBlocks] = useState({}); // { username: [usuarios con los que no puede compartir] }
   const [isLoading,       setIsLoading]       = useState(true);
   const [dbError,         setDbError]         = useState(null);
 
@@ -53,12 +53,12 @@ export function AuthProvider({ children }) {
         return;
       }
 
-      const [{ data: usersData, error: uErr }, { data: configData }, { data: sharePermsData }] = await Promise.all([
+      const [{ data: usersData, error: uErr }, { data: configData }, { data: bloqueosData }] = await Promise.all([
         supabase.from('usuarios')
           .select('username, role, display_name, is_undeletable, security_pin, equipo')
           .is('deleted_at', null),
         supabase.from('configuracion').select('*'),
-        supabase.from('share_permissions').select('comercial_username, allowed_username'),
+        supabase.from('compartir_bloqueos').select('username, bloqueado'),
       ]);
 
       if (uErr) {
@@ -76,15 +76,12 @@ export function AuthProvider({ children }) {
         if (row.clave === 'telemarketing_calles') setCallesPermisos(row.valor || {});
       }
 
-      // share_permissions vive en su propia tabla (no en `configuracion`) para
-      // poder tener FKs reales a usuarios.username. Falla silenciosamente si la
-      // tabla aún no existe (migración no ejecutada todavía).
-      const sharePermsMap = {};
-      (sharePermsData || []).forEach(({ comercial_username, allowed_username }) => {
-        if (!sharePermsMap[comercial_username]) sharePermsMap[comercial_username] = [];
-        sharePermsMap[comercial_username].push(allowed_username);
+      const bloqueosMap = {};
+      (bloqueosData || []).forEach(({ username, bloqueado }) => {
+        if (!bloqueosMap[username]) bloqueosMap[username] = [];
+        bloqueosMap[username].push(bloqueado);
       });
-      setSharePermissions(sharePermsMap);
+      setShareBlocks(bloqueosMap);
 
       // ── C-2: Verificación de integridad de sesión ─────────────────────────
       // Compara el rol almacenado en localStorage con el registro real de Supabase.
@@ -218,26 +215,18 @@ export function AuthProvider({ children }) {
   }, []);
 
   // ── Permisos de compartición de contratos ───────────────────────────────────
-  // Reemplaza el conjunto completo de destinatarios permitidos para un comercial
-  // (borra las filas existentes y vuelve a insertar las seleccionadas).
-  const updateSharePermissions = useCallback(async (comercialUsername, allowedUsernames) => {
-    const allowed = [...new Set(allowedUsernames)].filter(u => u !== comercialUsername);
-    setSharePermissions(prev => ({ ...prev, [comercialUsername]: allowed }));
-
-    const { error: delError } = await supabase
-      .from('share_permissions')
-      .delete()
-      .eq('comercial_username', comercialUsername);
-    if (delError) { console.error('updateSharePermissions (delete):', delError); return { error: delError }; }
-
-    if (allowed.length > 0) {
-      const { error: insError } = await supabase
-        .from('share_permissions')
-        .insert(allowed.map(allowed_username => ({ comercial_username: comercialUsername, allowed_username })));
-      if (insError) { console.error('updateSharePermissions (insert):', insError); return { error: insError }; }
+  // Por defecto se comparte con todos; el admin elige con quién NO puede compartir cada uno.
+  const updateShareBlocks = useCallback(async (username, bloqueados) => {
+    const lista = [...new Set(bloqueados)].filter(u => u !== username);
+    try {
+      await rpcDocB2B('compartir_bloqueos_guardar', currentUser.username, { p_username: username, p_bloqueados: lista });
+      setShareBlocks(prev => ({ ...prev, [username]: lista }));
+      return { error: null };
+    } catch (error) {
+      console.error('updateShareBlocks:', error);
+      return { error };
     }
-    return { error: null };
-  }, []);
+  }, [currentUser]);
 
   // ── Gestión de usuarios ─────────────────────────────────────────────────────
 
@@ -328,7 +317,7 @@ export function AuthProvider({ children }) {
       addUser, editUser, deleteUser, changePin,
       updateUserPermission, removeUserPermission, resetUserPermissions,
       updateUserEquipo, updateProvinciaAccess, hasProvinciaAccess,
-      sharePermissions, updateSharePermissions,
+      shareBlocks, updateShareBlocks,
     }}>
       {children}
     </AuthContext.Provider>

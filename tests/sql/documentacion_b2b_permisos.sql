@@ -152,6 +152,20 @@ SELECT pg_temp.ok(((public.doc_b2b_listar('t_com2', (SELECT v FROM ids WHERE k='
 SELECT pg_temp.ok(((public.doc_b2b_listar('t_com2', (SELECT v FROM ids WHERE k='tok_t_com2')))->'filas'->0->>'puede_descargar')::boolean = true, 'destinatario descarga');
 
 -- ── Nueva versión ───────────────────────────────────────────────────────────
+-- ── Compartición abierta, bloqueos y edición ────────────────────────────────
+SELECT pg_temp.debe_fallar($q$ SELECT public.compartir_bloqueos_guardar('t_man', (SELECT v FROM ids WHERE k='tok_t_man'), 't_com', ARRAY['t_otra']) $q$, 'Solo un administrador', 'manager no cambia bloqueos');
+SELECT public.compartir_bloqueos_guardar('t_admin', (SELECT v FROM ids WHERE k='tok_t_admin'), 't_com', ARRAY['t_otra']);
+SELECT pg_temp.ok((SELECT count(*) FROM public.compartir_bloqueos WHERE username = 't_com') = 1, 'la web lee los bloqueos');
+SELECT pg_temp.debe_fallar($q$ INSERT INTO public.compartir_bloqueos (username, bloqueado) VALUES ('a','b') $q$, 'permission denied', 'anon no escribe bloqueos');
+SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_compartir_abierto('t_com', (SELECT v FROM ids WHERE k='tok_t_com'), (SELECT v::uuid FROM ids WHERE k='d1'), ARRAY['t_com2','t_otra']) $q$, 'No puedes compartir', 'bloqueado: no comparte con él');
+SELECT pg_temp.ok(public.doc_b2b_compartir_abierto('t_com', (SELECT v FROM ids WHERE k='tok_t_com'), (SELECT v::uuid FROM ids WHERE k='d1'), ARRAY['t_com2','t_man']) @> ARRAY['t_man'], 'comercial comparte sin bloqueo');
+SELECT pg_temp.ok(public.doc_b2b_compartir_abierto('t_com2', (SELECT v FROM ids WHERE k='tok_t_com2'), (SELECT v::uuid FROM ids WHERE k='d1'), ARRAY['t_com2']) = ARRAY['t_com2'], 'el destinatario también comparte');
+SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_compartir_abierto('t_otra', (SELECT v FROM ids WHERE k='tok_t_otra'), (SELECT v::uuid FROM ids WHERE k='d1'), ARRAY['t_man']) $q$, 'no tienes acceso', 'ajeno no comparte');
+SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_guardar_version('t_otra', (SELECT v FROM ids WHERE k='tok_t_otra'), (SELECT v::uuid FROM ids WHERE k='d1'), 1, 'dia', NULL, '{}', '{}', '{}', pg_temp.docs((SELECT v FROM ids WHERE k='d1'), 2, 2), true) $q$, 'no tienes acceso', 'ajeno no edita');
+SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_guardar_version('t_com2', (SELECT v FROM ids WHERE k='tok_t_com2'), (SELECT v::uuid FROM ids WHERE k='d1'), 7, 'dia', NULL, '{}', '{}', '{}', pg_temp.docs((SELECT v FROM ids WHERE k='d1'), 8, 2), true) $q$, 'más reciente', 'el destinatario pasa el permiso de edición');
+SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_modificaciones_gestion('t_com', (SELECT v FROM ids WHERE k='tok_t_com'), (SELECT v::uuid FROM ids WHERE k='d1')) $q$, 'Solo un manager', 'comercial no ve el historial de modificaciones');
+SELECT pg_temp.ok(jsonb_typeof(public.doc_b2b_modificaciones_gestion('t_man', (SELECT v FROM ids WHERE k='tok_t_man'), (SELECT v::uuid FROM ids WHERE k='d1'))) = 'array', 'manager ve el historial de modificaciones');
+
 SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_nueva_version('t_com2', (SELECT v FROM ids WHERE k='tok_t_com2'), (SELECT v::uuid FROM ids WHERE k='d1'), 1, 'dia', NULL, '{}', '{}', '{}',
   pg_temp.docs((SELECT v FROM ids WHERE k='d1'), 2, 2), true) $q$, 'Solo quien la generó', 'destinatario no crea versión');
 SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_nueva_version('t_com', (SELECT v FROM ids WHERE k='tok_t_com'), (SELECT v::uuid FROM ids WHERE k='d1'), 7, 'dia', NULL, '{}', '{}', '{}',
@@ -201,6 +215,9 @@ SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_autorizar_archivos('t_com',
 SELECT pg_temp.ok((public.doc_b2b_autorizar_archivos('t_man', (SELECT v FROM ids WHERE k='tok_t_man'), 'descargar', (SELECT v::uuid FROM ids WHERE k='d1')))->>'lectura' = 'true', 'borrada: manager descarga');
 SELECT pg_temp.ok((public.doc_b2b_autorizar_archivos('t_com', (SELECT v FROM ids WHERE k='tok_t_com'), 'subir', (SELECT v::uuid FROM ids WHERE k='d2')))->'rutas'->>0 LIKE '%/v2/contrato.pdf', 'subir: solo la versión siguiente');
 SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_autorizar_archivos('t_com2', (SELECT v FROM ids WHERE k='tok_t_com2'), 'subir', (SELECT v::uuid FROM ids WHERE k='d2')) $q$, 'No puedes editar', 'ajeno no sube');
+
+SELECT pg_temp.ok((public.doc_b2b_autorizar_subida('t_com', (SELECT v FROM ids WHERE k='tok_t_com'), (SELECT v::uuid FROM ids WHERE k='d2')))->'rutas'->>0 LIKE '%/v2/contrato.pdf', 'subida: quien ve la documentación');
+SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_autorizar_subida('t_otra', (SELECT v FROM ids WHERE k='tok_t_otra'), (SELECT v::uuid FROM ids WHERE k='d2')) $q$, 'No puedes editar', 'subida: ajeno no sube');
 
 -- ── Eliminación definitiva: solo admin ──────────────────────────────────────
 SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_eliminar_definitivo('t_man', (SELECT v FROM ids WHERE k='tok_t_man'), ARRAY[(SELECT v::uuid FROM ids WHERE k='d2')]) $q$, 'Solo un administrador', 'manager no elimina definitivamente');

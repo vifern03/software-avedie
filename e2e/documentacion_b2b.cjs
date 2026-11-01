@@ -328,7 +328,11 @@ async function escenario(nombre, fn) {
     await com.fill('[data-testid="historial-buscar"]', '');
     await com.waitForTimeout(1500);
     ok(await com.locator('[data-testid="entrada-historial"]').count() === 1, 'solo ve lo suyo');
-    ok(await entrada(com, 'E2E COM, S.L.').locator('[data-testid="entrada-compartir"]').count() === 0, 'comercial no comparte');
+    await entrada(com, 'E2E COM, S.L.').locator('[data-testid="entrada-compartir"]').click();
+    await com.waitForSelector('[data-testid="compartir-modal"]');
+    ok(await com.locator('[data-testid="compartir-modal"] input[value="e2e_man"]').count() === 1, 'comercial comparte con cualquiera');
+    ok(await com.locator('[data-testid="compartir-modal"] input[value="e2e_sin"]').count() === 0, 'el usuario bloqueado no sale en la lista');
+    await com.getByRole('button', { name: 'Cancelar', exact: true }).click();
 
     // El arranque renueva el token sin pedir nada
     const expiraAntes = await com.evaluate(() => JSON.parse(localStorage.getItem('crm_avedie_docb2b_token')).expira_at);
@@ -364,12 +368,21 @@ async function escenario(nombre, fn) {
     await com.waitForTimeout(1500);
     const e = entrada(com, 'E2E TRES, S.L.');
     ok((await e.innerText()).includes('Generado por: E2E Admin'), 'compartido aparece con Generado por');
-    ok(await e.locator('[data-testid="entrada-editar"]').count() === 0, 'destinatario no edita');
+    await e.locator('[data-testid="entrada-editar"]').click();
+    await com.waitForSelector('[data-testid="resultado"] [data-testid="pagina-pdf"]', { timeout: 20000 });
+    await com.waitForTimeout(1500);
+    await com.selectOption('[data-testid="selector-cambiar-modalidad"]', 'dia');
+    await com.waitForTimeout(800);
+    await com.click('[data-testid="guardar-cambios"]');
+    await com.waitForSelector('[data-testid="pantalla-carga"]', { state: 'detached', timeout: 30000 });
+    await com.waitForTimeout(1500);
+    ok(await com.locator('[data-testid="guardar-cambios"]').isDisabled() && await com.locator('p.text-red-600').count() === 0, 'destinatario edita y guarda');
     ok(await e.locator('[data-testid="entrada-borrar"]').count() === 0, 'destinatario no borra');
     await e.locator('[data-testid="entrada-desplegar"]').click();
     const [d] = await Promise.all([com.waitForEvent('download'), com.click('[data-testid="bajar-contrato"]')]);
     await d.saveAs(path.join(salida, 'e4_compartido.pdf'));
     ok(fs.statSync(path.join(salida, 'e4_compartido.pdf')).size > 1000, 'destinatario descarga');
+    ok(await e.locator('[data-testid="ver-modificaciones"]').count() === 0, 'comercial no ve el historial de modificaciones');
 
     await com.getByRole('button', { name: 'Consulta de Tarifas', exact: true }).first().click();
     await com.waitForTimeout(800);

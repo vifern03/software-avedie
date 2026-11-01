@@ -43,7 +43,7 @@ export default function ModificacionesModal({ fila, onCerrar }) {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    rpc('doc_b2b_modificaciones', currentUser.username, { p_id: fila.id })
+    rpc('doc_b2b_modificaciones_gestion', currentUser.username, { p_id: fila.id })
       .then((r) => setMods(r.filter((m) => describirCambios(m.editados).length > 0)))
       .catch((e) => setError(e.message));
   }, [fila.id, currentUser.username]);

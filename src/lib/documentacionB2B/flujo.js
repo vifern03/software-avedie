@@ -16,7 +16,7 @@ import { hoyMadridISO } from '../energia/vigencia';
 import { obtenerTarifa, sincronizarTarifas } from '../tarifas/obtenerTarifa';
 import { buscarDistribuidora } from '../distribuidoras';
 import { fetchSingleDoc } from '../../context/DataContext';
-import { archivos, cargarPlantillas, rpc, subirPdfs } from './api';
+import { archivos, autorizarSubida, cargarPlantillas, rpc, subirPdfs } from './api';
 import { reducirDocumento } from './reducirDocumento';
 import { comprobarCups } from './seleccion';
 
@@ -112,7 +112,7 @@ async function sha256(bytes) {
 const NOMBRE = { contrato: 'Contrato', anexo_precios: 'Anexo de precios', anexo_puntos: 'Anexo de puntos de suministro' };
 
 async function subir(actor, id, version, pdfs) {
-  const { urls, bucket } = await archivos(actor, 'subir', { id });
+  const { urls, bucket } = version === 1 ? await archivos(actor, 'subir', { id }) : await autorizarSubida(actor, id);
   const porRuta = {};
   const documentos = [];
   for (const [tipo, bytes] of Object.entries(pdfs)) {
@@ -137,7 +137,7 @@ export async function guardarNueva({ actor, clientes, modelo, pdfs }) {
 
 export async function guardarVersion({ actor, id, versionBase, modelo, editados, pdfs }) {
   const documentos = await subir(actor, id, versionBase + 1, pdfs);
-  const version = await rpc('doc_b2b_nueva_version', actor, {
+  const version = await rpc('doc_b2b_guardar_version', actor, {
     p_id: id, p_version_base: versionBase, p_modalidad: modelo.modalidad, p_tarifa_version_id: modelo.tarifa_version_id,
     p_datos: modelo, p_avisos: modelo.avisos, p_editados: editados, p_documentos: documentos, p_completa: estaCompleta(modelo),
   });

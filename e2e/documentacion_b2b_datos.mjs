@@ -38,6 +38,7 @@ ${m.slice(a, b).replace('CREATE FUNCTION', 'CREATE OR REPLACE FUNCTION')}
 DELETE FROM public.documentacion_b2b WHERE generado_por LIKE 'e2e\\_%';
 DELETE FROM public.tarifas_versiones WHERE creado_por LIKE 'e2e\\_%';
 DELETE FROM public.doc_b2b_sesiones WHERE username LIKE 'e2e\\_%';
+DELETE FROM public.compartir_bloqueos WHERE username LIKE 'e2e\\_%';
 DELETE FROM public.actividades WHERE comercial LIKE 'e2e\\_%';
 DELETE FROM public.clientes WHERE id BETWEEN 9100000 AND 9100099;
 DELETE FROM public.usuarios WHERE username LIKE 'e2e\\_%';
@@ -80,6 +81,7 @@ INSERT INTO public.clientes (id, tipo, nombre, cif_dni, telefono, mail, cuenta_b
     cliente(9100006, 'E2E TEMPO, S.L.', 'B90000007', 'ES0021000000000906XX0F', '2.0TD', 'TEMPO 2.0TD'),
     cliente(9100007, 'E2E COM, S.L.', 'B90000008', 'ES0021000000000907XX0F', '3.0TD', 'Open 3.0TD'),
   ].join(',\n ')};
+INSERT INTO public.compartir_bloqueos (username, bloqueado) VALUES ('e2e_com', 'e2e_sin');
 CREATE OR REPLACE FUNCTION public._doc_b2b_tiene_seccion(p_username text, p_role text)
 RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $f$
 BEGIN

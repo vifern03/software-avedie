@@ -324,11 +324,12 @@ function SecurityPinModal({ expectedPin, onSuccess, onClose }) {
   );
 }
 
-// Panel "Permisos de compartición": el admin elige con qué usuarios puede
-// este comercial compartir sus contratos (ShareButton / alta con "Compartir").
-function SharePermissionsModal({ comercial, allUsers, currentAllowed, onSave, onClose }) {
-  const [selection, setSelection] = useState([...currentAllowed]);
+// Panel "Compartición": el admin elige con qué usuarios NO puede compartir este
+// usuario. Por defecto no hay bloqueos.
+function ShareBlocksModal({ comercial, allUsers, currentBlocked, onSave, onClose }) {
+  const [selection, setSelection] = useState([...currentBlocked]);
   const [saved, setSaved] = useState(false);
+  const [errorGuardar, setErrorGuardar] = useState('');
 
   const candidates = allUsers.filter(u => u.username !== comercial.username);
 
@@ -336,7 +337,8 @@ function SharePermissionsModal({ comercial, allUsers, currentAllowed, onSave, on
     setSelection(prev => prev.includes(username) ? prev.filter(u => u !== username) : [...prev, username]);
 
   const handleSave = async () => {
-    await onSave(selection);
+    const { error } = await onSave(selection);
+    if (error) { setErrorGuardar('No se han podido guardar los bloqueos.'); return; }
     setSaved(true);
     setTimeout(onClose, 700);
   };
@@ -348,9 +350,9 @@ function SharePermissionsModal({ comercial, allUsers, currentAllowed, onSave, on
           <div className="flex items-center gap-2">
             <Share2 size={16} className="text-green-600" />
             <div>
-              <h2 className="text-base font-semibold text-google-dark">Permisos de compartición</h2>
+              <h2 className="text-base font-semibold text-google-dark">Bloqueos de compartición</h2>
               <p className="text-xs text-google-gray">
-                {comercial.displayName || comercial.username} solo podrá compartir sus contratos con estos usuarios
+                {comercial.displayName || comercial.username} NO podrá compartir con los usuarios marcados
               </p>
             </div>
           </div>
@@ -383,6 +385,7 @@ function SharePermissionsModal({ comercial, allUsers, currentAllowed, onSave, on
           ))}
         </div>
 
+        {errorGuardar && <p className="px-6 pb-3 text-sm text-red-600">{errorGuardar}</p>}
         <div className="px-6 pb-5 flex justify-end gap-3">
           <button onClick={onClose} className="btn-secondary text-sm px-4 py-2">Cancelar</button>
           <button
@@ -412,7 +415,7 @@ export default function GestionUsuarios() {
     users, permissions, updatePermissions,
     addUser, editUser, deleteUser, pin, changePin,
     userPermissions, updateUserPermission, removeUserPermission, resetUserPermissions,
-    updateUserEquipo, sharePermissions, updateSharePermissions,
+    updateUserEquipo, shareBlocks, updateShareBlocks,
   } = useAuth();
 
   const [flash, setFlash]                           = useState(null);
@@ -552,11 +555,11 @@ export default function GestionUsuarios() {
       )}
 
       {sharePermsTarget && (
-        <SharePermissionsModal
+        <ShareBlocksModal
           comercial={sharePermsTarget}
           allUsers={users}
-          currentAllowed={sharePermissions[sharePermsTarget.username] || []}
-          onSave={(allowed) => updateSharePermissions(sharePermsTarget.username, allowed)}
+          currentBlocked={shareBlocks[sharePermsTarget.username] || []}
+          onSave={(bloqueados) => updateShareBlocks(sharePermsTarget.username, bloqueados)}
           onClose={() => setSharePermsTarget(null)}
         />
       )}
@@ -715,21 +718,19 @@ export default function GestionUsuarios() {
                         <option value="Ninguno">Ninguno</option>
                       </select>
                     </div>
-                    {user.role === 'comercial' && (
-                      <button
-                        onClick={() => setSharePermsTarget(user)}
-                        className="flex items-center gap-1.5 text-xs text-green-700 hover:text-green-900 hover:bg-green-50 px-2.5 py-1.5 rounded-lg transition-colors border border-green-200 flex-shrink-0"
-                        title="Elegir con quién puede compartir sus contratos"
-                      >
-                        <Share2 size={12} />
-                        Compartición
-                        {(sharePermissions[user.username]?.length > 0) && (
-                          <span className="bg-green-600 text-white text-[10px] font-semibold rounded-full w-4 h-4 flex items-center justify-center">
-                            {sharePermissions[user.username].length}
-                          </span>
-                        )}
-                      </button>
-                    )}
+                    <button
+                      onClick={() => setSharePermsTarget(user)}
+                      className="flex items-center gap-1.5 text-xs text-green-700 hover:text-green-900 hover:bg-green-50 px-2.5 py-1.5 rounded-lg transition-colors border border-green-200 flex-shrink-0"
+                      title="Elegir con quién NO puede compartir"
+                    >
+                      <Share2 size={12} />
+                      Compartición
+                      {(shareBlocks[user.username]?.length > 0) && (
+                        <span className="bg-green-600 text-white text-[10px] font-semibold rounded-full w-4 h-4 flex items-center justify-center">
+                          {shareBlocks[user.username].length}
+                        </span>
+                      )}
+                    </button>
                     {hasOverrides && (
                       <button
                         onClick={() => requestAction({ type: 'resetUserPerms', username: user.username })}

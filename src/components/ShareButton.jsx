@@ -1,32 +1,22 @@
 import { useState, useRef, useEffect } from 'react';
 import { Share2, Check, Users, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { destinatariosPermitidos } from '../lib/compartir';
 
-// Calcula los display names de los usuarios con los que `user` puede compartir:
-// - admin/manager: cualquier otro usuario (sin restricción)
-// - comercial: solo los autorizados explícitamente por el admin en share_permissions
-export function getShareTargets(user, users, sharePermissions) {
-  if (!user) return [];
-  const isPrivileged = user.role === 'admin' || user.role === 'manager';
-  const allowedUsernames = isPrivileged
-    ? users.filter(u => u.username !== user.username).map(u => u.username)
-    : (sharePermissions?.[user.username] || []);
-
-  return allowedUsernames
-    .map(uname => users.find(u => u.username === uname))
-    .filter(Boolean)
-    .map(u => u.displayName || u.username);
+// Display names de los usuarios con los que `user` puede compartir.
+export function getShareTargets(user, users, shareBlocks) {
+  return destinatariosPermitidos(user, users, shareBlocks).map(u => u.displayName || u.username);
 }
 
 export default function ShareButton({ cliente, onUpdate }) {
-  const { currentUser, users, sharePermissions } = useAuth();
+  const { currentUser, users, shareBlocks } = useAuth();
   const [open,      setOpen]      = useState(false);
   const [saving,    setSaving]    = useState(false);
   const [saved,     setSaved]     = useState(false);
   const [selection, setSelection] = useState([]);
   const wrapRef = useRef(null);
 
-  const shareTargets = getShareTargets(currentUser, users, sharePermissions);
+  const shareTargets = getShareTargets(currentUser, users, shareBlocks);
   const sharedWith = cliente.compartido_con || [];
   const isShared   = sharedWith.length > 0;
 
@@ -112,7 +102,7 @@ export default function ShareButton({ cliente, onUpdate }) {
             <p className="text-xs text-google-gray">Trabajadores con acceso a este contrato:</p>
             {shareTargets.length === 0 && (
               <p className="text-xs text-google-gray italic">
-                No tienes autorización para compartir con nadie. Pídele al administrador que te asigne destinatarios en Gestión de Usuarios.
+                No hay usuarios con los que puedas compartir.
               </p>
             )}
             {shareTargets.map(u => (

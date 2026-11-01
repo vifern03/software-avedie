@@ -64,11 +64,13 @@ Todas reciben `p_actor` y `p_token`, salvo las de sesión.
 | `doc_b2b_buscar_cups`, `doc_b2b_crear_por_cups` | Con acceso a la sección, sobre cualquier contrato de Alta B2B |
 | `doc_b2b_renovar_sesion`, `doc_b2b_cerrar_sesion` | Con un token vigente; renovar deja la sesión en 30 días y se llama al arrancar el CRM |
 | `doc_b2b_crear` | Con acceso a la sección y a los contratos. Ya no la usa la interfaz |
-| `doc_b2b_nueva_version`, `doc_b2b_borrar` | Admin, manager o quien lo generó |
-| `doc_b2b_compartir` | Admin y manager |
+| `doc_b2b_guardar_version` | Quien ve la documentación (generada por él o compartida con él), manager y admin |
+| `doc_b2b_borrar` | Admin, manager o quien lo generó |
+| `doc_b2b_compartir_abierto` | Quien ve la documentación, salvo con sus bloqueados |
+| `compartir_bloqueos_guardar` | Admin |
 | `doc_b2b_listar` | `mias`: con acceso. `global`: admin y manager |
 | `doc_b2b_detalle`, `doc_b2b_cups_activos` | Con acceso |
-| `doc_b2b_modificaciones` | Quien puede ver esa documentación |
+| `doc_b2b_modificaciones_gestion` | Admin y manager |
 | `distribuidora_guardar`, `tarifa_guardar_version` | Admin |
 | `doc_b2b_eliminar_definitivo` | Admin; solo la llama la Edge Function, que borra los PDF |
 | `doc_b2b_autorizar_archivos` | Solo `service_role` (la Edge Function) |
@@ -78,8 +80,10 @@ Cada acción se registra en Historial de Actividades con el tipo `Documentación
 ## Permisos
 
 - Sección `documentacion_b2b` en Gestión de Usuarios: activa por defecto para admin y manager. A cada comercial se le activa a mano. Se aplica en el menú y también en las RPC.
-- Comercial con acceso: genera con cualquier CUPS de Alta B2B; edita y borra solo lo que generó.
-- Destinatario de algo compartido: lo ve y lo descarga, con «Generado por». No lo edita ni lo borra, salvo que sea admin o manager.
+- Comercial con acceso: genera con cualquier CUPS de Alta B2B; edita lo que generó y lo compartido con él; borra solo lo que generó.
+- Destinatario de algo compartido: lo ve, lo descarga y lo edita, con «Generado por». No lo borra, salvo que sea admin o manager.
+- Historial de modificaciones y Documentación global: solo admin y manager.
+- Compartir: todos con todos por defecto. En Gestión de Usuarios → Compartición se eligen las personas con las que alguien NO puede compartir (tabla `compartir_bloqueos`). `share_permissions` ya no se usa.
 - Documentación borrada: solo admin y manager la descargan.
 - «Actualizar tarifa»: solo admin.
 
@@ -104,8 +108,8 @@ node e2e/documentacion_b2b_datos.mjs rkqgttpiojjorgwikivr limpiar
 ## Rollback
 
 1. Código: revertir los commits en `main`, o volver al despliegue anterior en Vercel.
-2. Edge Function: `npx supabase functions delete doc-b2b-archivos --project-ref <ref>`.
-3. Base de datos: `npx supabase db query --linked --project-ref <ref> -f supabase/rollback/20261101000003_doc_b2b_modificaciones_down.sql`, lo mismo con `supabase/rollback/20261101000002_doc_b2b_eliminar_definitivo_down.sql`, con `supabase/rollback/20261101000001_doc_b2b_generar_por_cups_down.sql`, con `supabase/rollback/20261101000000_doc_b2b_renovar_sesion_down.sql` y después lo mismo con `supabase/rollback/20261031000000_documentacion_b2b_down.sql`.
+2. Edge Functions: `npx supabase functions delete doc-b2b-subir --project-ref <ref>` y lo mismo con `doc-b2b-archivos`.
+3. Base de datos: `npx supabase db query --linked --project-ref <ref> -f supabase/rollback/20261101000004_compartir_abierto_edicion_down.sql`, lo mismo con `supabase/rollback/20261101000003_doc_b2b_modificaciones_down.sql`, con `supabase/rollback/20261101000002_doc_b2b_eliminar_definitivo_down.sql`, con `supabase/rollback/20261101000001_doc_b2b_generar_por_cups_down.sql`, con `supabase/rollback/20261101000000_doc_b2b_renovar_sesion_down.sql` y después lo mismo con `supabase/rollback/20261031000000_documentacion_b2b_down.sql`.
 
 El paso 3 borra expedientes, versiones de tarifa, distribuidoras y sesiones. Los PDF y los buckets se quedan: Supabase no deja borrarlos por SQL. Son privados y no tienen políticas; para quitarlos, hay que vaciarlos desde Storage. Las filas de Historial de Actividades se conservan. Si se aplica una versión de tarifa y luego se revierte, Consulta de Tarifas vuelve a los valores de `src/data/`.
 

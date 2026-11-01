@@ -7,6 +7,7 @@ import { supabase } from '../supabase';
 
 const CLAVE_TOKEN = 'crm_avedie_docb2b_token';
 const FUNCION = 'doc-b2b-archivos';
+const FUNCION_SUBIDA = 'doc-b2b-subir';
 
 export class SesionRequerida extends Error {
   constructor() { super('No se ha podido abrir la sesión de esta sección.'); this.name = 'SesionRequerida'; }
@@ -84,11 +85,9 @@ export function rpc(nombre, actor, params = {}) {
   });
 }
 
-export function archivos(actor, accion, extra = {}) {
+function funcion(nombre, actor, cuerpo) {
   return conToken(actor, async (token) => {
-    const { data, error } = await supabase.functions.invoke(FUNCION, {
-      body: { actor, token, accion, ...extra },
-    });
+    const { data, error } = await supabase.functions.invoke(nombre, { body: { actor, token, ...cuerpo } });
     if (error) {
       let mensaje = error.message;
       try { mensaje = (await error.context.json()).error || mensaje; } catch { /* sin cuerpo */ }
@@ -97,6 +96,11 @@ export function archivos(actor, accion, extra = {}) {
     return data;
   });
 }
+
+export const archivos = (actor, accion, extra = {}) => funcion(FUNCION, actor, { accion, ...extra });
+
+/** URLs para subir la versión siguiente de una documentación que ya existe. */
+export const autorizarSubida = (actor, id) => funcion(FUNCION_SUBIDA, actor, { id });
 
 async function bajar(url) {
   const r = await fetch(url);
