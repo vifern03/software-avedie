@@ -155,6 +155,9 @@ async function escenario(nombre, fn) {
     ok((await admin.locator('[data-testid="aviso-2"]').innerText()).includes('Modalidad: Plana (por defecto)'), 'aviso 2 con Plana por defecto');
     ok((await admin.locator('[data-testid="aviso-caducada"]').innerText()).includes('válida hasta 28-10-2026'), 'tarifa caducada: aviso, no bloquea');
     ok(await admin.locator('[data-testid="aviso-oferta_numero"]').count() > 0, '⚠ en número de oferta');
+    const cajaAviso = await admin.locator('[data-testid="aviso-oferta_numero"]').boundingBox();
+    const cajaCampo = await admin.locator('[data-testid="campo-oferta_numero"]').boundingBox();
+    ok(cajaAviso.x > cajaCampo.x + 20, '⚠ a la derecha del dato, sin tapar la etiqueta');
     ok(await admin.locator('[data-testid="doc-anexo_puntos"]').count() === 0, 'sin anexo de puntos con 1 CUPS');
 
     await admin.locator('[data-testid="campo-s0.sum_numero"]').click();
@@ -212,14 +215,14 @@ async function escenario(nombre, fn) {
     const ps = await textoPdf(await descargar(admin, 'e2_puntos.pdf'));
     ok(ps.texto.includes('NZZ - UNION FENOSA') && ps.texto.includes('BZZ - I-DE'), 'anexo de puntos con cada distribuidora');
     await admin.screenshot({ path: path.join(salida, 'e2_puntos.png'), fullPage: true });
-    const activo = () => admin.locator('[data-testid^="doc-"].bg-google-blue').getAttribute('data-testid');
-    ok(await admin.locator('[data-testid="doc-siguiente"]').isDisabled(), 'último documento: sin flecha siguiente');
-    await admin.click('[data-testid="doc-anterior"]');
-    ok(await activo() === 'doc-anexo_precios', 'flecha anterior');
-    await admin.click('[data-testid="doc-anterior"]');
-    ok(await activo() === 'doc-contrato' && await admin.locator('[data-testid="doc-anterior"]').isDisabled(), 'primer documento: sin flecha anterior');
-    await admin.click('[data-testid="doc-siguiente"]');
-    ok(await activo() === 'doc-anexo_precios', 'flecha siguiente');
+    const paginaActual = () => admin.locator('select[aria-label="Página"]').inputValue();
+    const docActivo = () => admin.locator('[data-testid^="doc-"].bg-google-blue').getAttribute('data-testid');
+    ok(await paginaActual() === '1' && await admin.locator('[data-testid="pagina-lateral-anterior"]').isDisabled(), 'flechas laterales: primera página');
+    await admin.click('[data-testid="pagina-lateral-siguiente"]');
+    ok(await paginaActual() === '2' && await admin.locator('[data-testid="pagina-lateral-siguiente"]').isDisabled(), 'flecha lateral: página siguiente');
+    await admin.click('[data-testid="pagina-lateral-anterior"]');
+    ok(await paginaActual() === '1', 'flecha lateral: página anterior');
+    ok(await docActivo() === 'doc-anexo_puntos', 'las flechas no cambian de documento');
   });
 
   await escenario('3. CUPS ya documentado, borrar y regenerar', async () => {

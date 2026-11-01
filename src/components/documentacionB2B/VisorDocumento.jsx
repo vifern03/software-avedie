@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ChevronLeft, ChevronRight, Download, Pencil, Printer, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Download, Pencil, Printer, X } from 'lucide-react';
 import { leerClave } from '../../lib/contratosEndesa/ensamblar';
 import { MODALIDADES, OPCIONES_CAMPO, TENSIONES_30TD } from '../../lib/contratosEndesa/constantes';
 
@@ -7,6 +7,15 @@ async function cargarPdfjs() {
   const [pdfjs, worker] = await Promise.all([import('pdfjs-dist'), import('pdfjs-dist/build/pdf.worker.min.mjs?url')]);
   pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
   return pdfjs;
+}
+
+const medidor = typeof document === 'undefined' ? null : document.createElement('canvas').getContext('2d');
+
+/** Punto donde acaba el texto del campo, desde el inicio de la zona, en puntos PDF. */
+function finDelTexto(z, valor) {
+  medidor.font = `${z.size}px Helvetica`;
+  const ancho = medidor.measureText(String(valor ?? '')).width;
+  return Math.min(z.centro === null ? ancho : z.centro - z.x + ancho / 2, z.w);
 }
 
 function opcionesDe(clave, modelo) {
@@ -53,7 +62,7 @@ function EditorCampo({ clave, modelo, error, onGuardar, onCerrar }) {
  * Visor: una página cada vez, renderizada con pdf.js, y encima una capa HTML con los
  * campos, en las coordenadas de campos.json escaladas al ancho del lienzo.
  */
-export default function VisorDocumento({ bytes, nombreArchivo, capa, modelo, avisos, rojos, editable = true, bloqueado, onEditar, errorEdicion, limpiarError }) {
+export default function VisorDocumento({ bytes, nombreArchivo, capa, modelo, avisos, rojos, editable = true, bloqueado, onEditar, errorEdicion, limpiarError, flechasLaterales = false }) {
   const lienzo = useRef(null);
   const marco = useRef(null);
   const [pdf, setPdf] = useState(null);
@@ -123,9 +132,11 @@ export default function VisorDocumento({ bytes, nombreArchivo, capa, modelo, avi
 
   const zonas = (capa || []).filter((z) => z.page === pagina - 1);
   const e = dim.escala;
+  const pasarPagina = (d) => { setActivo(null); setPagina((p) => Math.min(total, Math.max(1, p + d))); };
 
   return (
-    <div className="border border-google-border rounded-xl overflow-hidden bg-gray-50" data-testid="visor">
+    <div className="flex items-start gap-2">
+    <div className="flex-1 min-w-0 border border-google-border rounded-xl overflow-hidden bg-gray-50" data-testid="visor">
       <div className="flex items-center justify-between gap-3 px-3 py-2 bg-white border-b border-google-border">
         <div className="flex items-center gap-1">
           <button onClick={() => { setActivo(null); setPagina((p) => Math.max(1, p - 1)); }} disabled={pagina <= 1} className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30" aria-label="Página anterior"><ChevronLeft size={16} /></button>
@@ -157,7 +168,7 @@ export default function VisorDocumento({ bytes, nombreArchivo, capa, modelo, avi
                 onClick={() => { limpiarError(); setActivo(`${z.clave}-${i}`); }}
               >
                 {aviso && (
-                  <span className="absolute -left-4 top-1/2 -translate-y-1/2 z-20" title={aviso} data-testid={`aviso-${z.clave}`}>
+                  <span className="absolute top-1/2 -translate-y-1/2 z-20" style={{ left: finDelTexto(z, leerClave(modelo, z.clave)) * e + 2 }} title={aviso} data-testid={`aviso-${z.clave}`}>
                     <AlertTriangle size={12} className="text-amber-500 fill-amber-100" />
                   </span>
                 )}
@@ -178,6 +189,15 @@ export default function VisorDocumento({ bytes, nombreArchivo, capa, modelo, avi
           })}
         </div>
       </div>
+    </div>
+    {flechasLaterales && (
+      <div className="sticky top-1/2 flex flex-col gap-2">
+        <button onClick={() => pasarPagina(-1)} disabled={pagina <= 1} data-testid="pagina-lateral-anterior" aria-label="Página anterior" title="Página anterior"
+          className="p-2 rounded-full border border-google-border bg-white text-google-dark hover:bg-gray-100 disabled:opacity-30"><ArrowLeft size={18} /></button>
+        <button onClick={() => pasarPagina(1)} disabled={pagina >= total} data-testid="pagina-lateral-siguiente" aria-label="Página siguiente" title="Página siguiente"
+          className="p-2 rounded-full border border-google-border bg-white text-google-dark hover:bg-gray-100 disabled:opacity-30"><ArrowRight size={18} /></button>
+      </div>
+    )}
     </div>
   );
 }

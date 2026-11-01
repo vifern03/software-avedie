@@ -31,10 +31,10 @@ export function provinciaEndesa(p) {
   return /\bESPAÑA$/.test(t) ? t : `${t} ESPAÑA`;
 }
 
-/** Dirección del anexo: VIA NUM ESC PISO PUERTA CP LOCALIDAD LOCALIDAD PROVINCIA. */
-export function direccionCompleta({ sum_via, sum_numero, sum_escalera, sum_piso, sum_puerta, sum_cp, sum_localidad, sum_provincia }) {
+/** Dirección del anexo: VIA NUM CP LOCALIDAD LOCALIDAD PROVINCIA. */
+export function direccionCompleta({ sum_via, sum_numero, sum_cp, sum_localidad, sum_provincia }) {
   const l = mayus(sum_localidad);
-  return [mayus(sum_via), mayus(sum_numero), mayus(sum_escalera), mayus(sum_piso), mayus(sum_puerta), txt(sum_cp), l, l, mayus(sum_provincia)].filter(Boolean).join(' ');
+  return [mayus(sum_via), mayus(sum_numero), txt(sum_cp), l, l, mayus(sum_provincia)].filter(Boolean).join(' ');
 }
 
 /** CIF de empresa (letra de organización + 7 dígitos + control), no DNI ni NIE. */
@@ -310,7 +310,7 @@ export function aplicarEdicion(modelo, clave, valor, tarifa) {
     const campo = sm[2];
     s[campo] = CLAVES_POTENCIA.includes(campo) ? potenciaEndesa(String(valor).replace(',', '.')) : valor;
     if (CLAVES_POTENCIA.includes(campo)) s.bloque_precios = bloqueSuministro(tarifa, m.tarifa_acceso, m.modalidad, s);
-    if (['sum_via', 'sum_numero', 'sum_escalera', 'sum_piso', 'sum_puerta', 'sum_cp', 'sum_localidad', 'sum_provincia'].includes(campo)) {
+    if (['sum_via', 'sum_numero', 'sum_cp', 'sum_localidad', 'sum_provincia'].includes(campo)) {
       s.sum_direccion_completa = direccionCompleta(s);
       delete avisos[`s${sm[1]}.sum_direccion_completa`];
     }

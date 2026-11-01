@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, ArrowLeft, ArrowRight, Info, Save } from 'lucide-react';
+import { AlertTriangle, Info, Save } from 'lucide-react';
 import campos from '../../lib/contratosEndesa/campos.json';
 import camposPS from '../../lib/contratosEndesa/campos_puntos_suministro.json';
 import { aplicarEdicion, camposVaciosAviso, estaCompleta, leerClave, obligatoriosVacios } from '../../lib/contratosEndesa/ensamblar';
@@ -69,7 +69,6 @@ export default function EditorDocumentacion({ inicial, pdfsIniciales, plantillas
   const vacios = camposVaciosAviso(modelo);
   const modalidad = MODALIDADES.find((m) => m.id === modelo.modalidad);
   const docs = DOCS.filter((d) => pdfs[d.tipo]);
-  const iDoc = docs.findIndex((d) => d.tipo === tipo);
   const fechaFin = modelo.campos.validez_hasta;
 
   return (
@@ -136,30 +135,19 @@ export default function EditorDocumentacion({ inicial, pdfsIniciales, plantillas
       )}
       {errorEdicion && (tipo === 'anexo_precios' || controlesDocumento) && <p className="text-xs text-red-600">{errorEdicion}</p>}
 
-      <div className="flex items-start gap-2">
-        <div className="flex-1 min-w-0">
-          <VisorDocumento
-            bytes={pdfs[tipo]}
-            nombreArchivo={`${DOCS.find((d) => d.tipo === tipo).label} - ${modelo.campos.documento_numero}.pdf`}
-            capa={capa}
-            modelo={modelo}
-            avisos={modelo.avisos}
-            rojos={rojos}
-            bloqueado={!completa}
-            onEditar={editar}
-            errorEdicion={errorEdicion}
-            limpiarError={() => setErrorEdicion('')}
-          />
-        </div>
-        {controlesDocumento && (
-          <div className="sticky top-1/2 flex flex-col gap-2">
-            <button onClick={() => setTipo(docs[iDoc - 1].tipo)} disabled={iDoc <= 0} data-testid="doc-anterior" aria-label="Documento anterior" title="Documento anterior"
-              className="p-2 rounded-full border border-google-border bg-white text-google-dark hover:bg-gray-100 disabled:opacity-30"><ArrowLeft size={18} /></button>
-            <button onClick={() => setTipo(docs[iDoc + 1].tipo)} disabled={iDoc >= docs.length - 1} data-testid="doc-siguiente" aria-label="Documento siguiente" title="Documento siguiente"
-              className="p-2 rounded-full border border-google-border bg-white text-google-dark hover:bg-gray-100 disabled:opacity-30"><ArrowRight size={18} /></button>
-          </div>
-        )}
-      </div>
+      <VisorDocumento
+        bytes={pdfs[tipo]}
+        nombreArchivo={`${DOCS.find((d) => d.tipo === tipo).label} - ${modelo.campos.documento_numero}.pdf`}
+        capa={capa}
+        modelo={modelo}
+        avisos={modelo.avisos}
+        rojos={rojos}
+        bloqueado={!completa}
+        onEditar={editar}
+        errorEdicion={errorEdicion}
+        limpiarError={() => setErrorEdicion('')}
+        flechasLaterales={controlesDocumento}
+      />
     </div>
   );
 }

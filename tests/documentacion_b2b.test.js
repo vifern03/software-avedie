@@ -339,14 +339,16 @@ test('nº de documento: Alta, luego factura, luego DNI', () => {
   assert.match(modelo1({ clientes: [persona()], lecturas: { facturas: [factura()], cif: null, dni: { ...lecturaDni, dni: '87654321X' } } }).avisos.documento_numero, /otro número/);
 });
 
-test('dirección de suministro: escalera, piso y puerta en su casilla y en el anexo', () => {
+test('dirección de suministro: escalera, piso y puerta en su casilla; el anexo lleva el formato de Endesa', () => {
   const suministro = { via: 'CALLE MAYOR', numero: '42', escalera: 'A', piso: 'BAJ', puerta: 'B', cp: '34001', localidad: 'PALENCIA', provincia: 'PALENCIA' };
   const m = modelo1({ lecturas: lecturas([factura(20, { suministro })]) });
   const s = m.suministros[0];
   assert.deepEqual([s.sum_escalera, s.sum_piso, s.sum_puerta], ['A', 'BAJ', 'B']);
-  assert.equal(s.sum_direccion_completa, 'CALLE MAYOR 42 A BAJ B 34001 PALENCIA PALENCIA PALENCIA');
+  assert.equal(s.sum_direccion_completa, 'CALLE MAYOR 42 34001 PALENCIA PALENCIA PALENCIA');
+  const contrato = derivarDocumentos(m).contrato;
+  assert.deepEqual([contrato.sum_escalera, contrato.sum_piso, contrato.sum_puerta], ['A', 'BAJ', 'B']);
   assert.equal(m.avisos['s0.sum_piso'], undefined);
-  assert.equal(aplicarEdicion(m, 's0.sum_piso', '2', OPEN_30TD).suministros[0].sum_direccion_completa, 'CALLE MAYOR 42 A 2 B 34001 PALENCIA PALENCIA PALENCIA');
+  assert.equal(aplicarEdicion(m, 's0.sum_piso', '2', OPEN_30TD).suministros[0].sum_direccion_completa, 'CALLE MAYOR 42 34001 PALENCIA PALENCIA PALENCIA');
 });
 
 test('lectura del DNI: NOMBRE APELLIDOS; la factura trae titular y escalera', () => {

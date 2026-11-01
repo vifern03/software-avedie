@@ -9,6 +9,7 @@ const NO_EDITABLES = new Set(['tarifa_acceso', 'tramo_potencia', 'producto']);
 
 const zona = (c, clave, dy = 0) => ({
   clave, page: c.page ?? 0, x: c.x, top: c.baseline + dy - c.size, w: c.max_width, h: c.size + 2,
+  size: c.size, centro: c.align === 'center' ? c.center_x : null,
 });
 
 export function capaContrato(mapa, modelo) {
