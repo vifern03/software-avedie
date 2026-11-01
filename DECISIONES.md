@@ -25,7 +25,7 @@ Decisiones tomadas sin consulta, siempre por la opción más conservadora. Fecha
 
 ## D5. Modo vista previa del generador
 - **Qué:** `opciones.permitirVacios`. El generador original lanzaba error con obligatorios vacíos, pero la especificación pide mostrarlos en rojo y guardar.
-- **Por qué:** la descarga queda bloqueada en la interfaz y en el servidor (`completa`, columna añadida a `documentacion_b2b_versiones`).
+- **Por qué:** la descarga queda bloqueada en la interfaz (visor e historial). `documentacion_b2b_versiones.completa`, columna añadida, guarda el estado; `doc_b2b_listar` lo usa para no ofrecer la descarga. La Edge Function no rechaza por este motivo a quien ya tiene permiso sobre el expediente.
 
 ## D6. Prefijos de distribuidora
 - **Qué:** se admite el prefijo alfanumérico `URDZ`, que está en el CSV de la CNMC; el CSV se carga tal cual. `distribuidora_guardar` sigue exigiendo 4 o 6 dígitos.
