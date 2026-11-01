@@ -134,7 +134,7 @@ export function AuthProvider({ children }) {
     const safeUser = dbToUser(data[0]);
     setCurrentUser(safeUser);
     localStorage.setItem(SESSION_KEY, JSON.stringify(safeUser));
-    abrirSesionDocB2B(data[0].username, password).catch(() => {}); // si falla, la sección avisa de que hay que volver a entrar
+    abrirSesionDocB2B(data[0].username, password).catch(() => {}); // si falla, la sección abre su sesión al usarla
     return true;
   }, []);
 

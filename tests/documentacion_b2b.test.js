@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { comprobarCups, limpiarCups } from '../src/lib/documentacionB2B/seleccion.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { PDFDocument } from 'pdf-lib';
@@ -268,4 +269,18 @@ test('vista previa con vacíos: genera sin error si se permite; 6.1TD Día cabe 
 
   const m61 = modelo1({ clientes: [cliente({ tarifa: '6.1TD' })], tarifaInfo: vigente(OPEN_61TD), modalidad: 'noche', lecturas: lecturas([factura(100, { tension: '20 kV' })]) });
   await generarAnexo(base.anexo, campos.anexo, derivarDocumentos(m61).anexo);
+});
+
+test('ventana de generación: comprobación de los CUPS escritos', () => {
+  const alta = (cups, cif, tarifa, id_producto) => ({ id: cups, cups, cif_dni: cif, tarifa, id_producto });
+  const a = alta('ES0021000000000001XX0F', 'B1', '3.0TD', 'Open 3.0TD');
+  const b = alta('ES0021000000000002XX0F', 'b1 ', '3.0TD', 'Open 3.0TD');
+  assert.deepEqual(limpiarCups(['es0021 000000000001xx0f', '', 'ES0021000000000001XX0F']), ['ES0021000000000001XX0F']);
+  assert.equal(comprobarCups([b.cups, a.cups], [a, b], {}).clientes[0], b);
+  assert.match(comprobarCups(['ES1'], [a], {}).error, /No existe en Alta B2B: ES1/);
+  assert.match(comprobarCups(['X'], [alta('X', 'B1', '2.0TD', 'TEMPO 2.0TD')], {}).error, /TEMPO 2\.0TD/);
+  assert.match(comprobarCups(['X'], [alta('X', 'B1', '3.0TD', 'Luz Fija 24H')], {}).error, /Luz Fija 24H/);
+  assert.match(comprobarCups([a.cups, 'Y'], [a, alta('Y', 'B2', '3.0TD', 'Open 3.0TD')], {}).error, /mismo CIF/);
+  assert.match(comprobarCups([a.cups, 'Y'], [a, alta('Y', 'B1', '6.1TD', 'Open 6.1TD')], {}).error, /misma tarifa/);
+  assert.match(comprobarCups([a.cups], [a], { [a.cups]: {} }).error, /Ya tiene documentación/);
 });

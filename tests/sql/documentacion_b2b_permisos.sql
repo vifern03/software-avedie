@@ -79,6 +79,17 @@ SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_listar('t_admin', (SELECT v
 SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_renovar_sesion('x') $q$, 'SESION_DOC_B2B', 'renovar con token inventado');
 SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_renovar_sesion(NULL) $q$, 'SESION_DOC_B2B', 'renovar sin token');
 SELECT public.doc_b2b_renovar_sesion((SELECT v FROM ids WHERE k='tok_t_com'));
+SELECT pg_temp.ok((public.doc_b2b_sesion_crm('t_com'))->>'token' IS NOT NULL, 'sesión con el usuario del CRM');
+SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_sesion_crm('t_baja') $q$, 'No tienes acceso', 'sesión sin contraseña: usuario de baja');
+SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_sesion_crm('t_sin') $q$, 'No tienes acceso', 'sesión sin contraseña: sin acceso a la sección');
+SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_sesion_crm('nadie') $q$, 'No tienes acceso', 'sesión sin contraseña: usuario inexistente');
+SELECT pg_temp.ok(jsonb_array_length(public.doc_b2b_buscar_cups('t_otra', (SELECT v FROM ids WHERE k='tok_t_otra'), ARRAY['ES0021000000000001XX0F'])) = 1, 'buscar: encuentra un contrato ajeno');
+SELECT pg_temp.ok(jsonb_array_length(public.doc_b2b_buscar_cups('t_otra', (SELECT v FROM ids WHERE k='tok_t_otra'), ARRAY['ES0021000000000999XX0F'])) = 0, 'buscar: CUPS inexistente');
+SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_buscar_cups('t_sin', (SELECT v FROM ids WHERE k='tok_t_sin'), ARRAY['ES0021000000000001XX0F']) $q$, 'No tienes acceso', 'buscar: sin acceso a la sección');
+SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_crear_por_cups('t_otra', (SELECT v FROM ids WHERE k='tok_t_otra'), (SELECT v::uuid FROM ids WHERE k='d1'),
+  ARRAY[9000001]::bigint[], 'p', 'plana', NULL, '{}', '{}', '[]', true) $q$, 'Faltan documentos', 'crear por CUPS: contrato ajeno pasa la comprobación de propietario');
+SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_crear_por_cups('t_otra', (SELECT v FROM ids WHERE k='tok_t_otra'), (SELECT v::uuid FROM ids WHERE k='d1'),
+  ARRAY[9000005]::bigint[], 'p', 'plana', NULL, '{}', '{}', '[]', true) $q$, 'no disponibles', 'crear por CUPS: TEMPO bloqueado');
 
 -- ── Acceso directo a tablas ─────────────────────────────────────────────────
 SELECT pg_temp.debe_fallar($q$ SELECT * FROM public.documentacion_b2b $q$, 'permission denied', 'anon no lee expedientes');

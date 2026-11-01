@@ -1,7 +1,7 @@
 /**
  * Acceso a servidor de Documentación B2B: sesión propia, RPC y Edge Function de archivos.
- * El token se abre en el login del CRM y se guarda aparte de su sesión. Se renueva al
- * arrancar; si falta o caduca, hay que volver a entrar en el CRM.
+ * El token se guarda aparte de la sesión del CRM. Si falta o caduca, se abre otro con
+ * el usuario de la sesión actual, sin pedir nada.
  */
 import { supabase } from '../supabase';
 
@@ -9,7 +9,7 @@ const CLAVE_TOKEN = 'crm_avedie_docb2b_token';
 const FUNCION = 'doc-b2b-archivos';
 
 export class SesionRequerida extends Error {
-  constructor() { super('Cierra sesión y vuelve a entrar en el CRM para usar esta sección.'); this.name = 'SesionRequerida'; }
+  constructor() { super('No se ha podido abrir la sesión de esta sección.'); this.name = 'SesionRequerida'; }
 }
 
 export function leerToken(username) {
@@ -58,29 +58,44 @@ function comprobarError(error) {
   throw new Error(error.message);
 }
 
-function credenciales(actor) {
-  const token = leerToken(actor);
-  if (!token) throw new SesionRequerida();
-  return { p_actor: actor, p_token: token };
+async function abrirSesionCrm(username) {
+  const { data, error } = await supabase.rpc('doc_b2b_sesion_crm', { p_username: username });
+  if (error) throw new Error(error.message);
+  localStorage.setItem(CLAVE_TOKEN, JSON.stringify({ username, token: data.token, expira_at: data.expira_at }));
+  return data.token;
 }
 
-export async function rpc(nombre, actor, params = {}) {
-  const { data, error } = await supabase.rpc(nombre, { ...credenciales(actor), ...params });
-  comprobarError(error);
-  return data;
-}
-
-export async function archivos(actor, accion, extra = {}) {
-  const { p_token } = credenciales(actor);
-  const { data, error } = await supabase.functions.invoke(FUNCION, {
-    body: { actor, token: p_token, accion, ...extra },
-  });
-  if (error) {
-    let mensaje = error.message;
-    try { mensaje = (await error.context.json()).error || mensaje; } catch { /* sin cuerpo */ }
-    comprobarError({ message: mensaje });
+/** Ejecuta la llamada con el token; si el servidor lo rechaza, reintenta una vez con otro. */
+async function conToken(actor, llamada) {
+  const token = leerToken(actor) || await abrirSesionCrm(actor);
+  try {
+    return await llamada(token);
+  } catch (e) {
+    if (!(e instanceof SesionRequerida)) throw e;
+    return llamada(await abrirSesionCrm(actor));
   }
-  return data;
+}
+
+export function rpc(nombre, actor, params = {}) {
+  return conToken(actor, async (token) => {
+    const { data, error } = await supabase.rpc(nombre, { p_actor: actor, p_token: token, ...params });
+    comprobarError(error);
+    return data;
+  });
+}
+
+export function archivos(actor, accion, extra = {}) {
+  return conToken(actor, async (token) => {
+    const { data, error } = await supabase.functions.invoke(FUNCION, {
+      body: { actor, token, accion, ...extra },
+    });
+    if (error) {
+      let mensaje = error.message;
+      try { mensaje = (await error.context.json()).error || mensaje; } catch { /* sin cuerpo */ }
+      comprobarError({ message: mensaje });
+    }
+    return data;
+  });
 }
 
 async function bajar(url) {

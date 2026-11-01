@@ -253,7 +253,7 @@ export default function Historial({ recarga, onCambio, onSesion, enfoque }) {
       </div>
       {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
       {cargando && datos.filas.length === 0 && <div className="py-8 flex justify-center"><Loader2 size={22} className="animate-spin text-google-blue" /></div>}
-      {!cargando && datos.filas.length === 0 && <p className="py-8 text-center text-sm text-google-gray">Todavía no hay documentación.</p>}
+      {!cargando && datos.filas.length === 0 && <p className="py-8 text-center text-sm text-google-gray">Todavía no hay documentación generada</p>}
       <div className="space-y-2">
         {datos.filas.map((f) => <Entrada key={f.id} fila={f} onCambio={onCambio} onSesion={onSesion} onError={setError} />)}
       </div>

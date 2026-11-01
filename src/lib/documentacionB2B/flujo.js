@@ -17,23 +17,15 @@ import { obtenerTarifa, sincronizarTarifas } from '../tarifas/obtenerTarifa';
 import { buscarDistribuidora } from '../distribuidoras';
 import { fetchSingleDoc } from '../../context/DataContext';
 import { archivos, cargarPlantillas, rpc, subirPdfs } from './api';
-
-export const PASOS = [
-  { id: 'alta', label: 'Leyendo datos del Alta B2B', segundos: 1 },
-  { id: 'factura', label: 'Leyendo factura (IA)', segundos: 6 },
-  { id: 'cif', label: 'Leyendo CIF y DNI (IA)', segundos: 6 },
-  { id: 'tarifa', label: 'Distribuidora y tarifa vigente', segundos: 1 },
-  { id: 'pdf', label: 'Generando documentos', segundos: 1 },
-  { id: 'guardar', label: 'Guardando', segundos: 2 },
-];
+import { reducirDocumento } from './reducirDocumento';
+import { comprobarCups } from './seleccion';
 
 export const CAMPOS_DOC = { factura: ['factura_b2b_url', 'ultima_factura'], cif: ['cif_autonomo_url'], dni: ['dni_escaneado'] };
-const MAX_BASE64 = 5_500_000; // límite de cuerpo de las funciones de Vercel (4,5 MB) con holgura para el JSON
 
 /** data:mime;base64,xxx → File. null si no es un documento utilizable. */
 export function dataUrlAArchivo(dataUrl, nombre) {
   const m = /^data:([^;,]+);base64,(.+)$/s.exec(dataUrl || '');
-  if (!m || m[2].length > MAX_BASE64) return null;
+  if (!m) return null;
   const bin = atob(m[2]);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -42,8 +34,8 @@ export function dataUrlAArchivo(dataUrl, nombre) {
 
 async function documentoDe(clienteId, columnas) {
   for (const c of columnas) {
-    const v = await fetchSingleDoc(clienteId, c);
-    if (v) return dataUrlAArchivo(v, c);
+    const archivo = dataUrlAArchivo(await fetchSingleDoc(clienteId, c), c);
+    if (archivo) return reducirDocumento(archivo);
   }
   return null;
 }
@@ -71,30 +63,45 @@ export async function construirPdfs(plantillas, modelo) {
   return salida;
 }
 
-export async function prepararDocumentacion({ clientes, modalidad, actor, onPaso }) {
-  onPaso('alta');
-  const plantillas = await cargarPlantillas(actor);
+/** Busca los CUPS en Alta B2B. Lanza un error con el motivo si no se puede continuar. */
+export async function buscarAltas({ cups, actor }) {
+  const [filas, activos] = await Promise.all([
+    rpc('doc_b2b_buscar_cups', actor, { p_cups: cups }),
+    rpc('doc_b2b_cups_activos', actor),
+  ]);
+  const { clientes, error } = comprobarCups(cups, filas, activos);
+  if (error) throw new Error(error);
+  return clientes;
+}
+
+export async function leerDocumentos({ clientes }) {
   const doc0 = clientes[0];
-
-  onPaso('factura');
-  const facturas = await Promise.all(clientes.map(async (c) => leer(await documentoDe(c.id, CAMPOS_DOC.factura), PROMPT_FACTURA, limpiarFactura)));
-
-  onPaso('cif');
-  const [cif, dni] = await Promise.all([
+  const [facturas, cif, dni] = await Promise.all([
+    Promise.all(clientes.map(async (c) => leer(await documentoDe(c.id, CAMPOS_DOC.factura), PROMPT_FACTURA, limpiarFactura))),
     documentoDe(doc0.id, CAMPOS_DOC.cif).then((f) => leer(f, PROMPT_CIF, limpiarCif)),
     documentoDe(doc0.id, CAMPOS_DOC.dni).then((f) => leer(f, PROMPT_DNI, limpiarDni)),
   ]);
+  return { facturas, cif, dni };
+}
+
+/** Genera los PDF con la modalidad por defecto (Plana) y los guarda como versión 1. */
+export async function generarDocumentacion({ clientes, lecturas, actor, onPaso }) {
+  onPaso('plantillas');
+  const plantillas = await cargarPlantillas(actor);
 
   onPaso('tarifa');
   await sincronizarTarifas({ forzar: true });
   const fechaISO = hoyMadridISO();
-  const tarifaInfo = obtenerTarifa(TARIFA_ID[doc0.tarifa], fechaISO);
+  const tarifaInfo = obtenerTarifa(TARIFA_ID[clientes[0].tarifa], fechaISO);
   const distribuidoras = await Promise.all(clientes.map((c) => buscarDistribuidora(c.cups)));
 
   onPaso('pdf');
-  const modelo = ensamblar({ clientes, lecturas: { facturas, cif, dni }, distribuidoras, tarifaInfo, modalidad, fechaISO });
+  const modelo = ensamblar({ clientes, lecturas, distribuidoras, tarifaInfo, modalidad: 'plana', fechaISO });
   const pdfs = await construirPdfs(plantillas, modelo);
-  return { modelo, pdfs, plantillas, tarifaInfo };
+
+  onPaso('guardar');
+  const { id, version } = await guardarNueva({ actor, clientes, modelo, pdfs });
+  return { id, version, modelo, pdfs, plantillas };
 }
 
 async function sha256(bytes) {
@@ -121,7 +128,7 @@ async function subir(actor, id, version, pdfs) {
 export async function guardarNueva({ actor, clientes, modelo, pdfs }) {
   const id = crypto.randomUUID();
   const documentos = await subir(actor, id, 1, pdfs);
-  await rpc('doc_b2b_crear', actor, {
+  await rpc('doc_b2b_crear_por_cups', actor, {
     p_id: id, p_cliente_ids: clientes.map((c) => c.id), p_producto: modelo.suministros[0].producto, p_modalidad: modelo.modalidad,
     p_tarifa_version_id: modelo.tarifa_version_id, p_datos: modelo, p_avisos: modelo.avisos, p_documentos: documentos, p_completa: estaCompleta(modelo),
   });

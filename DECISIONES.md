@@ -46,3 +46,9 @@ Decisiones tomadas sin consulta, siempre por la opción más conservadora. Fecha
 - **Qué:** se retira el cuadro de contraseña, por indicación del usuario. El token se abre en el login del CRM y `doc_b2b_renovar_sesion` lo renueva a 30 días cada vez que arranca el CRM. Sin token, la sección muestra un aviso con «Cerrar sesión», no fuerza el cierre.
 - **Por qué:** §0.6 exige comprobar en el servidor quién pide las URL firmadas. Abrir sesión solo con el usuario dejaría a cualquiera con la clave pública descargar documentos con DNI e IBAN.
 - **Coste:** quien ya tenía la sesión abierta antes del despliegue, o pase más de 30 días sin abrir el CRM, tiene que volver a entrar una vez.
+
+## D11. Sesión sin contraseña e interfaz simple (01-11-2026)
+- **Qué:** por indicación expresa del usuario, la sección funciona con la sesión actual, sin aviso. Sustituye a D10 y a D1 en lo que respecta a la identidad. `doc_b2b_sesion_crm` abre sesión solo con el nombre de usuario.
+- **Consecuencia:** deja de cumplirse la comprobación de identidad de §0.6. Con la clave pública de la web y un nombre de usuario con acceso se pueden pedir sus documentos, con DNI e IBAN.
+- **Solo añade:** `doc_b2b_crear`, `_doc_b2b_ve_cliente` y el resto de lo existente no se tocan. La generación sin restricción por propietario va por `doc_b2b_crear_por_cups`, una función nueva; `doc_b2b_buscar_cups` busca los CUPS.
+

@@ -78,19 +78,37 @@ async function sesion(navegador, usuario) {
 
 async function abrirSeccion(p) {
   await p.getByRole('button', { name: 'Documentación B2B', exact: true }).first().click();
-  await p.waitForSelector('[data-testid="buscar-contratos"]', { timeout: 20000 });
+  await p.waitForSelector('[data-testid="abrir-generar"]', { timeout: 20000 });
 }
 
-const fila = (p, cups) => p.locator(`[data-testid="fila-contrato"][data-cups="${cups}"]`);
-async function marcar(p, cups) {
-  await p.fill('[data-testid="buscar-contratos"]', cups);
-  await fila(p, cups).locator('input[type=checkbox]').click();
+async function escribirCups(p, cups) {
+  await p.click('[data-testid="abrir-generar"]');
+  for (let i = 1; i < cups.length; i++) await p.click('[data-testid="anadir-cups"]');
+  const campos = p.locator('[data-testid="campo-cups"]');
+  for (let i = 0; i < cups.length; i++) await campos.nth(i).fill(cups[i]);
+  await p.click('[data-testid="cups-continuar"]');
 }
-async function generar(p) {
-  await p.click('[data-testid="generar"]');
-  await p.waitForSelector('[data-testid="pantalla-carga"]');
-  await p.waitForSelector('[data-testid="resultado"]', { timeout: 60000 });
-  await p.waitForSelector('[data-testid="pantalla-carga"]', { state: 'detached' });
+async function cerrar(p, conCambios = false) {
+  if (conCambios) p.once('dialog', (d) => d.accept());
+  await p.click('[data-testid="cerrar-generar"]');
+  await p.waitForSelector('[data-testid="generar-modal"]', { state: 'detached' });
+  await p.waitForTimeout(800);
+}
+async function debeRechazar(p, cups, texto, msg) {
+  await escribirCups(p, cups);
+  await p.waitForSelector('[data-testid="error-generar"]', { timeout: 30000 });
+  ok((await p.innerText('[data-testid="error-generar"]')).includes(texto), msg);
+  await cerrar(p);
+}
+async function generar(p, cups) {
+  await escribirCups(p, cups);
+  await p.waitForSelector('[data-testid="resumen"]', { timeout: 60000 });
+  await p.getByRole('button', { name: 'Sí', exact: true }).click();
+  await p.waitForSelector('[data-testid="verificar"]');
+  const t0 = Date.now();
+  await p.click('[data-testid="confirmar-generar"]');
+  await p.waitForSelector('[data-testid="resultado"]', { timeout: 90000 });
+  console.log(`  generar: ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   await p.waitForSelector('[data-testid^="campo-"]', { timeout: 60000 });
   await p.waitForTimeout(500);
 }
@@ -126,8 +144,11 @@ async function escenario(nombre, fn) {
 
   await escenario('1. 1 CUPS Open 3.0TD', async () => {
     await abrirSeccion(admin);
-    await marcar(admin, 'ES0021000000000901XX0F');
-    await generar(admin);
+    await admin.waitForSelector('[data-testid="tab-global"]');
+    await admin.getByText('Todavía no hay documentación generada').waitFor();
+    ok(await admin.locator('[data-testid="tab-mias"]').isVisible(), 'pestañas visibles con el historial vacío');
+    ok(await admin.locator('[data-testid="selector-modalidad"]').count() === 0 && await admin.locator('[data-testid="fila-contrato"]').count() === 0, 'sin lista de contratos ni selector de modalidad');
+    await generar(admin, ['es0021 0000 0000 0901 xx0f']);
     await admin.screenshot({ path: path.join(salida, 'e1_resultado.png'), fullPage: true });
     ok(await admin.locator('[data-testid="aviso-1"]').isVisible(), 'aviso 1');
     ok((await admin.locator('[data-testid="aviso-2"]').innerText()).includes('Modalidad: Plana (por defecto)'), 'aviso 2 con Plana por defecto');
@@ -172,16 +193,12 @@ async function escenario(nombre, fn) {
     await admin.waitForTimeout(1200);
     const marcos = await admin.evaluate(() => [...document.querySelectorAll('iframe[src^="blob:"]')].map((f) => window.__pdfs[f.src]));
     ok(marcos.length >= 2 && marcos.every((n) => n > 1000), 'Imprimir abre el PDF de los 2 documentos');
+    await cerrar(admin);
   });
 
   await escenario('2. 3 CUPS mismo CIF', async () => {
-    await marcar(admin, 'ES0021000000000902XX0F');
-    await admin.fill('[data-testid="buscar-contratos"]', 'ES0021000000000907');
-    await fila(admin, 'ES0021000000000907XX0F').locator('input[type=checkbox]').click();
-    ok((await admin.innerText('[data-testid="error-seleccion"]')).includes('mismo CIF'), 'mezclar CIF bloqueado');
-    await marcar(admin, 'ES0022000000000903XX1P');
-    await marcar(admin, 'ES0021000000000904XX0F');
-    await generar(admin);
+    await debeRechazar(admin, ['ES0021000000000902XX0F', 'ES0021000000000907XX0F'], 'mismo CIF', 'mezclar CIF bloqueado');
+    await generar(admin, ['ES0021000000000902XX0F', 'ES0022000000000903XX1P', 'ES0021000000000904XX0F']);
     for (const t of ['contrato', 'anexo_precios', 'anexo_puntos']) ok(await admin.locator(`[data-testid="doc-${t}"]`).count() === 1, `botón ${t}`);
     const c = await textoPdf(await descargar(admin, 'e2_contrato.pdf'));
     ok(!c.texto.includes('ES002') && !c.texto.includes('BZZ'), 'B y C vacíos en el contrato');
@@ -195,20 +212,21 @@ async function escenario(nombre, fn) {
     const ps = await textoPdf(await descargar(admin, 'e2_puntos.pdf'));
     ok(ps.texto.includes('NZZ - UNION FENOSA') && ps.texto.includes('BZZ - I-DE'), 'anexo de puntos con cada distribuidora');
     await admin.screenshot({ path: path.join(salida, 'e2_puntos.png'), fullPage: true });
+    await cerrar(admin);
   });
 
   await escenario('3. CUPS ya documentado, borrar y regenerar', async () => {
-    await admin.fill('[data-testid="buscar-contratos"]', 'ES0021000000000901');
-    await admin.waitForTimeout(600);
     await admin.reload();
     await admin.waitForTimeout(1500);
     await abrirSeccion(admin);
-    await admin.fill('[data-testid="buscar-contratos"]', 'ES0021000000000901');
-    const f = fila(admin, 'ES0021000000000901XX0F');
-    await f.getByText('Ya tiene documentación: ver').waitFor();
-    ok(await f.locator('input[type=checkbox]').isDisabled(), 'CUPS documentado bloqueado');
-    await admin.fill('[data-testid="buscar-contratos"]', 'ES0021000000000906');
-    ok((await fila(admin, 'ES0021000000000906XX0F').innerText()).includes('Aún no disponible'), 'TEMPO: aún no disponible');
+    await debeRechazar(admin, ['ES0021000000000901XX0F'], 'Ya tiene documentación', 'CUPS documentado bloqueado');
+    await debeRechazar(admin, ['ES0021000000000906XX0F'], 'TEMPO 2.0TD', 'TEMPO: indica el producto y no continúa');
+    await debeRechazar(admin, ['ES0021000000000999XX0F'], 'No existe en Alta B2B', 'CUPS inexistente: no continúa');
+    await admin.click('[data-testid="abrir-generar"]');
+    await admin.click('[data-testid="anadir-cups"]');
+    await admin.click('[data-testid="anadir-cups"]');
+    ok(await admin.locator('[data-testid="anadir-cups"]').count() === 0, 'máximo 3 CUPS');
+    await cerrar(admin);
     await admin.fill('[data-testid="historial-buscar"]', 'E2E UNO');
     await admin.waitForTimeout(1200);
     const e = entrada(admin, 'E2E UNO, S.L.');
@@ -231,9 +249,15 @@ async function escenario(nombre, fn) {
     ok(true, 'entrada borrada');
     ok((await e.locator('p').first().evaluate((n) => getComputedStyle(n).textDecorationLine)).includes('line-through'), 'tachada');
     ok((await e.locator('[data-testid="borrado-por"]').innerText()).includes('Borrado por: E2E Admin'), 'muestra Borrado por');
-    await marcar(admin, 'ES0021000000000901XX0F');
-    await generar(admin);
+    await generar(admin, ['ES0021000000000901XX0F']);
     ok(await admin.locator('[data-testid="aviso-1"]').isVisible(), 'regenerar permitido');
+    await cerrar(admin);
+    await admin.fill('[data-testid="historial-buscar"]', '');
+    await escribirCups(admin, ['ES0021000000000905XX0F']);
+    await admin.waitForSelector('[data-testid="resumen"]', { timeout: 60000 });
+    ok((await admin.innerText('[data-testid="resumen"]')).includes('B90000006'), 'resumen con empresa, NIF y CUPS');
+    await admin.getByRole('button', { name: 'Cancelar', exact: true }).click();
+    await admin.waitForSelector('[data-testid="generar-modal"]', { state: 'detached' });
   });
 
   await escenario('4. Permisos', async () => {
@@ -254,8 +278,8 @@ async function escenario(nombre, fn) {
     await abrirSeccion(com);
     await com.waitForSelector('[data-testid="historial"]');
     ok(await com.locator('[data-testid="tab-global"]').count() === 0, 'comercial no ve la pestaña global');
-    await marcar(com, 'ES0021000000000907XX0F');
-    await generar(com);
+    await generar(com, ['ES0021000000000907XX0F']);
+    await cerrar(com);
     await com.fill('[data-testid="historial-buscar"]', '');
     await com.waitForTimeout(1500);
     ok(await com.locator('[data-testid="entrada-historial"]').count() === 1, 'solo ve lo suyo');
@@ -268,16 +292,13 @@ async function escenario(nombre, fn) {
     const expiraDespues = await com.evaluate(() => JSON.parse(localStorage.getItem('crm_avedie_docb2b_token')).expira_at);
     ok(new Date(expiraDespues) > new Date(expiraAntes), 'el arranque renueva la sesión de la sección');
 
-    // Sesión ya abierta sin token: aviso sin contraseña; no cierra la sesión del CRM y no entrega datos
-    const tokenGuardado = await com.evaluate(() => localStorage.getItem('crm_avedie_docb2b_token'));
+    // Sesión ya abierta sin token: la sección funciona sin contraseña y sin volver a entrar
     await com.evaluate(() => localStorage.removeItem('crm_avedie_docb2b_token'));
     await com.reload();
     await com.waitForTimeout(2000);
     await abrirSeccion(com);
-    await com.waitForSelector('[data-testid="sesion-requerida"]');
-    ok(await com.locator('input[type=password]').count() === 0, 'sesión vieja: la sección no pide contraseña');
-    ok(await com.locator('[data-testid="historial"]').count() === 0, 'sesión vieja: sin token no hay historial');
-    await com.evaluate((t) => localStorage.setItem('crm_avedie_docb2b_token', t), tokenGuardado);
+    await com.waitForSelector('[data-testid="entrada-historial"]', { timeout: 15000 });
+    ok(await com.locator('input[type=password]').count() === 0, 'sesión vieja: sin contraseña, con historial');
 
     const { ctx: c3, p: man } = await sesion(b, 'e2e_man');
     await abrirSeccion(man);
@@ -330,8 +351,7 @@ async function escenario(nombre, fn) {
     await admin.waitForSelector('[data-testid="actualizar-tarifa"]', { state: 'detached', timeout: 30000 });
 
     await abrirSeccion(admin);
-    await marcar(admin, 'ES0021000000000905XX0F');
-    await generar(admin);
+    await generar(admin, ['ES0021000000000905XX0F']);
     ok(await admin.locator('[data-testid="aviso-s0.tension"]').count() > 0, '6.1TD sin tensión: ⚠ normal');
     ok(await admin.locator('[data-testid="descargar"]').isDisabled(), '6.1TD sin tensión: rojo y sin descarga');
     await editarCampo(admin, 's0.tension', '20 kV');
@@ -340,6 +360,7 @@ async function escenario(nombre, fn) {
     const c61 = await textoPdf(await descargar(admin, 'e5_contrato61.pdf'));
     ok(c61.texto.includes('TEMPO OPEN 6.1TD') && c61.texto.includes('> 15kW (6.1TD)'), 'textos propios de 6.1TD');
     ok(c61.texto.includes('20 kV') && !c61.texto.includes('3X400/230'), 'tensión de 6.1TD, sin 3X400/230');
+    await cerrar(admin, true);
 
     await admin.fill('[data-testid="historial-buscar"]', 'E2E COM');
     await admin.waitForTimeout(1200);
@@ -348,14 +369,43 @@ async function escenario(nombre, fn) {
     await entrada(admin, 'E2E COM, S.L.').locator('[data-testid="entrada-borrar"]').click();
     await admin.locator('button.bg-red-600').click();
     await admin.waitForTimeout(1500);
-    await marcar(admin, 'ES0021000000000907XX0F');
-    await generar(admin);
+    await generar(admin, ['ES0021000000000907XX0F']);
     await admin.click('[data-testid="doc-anexo_precios"]');
     await admin.waitForTimeout(800);
     const a = await textoPdf(await descargar(admin, 'e5_anexo.pdf'));
     ok(a.texto.includes('PRECIO POTENCIA P1: 22,5 Eur/kW'), 'el generador usa los precios nuevos');
     ok(a.texto.includes('01-11-2026') && a.texto.includes('31-12-2026'), 'validez de la nueva versión');
     ok(await admin.locator('[data-testid="aviso-caducada"]').count() === 0, 'tarifa vigente: sin aviso de caducidad');
+    await cerrar(admin);
+  });
+
+  await escenario('6. Fotos y escaneados grandes', async () => {
+    const r = await admin.evaluate(async () => {
+      const { reducirDocumento, MAX_BYTES_IA } = await import('/src/lib/documentacionB2B/reducirDocumento.js');
+      const c = document.createElement('canvas');
+      c.width = 3000; c.height = 3000;
+      const x = c.getContext('2d');
+      const d = x.createImageData(3000, 3000);
+      for (let i = 0; i < d.data.length; i += 65536) crypto.getRandomValues(d.data.subarray(i, Math.min(i + 65536, d.data.length)));
+      for (let i = 3; i < d.data.length; i += 4) d.data[i] = 255;
+      x.putImageData(d, 0, 0);
+      const png = await new Promise((res) => c.toBlob(res, 'image/png'));
+      const foto = new File([png], 'foto.png', { type: 'image/png' });
+      const f = await reducirDocumento(foto);
+      return { max: MAX_BYTES_IA, foto: [foto.size, f?.size, f?.type] };
+    });
+    console.log('  ', JSON.stringify(r));
+    ok(r.foto[0] > r.max && r.foto[1] <= r.max && r.foto[2] === 'image/jpeg', 'foto grande reducida a lo que admite la IA');
+    const hoja = path.join(salida, 'e6_escaneado.pdf');
+    fs.writeFileSync(hoja, Buffer.concat([fs.readFileSync('_recursos_documentacion_b2b/tarifas_referencia/20261028_3.0TD_OPEN_18_V1.pdf'), Buffer.alloc(3200000, 32)]));
+    const e = await admin.evaluate(async (b64) => {
+      const { reducirDocumento } = await import('/src/lib/documentacionB2B/reducirDocumento.js');
+      const bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
+      const f = await reducirDocumento(new File([bytes], 'esc.pdf', { type: 'application/pdf' }));
+      return [bytes.length, f?.size, f?.type];
+    }, fs.readFileSync(hoja).toString('base64'));
+    console.log('  ', JSON.stringify(e));
+    ok(e[0] > 3100000 && e[1] <= 3100000 && e[2] === 'image/jpeg', 'PDF grande convertido a imagen');
   });
 
   await b.close();

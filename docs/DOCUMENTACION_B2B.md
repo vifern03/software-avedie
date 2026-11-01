@@ -5,8 +5,8 @@ Decisiones tomadas durante la construcción: `DECISIONES.md`. Distribuidoras: `d
 
 ## Flujo
 
-1. El usuario elige de 1 a 3 CUPS de Alta B2B, del mismo CIF, con la misma tarifa de acceso y producto Open.
-2. La IA lee factura, CIF y DNI, una llamada por documento. Si una falla, sus campos quedan vacíos con ⚠ y no se bloquea.
+1. En la ventana «Generar documentación» el usuario escribe de 1 a 3 CUPS de Alta B2B, del mismo CIF, con la misma tarifa de acceso y producto Open. Vale cualquier CUPS, aunque el contrato no sea suyo. Si tiene varias altas, se usa la más reciente.
+2. La IA lee factura, CIF y DNI, una llamada por documento, en PDF o imagen. Los archivos de más de 3,1 MB se reducen antes: las fotos se comprimen y de un PDF se envían las 3 primeras páginas como imagen. Si una lectura falla, sus campos quedan vacíos con ⚠ y no se bloquea.
 3. `ensamblar()` construye el modelo con reglas deterministas. La IA nunca decide precios, IBAN, CUPS ni CIF.
 4. El navegador genera los PDF con pdf-lib sobre las plantillas del bucket privado y los guarda como versión 1.
 5. Cada edición guardada crea una versión nueva. El borrado es lógico y libera los CUPS.
@@ -26,7 +26,7 @@ Decisiones tomadas durante la construcción: `DECISIONES.md`. Distribuidoras: `d
 | Ruta | Qué es |
 |---|---|
 | `src/pages/DocumentacionB2B.jsx` | Selección y resultado |
-| `src/components/documentacionB2B/` | Visor, editor, historial, carga |
+| `src/components/documentacionB2B/` | Ventana de generación, visor, editor, historial, carga |
 | `src/components/tarifas/ActualizarTarifaModal.jsx` | «Actualizar tarifa» (solo admin) |
 | `src/lib/contratosEndesa/` | Generador, ensamblado, constantes, prompts y esquemas de IA, coordenadas |
 | `src/lib/documentacionB2B/` | Sesión, RPC, archivos, orquestación, capa del visor |
@@ -56,8 +56,10 @@ Todas reciben `p_actor` y `p_token`, salvo las de sesión.
 | RPC | Quién |
 |---|---|
 | `doc_b2b_abrir_sesion` | Cualquier usuario, con su contraseña; se llama en el login del CRM |
+| `doc_b2b_sesion_crm` | Con acceso a la sección, solo con el nombre de usuario, sin contraseña (ver D11) |
+| `doc_b2b_buscar_cups`, `doc_b2b_crear_por_cups` | Con acceso a la sección, sobre cualquier contrato de Alta B2B |
 | `doc_b2b_renovar_sesion`, `doc_b2b_cerrar_sesion` | Con un token vigente; renovar deja la sesión en 30 días y se llama al arrancar el CRM |
-| `doc_b2b_crear` | Con acceso a la sección y a los contratos |
+| `doc_b2b_crear` | Con acceso a la sección y a los contratos. Ya no la usa la interfaz |
 | `doc_b2b_nueva_version`, `doc_b2b_borrar` | Admin, manager o quien lo generó |
 | `doc_b2b_compartir` | Admin y manager |
 | `doc_b2b_listar` | `mias`: con acceso. `global`: admin y manager |
@@ -70,7 +72,7 @@ Cada acción se registra en Historial de Actividades con el tipo `Documentación
 ## Permisos
 
 - Sección `documentacion_b2b` en Gestión de Usuarios: activa por defecto para admin y manager. A cada comercial se le activa a mano. Se aplica en el menú y también en las RPC.
-- Comercial con acceso: genera con los contratos que ya ve; edita y borra solo lo que generó.
+- Comercial con acceso: genera con cualquier CUPS de Alta B2B; edita y borra solo lo que generó.
 - Destinatario de algo compartido: lo ve y lo descarga, con «Generado por». No lo edita ni lo borra, salvo que sea admin o manager.
 - Documentación borrada: solo admin y manager la descargan.
 - «Actualizar tarifa»: solo admin.
@@ -97,7 +99,7 @@ node e2e/documentacion_b2b_datos.mjs rkqgttpiojjorgwikivr limpiar
 
 1. Código: revertir los commits en `main`, o volver al despliegue anterior en Vercel.
 2. Edge Function: `npx supabase functions delete doc-b2b-archivos --project-ref <ref>`.
-3. Base de datos: `npx supabase db query --linked --project-ref <ref> -f supabase/rollback/20261101000000_doc_b2b_renovar_sesion_down.sql` y después lo mismo con `supabase/rollback/20261031000000_documentacion_b2b_down.sql`.
+3. Base de datos: `npx supabase db query --linked --project-ref <ref> -f supabase/rollback/20261101000001_doc_b2b_generar_por_cups_down.sql`, lo mismo con `supabase/rollback/20261101000000_doc_b2b_renovar_sesion_down.sql` y después lo mismo con `supabase/rollback/20261031000000_documentacion_b2b_down.sql`.
 
 El paso 3 borra expedientes, versiones de tarifa, distribuidoras y sesiones. Los PDF y los buckets se quedan: Supabase no deja borrarlos por SQL. Son privados y no tienen políticas; para quitarlos, hay que vaciarlos desde Storage. Las filas de Historial de Actividades se conservan. Si se aplica una versión de tarifa y luego se revierte, Consulta de Tarifas vuelve a los valores de `src/data/`.
 
