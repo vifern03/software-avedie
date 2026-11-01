@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { archivos, descargarBytes, descargarVersion, rpc, SesionRequerida } from '../../lib/documentacionB2B/api';
 import Pagination from '../Pagination';
 import ConfirmActionModal from '../ConfirmActionModal';
+import ModificacionesModal from './ModificacionesModal';
 
 const POR_PAGINA = 15;
 const fecha = (iso) => (iso ? new Date(iso).toLocaleDateString('es-ES') : '');
@@ -48,6 +49,7 @@ function Entrada({ fila, onCambio, onSesion, onError, onEditar, seleccionable, m
   const [abierta, setAbierta] = useState(false);
   const [borrar, setBorrar] = useState(false);
   const [compartir, setCompartir] = useState(false);
+  const [modificaciones, setModificaciones] = useState(false);
   const borrada = fila.estado === 'borrada';
 
   const bajar = async (doc) => {
@@ -82,7 +84,7 @@ function Entrada({ fila, onCambio, onSesion, onError, onEditar, seleccionable, m
         <button onClick={() => setAbierta((a) => !a)} className="flex-1 min-w-0 text-left" data-testid="entrada-desplegar">
           <p className={`text-sm font-medium text-google-dark truncate ${borrada ? 'line-through text-google-gray' : ''}`}>Documentación de {fila.titular}</p>
           <p className="text-xs text-google-gray mt-0.5">
-            {fila.cif} · {fila.num_suministros} CUPS · {fecha(fila.generado_at)} · Generado por: {fila.generado_por_nombre} · v{fila.version_actual}
+            {fila.cif} · {fila.num_suministros} CUPS · {fecha(fila.generado_at)} · Generado por: {fila.generado_por_nombre}
             {borrada && <> · <span data-testid="borrado-por">Borrado por: {fila.borrado_por_nombre} ({fecha(fila.borrado_at)})</span></>}
           </p>
           <p className="text-[11px] text-google-blue mt-1 flex items-center gap-1">
@@ -98,6 +100,9 @@ function Entrada({ fila, onCambio, onSesion, onError, onEditar, seleccionable, m
       </div>
       {abierta && (
         <div className="px-4 pb-3 pt-2 border-t border-gray-100 space-y-1.5">
+          <button onClick={() => setModificaciones(true)} data-testid="ver-modificaciones" className="block text-sm font-medium text-google-blue hover:underline mb-2">
+            Pulsa para ver las modificaciones en el contrato
+          </button>
           {(fila.documentos || []).map((d) => (
             <p key={d.tipo} className="text-sm text-google-dark">
               <span className="font-medium">{d.nombre}:</span>{' '}
@@ -116,6 +121,7 @@ function Entrada({ fila, onCambio, onSesion, onError, onEditar, seleccionable, m
         onConfirm={confirmarBorrar}
         onCancel={() => setBorrar(false)}
       />}
+      {modificaciones && <ModificacionesModal fila={fila} onCerrar={() => setModificaciones(false)} />}
       {compartir && <CompartirModal fila={fila} onCerrar={() => setCompartir(false)} onGuardado={() => { setCompartir(false); onCambio(); }} />}
     </div>
   );

@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { describirCambios, etiquetaCampo, fechaHoraES } from '../src/lib/documentacionB2B/modificaciones.js';
 import { comprobarCups, limpiarCups } from '../src/lib/documentacionB2B/seleccion.js';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -357,4 +358,27 @@ test('lectura del DNI: NOMBRE APELLIDOS; la factura trae titular y escalera', ()
   assert.equal(f.titular, 'X');
   assert.equal(f.suministro.escalera, '2');
   assert.equal(f.suministro.piso, 'BAJ');
+});
+
+test('modificaciones: textos legibles, sin cambios que vuelven al valor inicial', () => {
+  const c = describirCambios({
+    modalidad: { de: 'plana', a: 'finde' },
+    titular_nombre: { de: 'A', a: 'B' },
+    's0.sum_piso': { de: '', a: 'BAJ' },
+    check_acepta_comunicaciones: { de: false, a: true },
+    iban: { de: 'X', a: 'X' },
+  });
+  assert.deepEqual(c.map((x) => [x.campo, x.de, x.a]), [
+    ['Modalidad', 'Plana', 'Fin de Semana'],
+    ['Nombre del titular', 'A', 'B'],
+    ['Piso (suministro)', '', 'BAJ'],
+    ['Acepta comunicaciones', 'No', 'Sí'],
+  ]);
+  assert.equal(etiquetaCampo('s1.tension', true), 'Tensión · Suministro 2');
+  assert.equal(etiquetaCampo('s0.tension', false), 'Tensión');
+});
+
+test('modificaciones: fecha y hora españolas, en horario de Madrid', () => {
+  assert.deepEqual(fechaHoraES('2026-11-01T11:30:00Z'), { fecha: '01/11/2026', hora: '12:30' });
+  assert.deepEqual(fechaHoraES('2026-07-01T22:05:00Z'), { fecha: '02/07/2026', hora: '00:05' });
 });

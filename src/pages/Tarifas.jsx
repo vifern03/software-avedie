@@ -60,7 +60,7 @@ function BotonActualizarTarifa({ tarifaId }) {
       <button
         type="button"
         onClick={() => setAbierto(true)}
-        className="inline-flex items-center gap-1 text-[11px] font-medium text-google-blue hover:bg-blue-50 rounded-md px-1.5 py-0.5 whitespace-nowrap print:hidden"
+        className="inline-flex items-center gap-1 text-[11px] font-medium text-google-blue border border-google-blue hover:bg-blue-50 rounded-md px-1.5 py-0.5 whitespace-nowrap print:hidden"
         data-testid={`actualizar-${tarifaId}`}
       >
         <RefreshCw size={11} /> Actualizar tarifa

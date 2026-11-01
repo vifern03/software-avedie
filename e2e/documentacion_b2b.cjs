@@ -178,7 +178,17 @@ async function escenario(nombre, fn) {
     await admin.click('[data-testid="guardar-cambios"]');
     await admin.waitForSelector('[data-testid="pantalla-carga"]', { state: 'detached', timeout: 30000 });
     await admin.waitForTimeout(1500);
-    ok((await entrada(admin, 'E2E UNO, S.L.').innerText()).includes('v2'), 'guardado como v2');
+    const e1 = entrada(admin, 'E2E UNO, S.L.');
+    ok(!/\bv\d+\b/.test(await e1.innerText()), 'el historial no muestra la versión');
+    await e1.locator('[data-testid="entrada-desplegar"]').click();
+    await e1.locator('[data-testid="ver-modificaciones"]').click();
+    await admin.waitForSelector('[data-testid="modificacion"]', { timeout: 15000 });
+    const texto1 = await admin.innerText('[data-testid="modificacion"]');
+    ok(/E2E Admin modificó el documento el \d{2}\/\d{2}\/\d{4} a las \d{2}:\d{2}/.test(texto1), 'quién, fecha y hora en formato español');
+    ok(texto1.includes('Modalidad') && texto1.includes('Plana') && texto1.includes('Laboral'), 'modalidad de Plana a Laboral');
+    await admin.locator('[data-testid="modificaciones-modal"]').screenshot({ path: path.join(salida, 'e1_modificaciones.png') });
+    await admin.click('[data-testid="cerrar-modificaciones"]');
+    await e1.locator('[data-testid="entrada-desplegar"]').click();
 
     const a = await descargar(admin, 'e1_anexo.pdf');
     const { texto, paginas } = await textoPdf(a);
@@ -258,7 +268,15 @@ async function escenario(nombre, fn) {
     await admin.click('[data-testid="guardar-cambios"]');
     await admin.waitForSelector('[data-testid="pantalla-carga"]', { state: 'detached', timeout: 30000 });
     await admin.waitForTimeout(2000);
-    ok((await e.innerText()).includes('v3'), 'editar desde el historial crea una versión nueva');
+    await e.locator('[data-testid="entrada-desplegar"]').click();
+    await e.locator('[data-testid="ver-modificaciones"]').click();
+    await admin.waitForSelector('[data-testid="modificacion"]', { timeout: 15000 });
+    await admin.waitForTimeout(500);
+    ok(await admin.locator('[data-testid="modificacion"]').count() === 2, 'cada modificación en su recuadro');
+    ok((await admin.locator('[data-testid="modificacion"]').first().innerText()).includes('100'), 'la última modificación sale primero');
+    await admin.locator('[data-testid="modificaciones-modal"]').screenshot({ path: path.join(salida, 'e3_modificaciones.png') });
+    await admin.click('[data-testid="cerrar-modificaciones"]');
+    await e.locator('[data-testid="entrada-desplegar"]').click();
     await e.locator('[data-testid="entrada-borrar"]').click();
     await admin.locator('button.bg-red-600').click();
     await admin.waitForSelector('[data-testid="entrada-historial"][data-titular="E2E UNO, S.L."][data-estado="borrada"]', { timeout: 15000 });

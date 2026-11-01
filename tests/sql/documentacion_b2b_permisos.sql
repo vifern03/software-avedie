@@ -164,6 +164,9 @@ SELECT pg_temp.ok((public.doc_b2b_detalle('t_com', (SELECT v FROM ids WHERE k='t
 SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_borrar('t_com2', (SELECT v FROM ids WHERE k='tok_t_com2'), (SELECT v::uuid FROM ids WHERE k='d1')) $q$, 'Solo quien la generó', 'destinatario no borra');
 SELECT public.doc_b2b_borrar('t_com', (SELECT v FROM ids WHERE k='tok_t_com'), (SELECT v::uuid FROM ids WHERE k='d1'));
 SELECT pg_temp.ok((public.doc_b2b_listar('t_com', (SELECT v FROM ids WHERE k='tok_t_com')))->'filas'->0->>'estado' = 'borrada', 'sigue en el historial como borrada');
+SELECT pg_temp.ok(jsonb_typeof(public.doc_b2b_modificaciones('t_com', (SELECT v FROM ids WHERE k='tok_t_com'), (SELECT v::uuid FROM ids WHERE k='d1'))) = 'array', 'modificaciones: quien la generó las ve');
+SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_modificaciones('t_otra', (SELECT v FROM ids WHERE k='tok_t_otra'), (SELECT v::uuid FROM ids WHERE k='d1')) $q$, 'no tienes acceso', 'modificaciones: ajeno no las ve');
+SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_modificaciones('t_com', 'x', (SELECT v::uuid FROM ids WHERE k='d1')) $q$, 'SESION_DOC_B2B', 'modificaciones: token inventado');
 SELECT pg_temp.ok(((public.doc_b2b_listar('t_com', (SELECT v FROM ids WHERE k='tok_t_com')))->'filas'->0->>'puede_descargar')::boolean = false, 'borrada: comercial no descarga');
 SELECT pg_temp.ok(((public.doc_b2b_listar('t_man', (SELECT v FROM ids WHERE k='tok_t_man'), 'global'))->'filas'->0->>'puede_descargar')::boolean = true, 'borrada: manager descarga');
 SELECT pg_temp.debe_fallar($q$ SELECT public.doc_b2b_nueva_version('t_com', (SELECT v FROM ids WHERE k='tok_t_com'), (SELECT v::uuid FROM ids WHERE k='d1'), 2, 'dia', NULL, '{}', '{}', '{}',

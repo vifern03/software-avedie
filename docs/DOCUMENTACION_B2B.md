@@ -68,6 +68,7 @@ Todas reciben `p_actor` y `p_token`, salvo las de sesión.
 | `doc_b2b_compartir` | Admin y manager |
 | `doc_b2b_listar` | `mias`: con acceso. `global`: admin y manager |
 | `doc_b2b_detalle`, `doc_b2b_cups_activos` | Con acceso |
+| `doc_b2b_modificaciones` | Quien puede ver esa documentación |
 | `distribuidora_guardar`, `tarifa_guardar_version` | Admin |
 | `doc_b2b_eliminar_definitivo` | Admin; solo la llama la Edge Function, que borra los PDF |
 | `doc_b2b_autorizar_archivos` | Solo `service_role` (la Edge Function) |
@@ -104,7 +105,7 @@ node e2e/documentacion_b2b_datos.mjs rkqgttpiojjorgwikivr limpiar
 
 1. Código: revertir los commits en `main`, o volver al despliegue anterior en Vercel.
 2. Edge Function: `npx supabase functions delete doc-b2b-archivos --project-ref <ref>`.
-3. Base de datos: `npx supabase db query --linked --project-ref <ref> -f supabase/rollback/20261101000002_doc_b2b_eliminar_definitivo_down.sql`, lo mismo con `supabase/rollback/20261101000001_doc_b2b_generar_por_cups_down.sql`, con `supabase/rollback/20261101000000_doc_b2b_renovar_sesion_down.sql` y después lo mismo con `supabase/rollback/20261031000000_documentacion_b2b_down.sql`.
+3. Base de datos: `npx supabase db query --linked --project-ref <ref> -f supabase/rollback/20261101000003_doc_b2b_modificaciones_down.sql`, lo mismo con `supabase/rollback/20261101000002_doc_b2b_eliminar_definitivo_down.sql`, con `supabase/rollback/20261101000001_doc_b2b_generar_por_cups_down.sql`, con `supabase/rollback/20261101000000_doc_b2b_renovar_sesion_down.sql` y después lo mismo con `supabase/rollback/20261031000000_documentacion_b2b_down.sql`.
 
 El paso 3 borra expedientes, versiones de tarifa, distribuidoras y sesiones. Los PDF y los buckets se quedan: Supabase no deja borrarlos por SQL. Son privados y no tienen políticas; para quitarlos, hay que vaciarlos desde Storage. Las filas de Historial de Actividades se conservan. Si se aplica una versión de tarifa y luego se revierte, Consulta de Tarifas vuelve a los valores de `src/data/`.
 
