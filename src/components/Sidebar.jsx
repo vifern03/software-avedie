@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FileSignature, LayoutDashboard, Database, RefreshCw, UserPlus, Building2, History, LogOut, Settings, User, Store, ClipboardList, Sparkles, Menu, X, Landmark, Clock, Phone, Tag, AlertTriangle, ListChecks } from 'lucide-react';
+import { FileSignature, LayoutDashboard, Database, RefreshCw, UserPlus, Building2, History, LogOut, Settings, User, Store, ClipboardList, Sparkles, Menu, X, Landmark, Clock, Phone, Tag, AlertTriangle, ListChecks, FileClock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTasks } from '../context/TasksContext';
 import { alertaSidebar, textoBadge } from '../lib/tasksLogica';
@@ -16,6 +16,7 @@ const ALL_ITEMS = [
   { id: 'visitas_pymes', label: 'Registro Visitas PYMES',  icon: Landmark   },
   { id: 'llamadas',      label: 'Registro de Llamadas',    icon: Phone      },
   { id: 'tarifas',       label: 'Consulta de Tarifas',     icon: Tag        },
+  { id: 'historial_comparativas', label: 'Historial de Comparativas', icon: FileClock },
   { id: 'fichajes',      label: 'Control de Horario',      icon: Clock      },
   { id: 'tasks',         label: 'Tareas',                  icon: ListChecks },
   { id: 'reportes',      label: 'Reportes de Software',    icon: ClipboardList },

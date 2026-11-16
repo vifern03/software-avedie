@@ -23,6 +23,7 @@ import Tasks from './pages/Tasks';
 import { sincronizarTarifas } from './lib/tarifas/obtenerTarifa';
 
 const DocumentacionB2B = lazy(() => import('./pages/DocumentacionB2B'));
+const HistorialComparativas = lazy(() => import('./pages/HistorialComparativas'));
 
 function LoadingScreen() {
   return (
@@ -132,6 +133,7 @@ export default function App() {
       case 'visitas_pymes': return <RegistroVisitasPymes />;
       case 'llamadas':  return <RegistroLlamadas />;
       case 'tarifas':   return <Tarifas />;
+      case 'historial_comparativas': return <Suspense fallback={<LoadingScreen />}><HistorialComparativas /></Suspense>;
       case 'fichajes':  return <ControlHorario />;
       case 'tasks':     return <Tasks onNavigate={handleNavigate} />;
       case 'reportes':  return <ReportesSoftware />;

@@ -188,7 +188,7 @@ test('Integra de principio a fin: formulario → tramo 30 < Pc ≤ 50 por P6 →
   near(r.potencia, 75.31);
   const inf = construirInforme({ resultado: r, oferta: 'Open 3.0TD — Plana', dias: 30, facturaOriginal: ev.valores.total });
   assert.equal(inf.potencia[0].detalle, '15,001 kW (P1) × 30 días × 0,059937 €/kW');
-  assert.equal(inf.energia[0].detalle, '1.442 kWh (P3) × 0,168564 €/kWh');
+  assert.equal(inf.energia[0].detalle, '1.442 kWh (P3) × 0,220623 €/kWh');
   assert.ok(!JSON.stringify(inf).includes('15.001'));
 });
 

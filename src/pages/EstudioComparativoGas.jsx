@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { GAS, GAS_EMPRESA } from '../data/tarifasGas';
 import { Calculator, Upload, FileText, Printer, Download, X, AlertTriangle, Loader2 } from 'lucide-react';
 import { exportElementToPdf, imprimirElementoPdf, slugifyFilename } from '../lib/exportPdf';
+import { registrarComparativa } from '../lib/historialComparativas';
 import { calcularOfertaGas, calcularAhorro, extrapolarAnual, ESTADO } from '../lib/energia/motor';
 import { IEH_GAS_EUR_KWH } from '../data/tarifasGas';
 import { aCampo, valorNum, cantidadES, formatoES } from '../lib/energia/numeros';
@@ -149,7 +150,7 @@ const INIT = {
    ══════════════════════════════════════════════════════════════════════════════ */
 
 export default function EstudioComparativoGas() {
-  const { users } = useAuth();
+  const { users, currentUser } = useAuth();
 
   /* ── Estado ── */
   const [tarifaGasId, setTarifaGasId]           = useState('rl1');
@@ -218,6 +219,23 @@ export default function EstudioComparativoGas() {
     : (factBase > 0 ? dif / factBase : 0);
   const ahorroAnual   = extrapolarAnual(dif, dias) ?? 0;
   const dto = 0;
+
+  /* Historial de Comparativas: se guarda al descargar o imprimir. */
+  function guardarEnHistorial() {
+    registrarComparativa({
+      elementId: 'ec-informe-gas', usuario: currentUser, factura: dropped,
+      datos: {
+        tipo: 'gas', tarifaAcceso: (tarifa.title || '').replace(/^Gas\s*/, ''),
+        producto: `${tarifa.title}${mant ? ' con mantenimiento' : ''}`,
+        cliente: form.cliente, cups: form.cups,
+        consumos: { total: kwhGas }, consumoTotal: kwhGas,
+        consumoAnual: valorNum(form.consumoAnual, 0) || null, dias,
+        importeActual: factActual, importeOferta: total, ahorro: dif,
+        ahorroPct: ahorroPctOferta * 100, ahorroAnual,
+        form: { ...form, tarifaGasId, mant, incluyeTF, asesor: asesorDisplay },
+      },
+    });
+  }
 
   // Errores críticos sin resolver (de la factura o de datos editados): no se emite el informe.
   const datosMinimos = kwhGas > 0 && dias > 0 && factActual > 0;
@@ -347,6 +365,7 @@ export default function EstudioComparativoGas() {
     setPdfError('');
     try {
       await imprimirElementoPdf('ec-informe-gas');
+      guardarEnHistorial();
     } catch {
       setPdfError('No se pudo preparar la impresión. Prueba de nuevo o usa "Descargar".');
     } finally {
@@ -360,6 +379,7 @@ export default function EstudioComparativoGas() {
     try {
       const cliente = form.cliente.trim() || 'informe';
       await exportElementToPdf('ec-informe-gas', `Comparativa_GAS_${slugifyFilename(cliente)}_${todayShort.replace(/\//g, '-')}.pdf`);
+      guardarEnHistorial();
     } catch (err) {
       console.error('[EC-GAS] Descarga PDF:', err);
       setPdfError('No se pudo generar el PDF. Prueba de nuevo o usa "Imprimir informe" como alternativa.');

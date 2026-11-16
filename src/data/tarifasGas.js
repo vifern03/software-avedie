@@ -68,16 +68,16 @@ export const GAS = [
 ];
 
 /**
- * Gas Estable RL.4 – RL.6 (B2B). Documento: 20261028 RL4_RL5_RL6_GAS ESTABLE_20_V1.pdf
- * (contrataciones 19/10/2026 – 28/10/2026). 20 % sobre el término variable durante
+ * Gas Estable RL.4 – RL.6 (B2B). Documento: 20261116 RL4_RL5_RL6_GAS ESTABLE_22_V1.pdf
+ * (contrataciones 31/10/2026 – 16/11/2026). 22 % sobre el término variable durante
  * 1 año: promo = precio con descuento publicado, noPromo = precio base.
  * Sin comparativa por ahora (bloqueadas en EstudioComparativoGas.jsx).
  * Tramos por consumo anual (presión ≤ 4 bar):
  *   RL.4: > 50.000 y ≤ 300.000 kWh · RL.5: > 300.000 y ≤ 1.500.000 · RL.6: > 1.500.000 y ≤ 8.000.000
  */
-const DOC_GAS_ESTABLE = '20261028 RL4_RL5_RL6_GAS ESTABLE_20_V1.pdf';
-const CONTRATACION_GAS_ESTABLE = { desde: '2026-10-19', hasta: '2026-10-28', fuente: DOC_GAS_ESTABLE };
-const VALIDEZ_GAS_ESTABLE = '19/10/2026 – 28/10/2026';
+const DOC_GAS_ESTABLE = '20261116 RL4_RL5_RL6_GAS ESTABLE_22_V1.pdf';
+const CONTRATACION_GAS_ESTABLE = { desde: '2026-10-31', hasta: '2026-11-16', fuente: DOC_GAS_ESTABLE };
+const VALIDEZ_GAS_ESTABLE = '31/10/2026 – 16/11/2026';
 const PENALIZACION_GAS = '20% del término de energía × días restantes × consumo diario estimado por Endesa (5% si el suministro tiene derecho a TUR de gas)';
 
 export const GAS_EMPRESA = [
@@ -87,11 +87,11 @@ export const GAS_EMPRESA = [
     consumo: '50.000 – 300.000 kWh/año',
     consumoMin: 50000, consumoMax: 300000,
     terFijo: 43.313,
-    sinMant: { promo: 0.102464, noPromo: 0.128080 },
-    conMant: { promo: 0.102464, noPromo: 0.128080 },
+    sinMant: { promo: 0.114415, noPromo: 0.146686 },
+    conMant: { promo: 0.114415, noPromo: 0.146686 },
     hasMant: false,
     esEmpresa: true,
-    descuentos: ['20% — 1 año sobre el término variable'],
+    descuentos: ['22% — 1 año sobre el término variable'],
     mantLabel: null,
     penalizacion: PENALIZACION_GAS,
     contratacion: CONTRATACION_GAS_ESTABLE,
@@ -103,11 +103,11 @@ export const GAS_EMPRESA = [
     consumo: '300.000 – 1.500.000 kWh/año',
     consumoMin: 300000, consumoMax: 1500000,
     terFijo: 242.632,
-    sinMant: { promo: 0.102394, noPromo: 0.127993 },
-    conMant: { promo: 0.102394, noPromo: 0.127993 },
+    sinMant: { promo: 0.114346, noPromo: 0.146598 },
+    conMant: { promo: 0.114346, noPromo: 0.146598 },
     hasMant: false,
     esEmpresa: true,
-    descuentos: ['20% — 1 año sobre el término variable'],
+    descuentos: ['22% — 1 año sobre el término variable'],
     mantLabel: null,
     penalizacion: PENALIZACION_GAS,
     contratacion: CONTRATACION_GAS_ESTABLE,
@@ -119,11 +119,11 @@ export const GAS_EMPRESA = [
     consumo: '1.500.000 – 8.000.000 kWh/año',
     consumoMin: 1500000, consumoMax: 8000000,
     terFijo: 1168.049,
-    sinMant: { promo: 0.093209, noPromo: 0.116511 },
-    conMant: { promo: 0.093209, noPromo: 0.116511 },
+    sinMant: { promo: 0.105391, noPromo: 0.135117 },
+    conMant: { promo: 0.105391, noPromo: 0.135117 },
     hasMant: false,
     esEmpresa: true,
-    descuentos: ['20% — 1 año sobre el término variable'],
+    descuentos: ['22% — 1 año sobre el término variable'],
     mantLabel: null,
     penalizacion: PENALIZACION_GAS,
     contratacion: CONTRATACION_GAS_ESTABLE,

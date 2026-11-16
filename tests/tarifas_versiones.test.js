@@ -14,8 +14,8 @@ for (const id of ['open30', 'open61', 'tempo']) {
     const limpio = limpiarRespuesta(id, fixture(id));
     const r = validarActualizacion(id, limpio);
     assert.deepEqual(r.errores, []);
-    assert.equal(limpio.validaDesde, '2026-10-19');
-    assert.equal(limpio.validaHasta, '2026-10-28');
+    assert.equal(limpio.validaDesde, '2026-10-31');
+    assert.equal(limpio.validaHasta, '2026-11-16');
     const { cambios } = calcularCambios(id, limpio.valores);
     assert.deepEqual(cambios, {}, 'los precios leídos coinciden con los de src/data');
   });
@@ -65,12 +65,12 @@ test('todas las tarifas tienen rutas válidas y prompt', () => {
 
 test('NO REGRESIÓN: sin versiones, obtenerTarifa devuelve src/data sin tocar', () => {
   const antes = JSON.stringify([OPEN_30TD, OPEN_61TD, SIMPLY_30TD, TEMPO_2_0TD, GAS]);
-  const o = obtenerTarifa('open30', '2026-10-20');
+  const o = obtenerTarifa('open30', '2026-11-05');
   assert.equal(o.tarifa, OPEN_30TD);
   assert.equal(o.versionId, null);
   assert.equal(o.estado, 'vigente');
   assert.equal(JSON.stringify([OPEN_30TD, OPEN_61TD, SIMPLY_30TD, TEMPO_2_0TD, GAS]), antes);
-  assert.equal(obtenerTarifa('open30', '2026-10-31').estado, 'caducada');
+  assert.equal(obtenerTarifa('open30', '2026-11-17').estado, 'caducada');
 });
 
 test('aplicar versión: solo rutas permitidas, sin contagiar a Simply; validez nueva', () => {
@@ -89,7 +89,7 @@ test('aplicar versión: solo rutas permitidas, sin contagiar a Simply; validez n
   assert.equal(o.versionId, 'v1');
   assert.equal(o.estado, 'vigente');
   // deja la tarifa como estaba para el resto de pruebas
-  aplicarVersion('open30', { id: null, version: 0, valida_desde: '2026-10-19', valida_hasta: '2026-10-28', valores: base });
+  aplicarVersion('open30', { id: null, version: 0, valida_desde: '2026-10-31', valida_hasta: '2026-11-16', valores: base });
   TARIFAS.open30.versionActiva = null;
 });
 

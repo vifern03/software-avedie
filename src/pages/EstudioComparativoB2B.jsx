@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Upload, FileText, Printer, Download, X, Loader2, Factory, Info, CheckCircle2, Ban } from 'lucide-react';
 import { exportElementToPdf, imprimirElementoPdf, slugifyFilename } from '../lib/exportPdf';
+import { registrarComparativa } from '../lib/historialComparativas';
 import { construirInforme, eurES, numES } from '../lib/energia/informe';
 import { OPEN_30TD, OPEN_61TD, SIMPLY_30TD, SIMPLY_61TD, INDEXADA_30TD, INDEXADA_61TD } from '../data/tarifasB2B';
 import { calcularOfertaLuz, ESTADO, tramosPorPotencia } from '../lib/energia/motor';
@@ -98,7 +99,7 @@ const INIT = Object.assign(
 /* ══════════════════════════════════════════════════════════════════════════════ */
 
 export default function EstudioComparativoB2B() {
-  const { users } = useAuth();
+  const { users, currentUser } = useAuth();
 
   const [nivel, setNivel] = useState('30');
   const [productoId, setProductoId] = useState('open');
@@ -219,6 +220,7 @@ export default function EstudioComparativoB2B() {
     setPdfError('');
     try {
       await imprimirElementoPdf('ecb2b-informe');
+      guardarEnHistorial();
     } catch {
       setPdfError('No se pudo preparar la impresión. Prueba de nuevo o usa "Descargar".');
     } finally {
@@ -233,6 +235,7 @@ export default function EstudioComparativoB2B() {
     try {
       const fechaCorta = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit' }).replace(/\//g, '-');
       await exportElementToPdf('ecb2b-informe', `Comparativa_${slugifyFilename(form.cliente.trim() || 'informe')}_${fechaCorta}.pdf`);
+      guardarEnHistorial();
     } catch {
       setPdfError('No se pudo generar el PDF. Prueba de nuevo o usa "Imprimir informe".');
     } finally {
@@ -300,6 +303,24 @@ export default function EstudioComparativoB2B() {
     fechaInforme: today, dias: entrada.dias, facturaOriginal: factActual, otrosExcluidos: otros,
   }) : null;
   const incidenciasInfo = incidenciasTodas.filter(i => i.nivel === 'info');
+
+  /* Historial de Comparativas: se guarda al descargar o imprimir. */
+  function guardarEnHistorial() {
+    const porPeriodo = (arr) => Object.fromEntries(arr.map((v, i) => [`P${i + 1}`, v]));
+    registrarComparativa({
+      elementId: 'ecb2b-informe', usuario: currentUser, factura: dropped,
+      datos: {
+        tipo: 'luz_b2b', tarifaAcceso: nivel === '61' ? '6.1TD' : '3.0TD', producto: tituloOferta,
+        cliente: form.cliente, cups: form.cups,
+        potencias: porPeriodo(potenciasKw), consumos: porPeriodo(kwhPeriodo),
+        consumoTotal: kwhPeriodo.reduce((a, b) => a + b, 0), dias: entrada.dias,
+        importeActual: factActual, importeOferta: resultado?.total,
+        ahorro: informe?.ahorroEur, ahorroPct: informe?.ahorroPct != null ? (informe.ahorroEur < 0 ? -informe.ahorroPct : informe.ahorroPct) : null,
+        ahorroAnual: informe?.ahorroAnual,
+        form: { ...form, nivel, productoId, modalidadId, autoconsumo, asesor: asesorDisplay },
+      },
+    });
+  }
   // Diferencia muy grande entre la oferta y la factura: puede ser legítima, solo se avisa.
   if (informe && factActual > 0 && (resultado.total / factActual > 2.5 || resultado.total / factActual < 0.4)) {
     incidenciasVisibles.push({ nivel: 'aviso', mensaje: `La oferta (${eur(resultado.total)}) es muy distinta de la factura actual (${eur(factActual)}): revisa que los datos sean los de la factura.` });

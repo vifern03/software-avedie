@@ -18,6 +18,7 @@ const PAGES = [
   { id: 'visitas_pymes', label: 'Visitas PYME'   },
   { id: 'llamadas',     label: 'Reg. Llamadas'  },
   { id: 'tarifas',      label: 'Tarifas'        },
+  { id: 'historial_comparativas', label: 'Hist. Comparativas' },
   { id: 'fichajes',     label: 'Control Horario' },
   { id: 'tasks',        label: 'Tareas'          },
   { id: 'reportes',     label: 'Reportes'        },

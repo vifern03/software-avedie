@@ -972,7 +972,7 @@ export function DataProvider({ children }) {
       `${currentUser?.username} ha tramitado un contrato para el cliente ${data.nombre} (${data.estado} - ${formatDateDDMMYYYY(data.fecha_tramitacion || today())})`,
       currentUser?.username
     );
-    return { error: null };
+    return { error: null, id: newCliente.id };
   };
 
   const updateCliente = (id, data) => {

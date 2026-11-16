@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Plus, FileCheck, Clock, AlertCircle, Trophy, Search, ChevronUp, ChevronDown, Trash2, Pencil, PenTool, X, Eye, Loader2, BarChart2, CheckCircle } from 'lucide-react';
+import { Plus, FileCheck, Clock, AlertCircle, Trophy, Search, ChevronUp, ChevronDown, Trash2, Pencil, PenTool, X, Eye, Loader2, BarChart2, CheckCircle, Send } from 'lucide-react';
 import NewClientModal from '../components/NewClientModal';
 import DeleteConfirmModal from '../components/DeleteConfirmModal';
 import ConfirmActionModal from '../components/ConfirmActionModal';
@@ -10,6 +10,7 @@ import { useData, fetchSingleDoc } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { openPendingTab, openBase64InTab } from '../lib/attachmentTab';
 import DateInput from '../components/DateInput';
+import { ESTADOS_CONTRATO, ESTADO_BADGE, INCIDENCIA_BADGE, mapaIncidenciasAbiertas, normCups } from '../lib/estadosContrato';
 
 const MEDAL_COLORS = ['bg-yellow-400', 'bg-gray-300', 'bg-amber-600'];
 
@@ -54,14 +55,20 @@ const FilterPill = ({ label, active, onClick }) => (
   </button>
 );
 
-function StatusBadge({ estado }) {
-  const s = {
-    'Pendiente Firma': 'bg-red-100 text-red-800',
-    'Tramitado':       'bg-orange-100 text-orange-800',
-    'Formalizado':     'bg-green-100 text-green-800',
-  };
+function StatusBadge({ estado, incidencia }) {
+  // Con una incidencia abierta en Gestión de Pendientes se muestra, en rojo, el estado
+  // con el que llegó en el Excel; al resolverse vuelve el estado normal del contrato.
+  if (incidencia) {
+    return (
+      <span title={`Incidencia abierta en Gestión de Pendientes · estado del contrato: ${estado || '—'}`}
+        className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${INCIDENCIA_BADGE}`}>
+        <AlertCircle size={11} className="flex-shrink-0" />
+        {incidencia}
+      </span>
+    );
+  }
   return (
-    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${s[estado] || 'bg-gray-100 text-gray-700'}`}>
+    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${ESTADO_BADGE[estado] || 'bg-gray-100 text-gray-700'}`}>
       {estado || '—'}
     </span>
   );
@@ -196,15 +203,9 @@ export default function AltaClientes({ tipo }) {
 
   // CUPS con una incidencia activa en el embudo de Pendientes (ver [[project_pendientes]]).
   // Fuente de verdad: registro_pendientes — ya no se lee clientes.estado_incidencia.
-  const pendientesCupsSet = useMemo(
-    () => new Set(
-      registroPendientes
-        .filter(r => r.estado_incidencia === 'Pendiente de tareas' || r.estado_incidencia === 'Tramitado')
-        .map(r => (r.cups || '').toUpperCase().trim())
-        .filter(Boolean)
-    ),
-    [registroPendientes]
-  );
+  // CUPS → estado original del Excel de pendientes (solo incidencias abiertas).
+  const incidenciasMap = useMemo(() => mapaIncidenciasAbiertas(registroPendientes), [registroPendientes]);
+  const pendientesCupsSet = useMemo(() => new Set(incidenciasMap.keys()), [incidenciasMap]);
   const { currentUser, users } = useAuth();
   const clientes = isB2B ? clientesB2B : clientesB2C;
 
@@ -289,6 +290,7 @@ export default function AltaClientes({ tipo }) {
       });
 
   const totalPendienteFirma = baseClientes.filter((c) => c.estado === 'Pendiente Firma').length;
+  const totalBackOffice     = baseClientes.filter((c) => c.estado === 'Enviado a Back Office').length;
   const totalTramitados     = baseClientes.filter((c) => c.estado === 'Tramitado').length;
   const totalFormalizados   = baseClientes.filter((c) => c.estado === 'Formalizado').length;
 
@@ -393,9 +395,9 @@ export default function AltaClientes({ tipo }) {
       </div>
 
       {/* Counter cards — 3 estados */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card p-5 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-red-500 flex items-center justify-center flex-shrink-0">
+          <div className="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center flex-shrink-0">
             <AlertCircle size={22} className="text-white" />
           </div>
           <div>
@@ -404,7 +406,16 @@ export default function AltaClientes({ tipo }) {
           </div>
         </div>
         <div className="card p-5 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-orange-500 flex items-center justify-center flex-shrink-0">
+          <div className="w-12 h-12 rounded-xl bg-blue-500 flex items-center justify-center flex-shrink-0">
+            <Send size={22} className="text-white" />
+          </div>
+          <div>
+            <p className="text-3xl font-bold text-google-dark">{totalBackOffice}</p>
+            <p className="text-sm text-google-gray">Enviado a Back Office</p>
+          </div>
+        </div>
+        <div className="card p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-violet-500 flex items-center justify-center flex-shrink-0">
             <Clock size={22} className="text-white" />
           </div>
           <div>
@@ -542,9 +553,7 @@ export default function AltaClientes({ tipo }) {
               className="input-field h-9 min-w-[180px] text-sm"
             >
               <option value="">Filtrar por estado...</option>
-              <option value="Pendiente Firma">Pendiente Firma</option>
-              <option value="Tramitado">Tramitado</option>
-              <option value="Formalizado">Formalizado</option>
+              {ESTADOS_CONTRATO.map((e) => <option key={e} value={e}>{e}</option>)}
             </select>
             {filterEstado && (
               <button
@@ -571,6 +580,7 @@ export default function AltaClientes({ tipo }) {
             <thead>
               <tr>
                 <th className="table-header">Compartido por</th>
+                <th className="table-header cursor-pointer" onClick={() => toggleSort('estado')}><div className="flex items-center gap-1">Estado <SortIcon field="estado" /></div></th>
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('nombre')}><div className="flex items-center gap-1">Cliente <SortIcon field="nombre" /></div></th>
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('tipo')}><div className="flex items-center gap-1">Tipo <SortIcon field="tipo" /></div></th>
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('linea_negocio')}><div className="flex items-center gap-1">Línea de Negocio <SortIcon field="linea_negocio" /></div></th>
@@ -588,7 +598,6 @@ export default function AltaClientes({ tipo }) {
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('fecha_firma')}><div className="flex items-center gap-1">F. Firma <SortIcon field="fecha_firma" /></div></th>
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('fecha_tramitacion')}><div className="flex items-center gap-1">F. Tramitación <SortIcon field="fecha_tramitacion" /></div></th>
                 <th className="table-header cursor-pointer" onClick={() => toggleSort('fecha_formalizada')}><div className="flex items-center gap-1">F. Formalizada <SortIcon field="fecha_formalizada" /></div></th>
-                <th className="table-header">Estado</th>
                 {isB2B ? (
                   <>
                     <th className="table-header">CIF</th>
@@ -626,8 +635,9 @@ export default function AltaClientes({ tipo }) {
                         : 'hover:bg-google-bg'
                   }`}>
                     <td className="table-cell text-xs whitespace-nowrap">
-                      {c.shared_by ? (usersByUsername[c.shared_by] || c.shared_by) : '—'}
+                      {c.shared_by && c.shared_by !== currentUser?.username ? (usersByUsername[c.shared_by] || c.shared_by) : ''}
                     </td>
+                    <td className="table-cell"><StatusBadge estado={c.estado} incidencia={incidenciasMap.get(normCups(c.cups))} /></td>
                     <td className="table-cell font-medium text-google-dark whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
                         {pendientesCupsSet.has((c.cups || '').toUpperCase().trim()) && (
@@ -666,7 +676,6 @@ export default function AltaClientes({ tipo }) {
                         ? <span className="text-green-700 font-medium">{formatDate(c.fecha_formalizada)}</span>
                         : <span className="text-google-gray italic">—</span>}
                     </td>
-                    <td className="table-cell"><StatusBadge estado={c.estado} /></td>
                     {isB2B ? (
                       <>
                         <td className="table-cell text-center"><FileCell hasDoc={docsFlags[c.id]?.tiene_cif}         clientId={c.id} campo="cif_autonomo_url" /></td>
@@ -699,7 +708,7 @@ export default function AltaClientes({ tipo }) {
                     )}
                     <td className="table-cell text-center">
                       <div className="flex items-center justify-center gap-1">
-                        {c.estado === 'Pendiente Firma' && (
+                        {(c.estado === 'Pendiente Firma' || c.estado === 'Enviado a Back Office') && (
                           <button onClick={() => setFirmaTarget(c)}
                             className="p-1 rounded hover:bg-blue-50 transition-colors" title="Registrar Firma">
                             <PenTool size={15} className="text-google-blue" />

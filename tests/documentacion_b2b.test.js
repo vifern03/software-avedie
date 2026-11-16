@@ -25,7 +25,7 @@ const base = hayPlantillas ? {
   contrato: readFileSync(`${R}contrato_base.pdf`), anexo: readFileSync(`${R}anexo_base.pdf`), puntos: readFileSync(`${R}puntos_suministro_base.pdf`),
 } : {};
 
-const vigente = (tarifa) => ({ tarifa, versionId: null, validaDesde: '2026-10-19', validaHasta: '2026-10-28', estado: 'vigente' });
+const vigente = (tarifa) => ({ tarifa, versionId: null, validaDesde: '2026-10-31', validaHasta: '2026-11-16', estado: 'vigente' });
 const caducada = (tarifa) => ({ ...vigente(tarifa), estado: 'caducada' });
 
 const cliente = (o = {}) => ({
@@ -41,7 +41,7 @@ const factura = (kw = 20, o = {}) => ({
 const dist = { texto_endesa: 'BZZ - I-DE REDES ELECTRIC INTELI SAU - ES0021', estado: 'ACTIVA', verificado: true };
 const lecturas = (f = [factura()]) => ({ facturas: f, cif: null, dni: { nombre: 'Persona Ficticia', dni: '00000000T' } });
 const modelo1 = (o = {}) => ensamblar({
-  clientes: [cliente()], lecturas: lecturas(), distribuidoras: [dist], tarifaInfo: vigente(OPEN_30TD), modalidad: 'plana', fechaISO: '2026-10-20', ...o,
+  clientes: [cliente()], lecturas: lecturas(), distribuidoras: [dist], tarifaInfo: vigente(OPEN_30TD), modalidad: 'plana', fechaISO: '2026-11-05', ...o,
 });
 
 /* ── Formato ─────────────────────────────────────────────────────────────── */
@@ -93,17 +93,17 @@ test('tramo por potencia máxima (63 kW → 50–100; 44 y 43,5 → 30–50)', (
   assert.equal(indiceTramo(OPEN_61TD, 100.5), 3);
   assert.equal(indiceTramo(OPEN_61TD, 451), 3, 'por encima de 450 kW, último tramo');
   const m = modelo1({ lecturas: lecturas([factura(0, { potencias: { p1: 49, p2: 63, p3: 63, p4: 63, p5: 63, p6: 63 } })]) });
-  assert.match(lineas(m.suministros[0].bloque_precios)[1], /0,251088/, 'usa la potencia máxima');
+  assert.match(lineas(m.suministros[0].bloque_precios)[1], /0,301723/, 'usa la potencia máxima');
 });
 
-test('precio base sin descuento, 18 % promocional y % de modalidad (Noche 55 / 35)', () => {
+test('precio base sin descuento, 12 % promocional y % de modalidad (Noche 55 / 35)', () => {
   const s = { potencia_p1: '40' };
   const b30 = lineas(bloqueSuministro(OPEN_30TD, '3.0TD', 'noche', s));
-  assert.ok(b30.includes('Precio de Energía: 0,251588 Eur/kWh'));
-  assert.match(b30.at(-2), /18 %/);
+  assert.ok(b30.includes('Precio de Energía: 0,302223 Eur/kWh'));
+  assert.match(b30.at(-2), /12 %/);
   assert.match(b30.at(-1), /55 %/);
   const b61 = lineas(bloqueSuministro(OPEN_61TD, '6.1TD', 'noche', s));
-  assert.ok(b61.includes('Precio de Energía: 0,225162 Eur/kWh'));
+  assert.ok(b61.includes('Precio de Energía: 0,25943 Eur/kWh'));
   assert.match(b61.at(-1), /35 %/);
 });
 
@@ -158,8 +158,8 @@ test('tarifa caducada: no bloquea, imprime la validez real y marca ⚠ en las fe
   assert.equal(PERMITIR_TARIFA_CADUCADA, true);
   const m = modelo1({ tarifaInfo: caducada(OPEN_30TD), fechaISO: '2026-10-31' });
   assert.equal(m.tarifa_caducada, true);
-  assert.equal(m.campos.validez_desde, '19-10-2026');
-  assert.equal(m.campos.validez_hasta, '28-10-2026');
+  assert.equal(m.campos.validez_desde, '31-10-2026');
+  assert.equal(m.campos.validez_hasta, '16-11-2026');
   assert.ok(m.avisos.validez_desde);
   assert.ok(m.avisos.validez_hasta);
   assert.equal(m.campos.fecha_firma, '31-10-2026');
@@ -196,7 +196,7 @@ test('edición: modalidad recalcula el bloque y potencia cambia de tramo; quita 
   assert.equal(dia.avisos.modalidad, undefined);
   const pot = aplicarEdicion(m, 's0.potencia_p6', '60,5', OPEN_30TD);
   assert.equal(pot.suministros[0].potencia_p6, '60.5');
-  assert.match(lineas(pot.suministros[0].bloque_precios)[1], /0,251088/);
+  assert.match(lineas(pot.suministros[0].bloque_precios)[1], /0,301723/);
   const via = aplicarEdicion(m, 's0.sum_via', 'CALLE NUEVA', OPEN_30TD);
   assert.equal(via.avisos['s0.sum_via'], undefined);
   assert.match(via.suministros[0].sum_direccion_completa, /^CALLE NUEVA 25/);
@@ -246,8 +246,8 @@ test('3 CUPS: tres documentos; B y C vacíos en el contrato', pdfOpt, async () =
   await generarContrato(base.contrato, campos.contrato, d.contrato);
   await generarAnexo(base.anexo, campos.anexo, d.anexo);
   await generarAnexoPuntos(base.puntos, camposPS, d.puntos);
-  assert.match(d.anexo.suministros[2].bloque_precios[1].texto, /0,251088/);
-  assert.match(d.anexo.suministros[1].bloque_precios[1].texto, /0,251588/);
+  assert.match(d.anexo.suministros[2].bloque_precios[1].texto, /0,301723/);
+  assert.match(d.anexo.suministros[1].bloque_precios[1].texto, /0,302223/);
 });
 
 test('errores del generador: falta dato, no cabe, más de 3 suministros', pdfOpt, async () => {

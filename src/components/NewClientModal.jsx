@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useData, fetchSingleDoc } from '../context/DataContext';
 import { getShareTargets } from './ShareButton';
 import { openPendingTab, openBase64InTab } from '../lib/attachmentTab';
+import { ESTADOS_CONTRATO } from '../lib/estadosContrato';
 
 const tarifas  = ['2.0TD', '3.0TD', '3.1A', '6.1TD', '6.1A', '6.2', '6.3', '6.4', 'RL.1', 'RL.2', 'RL.3'];
 
@@ -25,7 +26,7 @@ const ID_PRODUCTO_LUZ = [
 ];
 const ID_PRODUCTO_GAS = ['Gas RL.1', 'Gas RL.2', 'Gas RL.3', 'Gas RL.4', 'Gas RL.5', 'Gas RL.6'];
 const ID_PRODUCTO_OTRO = '__otro__';
-const estados  = ['Pendiente Firma', 'Tramitado', 'Formalizado'];
+const estados  = ESTADOS_CONTRATO;
 const subtipos = [
   'Cambio de Comercializadora',
   'Camb. Comer. con CT',
@@ -73,13 +74,13 @@ function ExistingDocBadge({ clientId, campo, onSustituir }) {
   );
 }
 
-export default function NewClientModal({ tipo, onClose, onSave, initialData, editId, existingDocs }) {
+export default function NewClientModal({ tipo, onClose, onSave, initialData, editId, existingDocs, prefill = false }) {
   const { currentUser, users, shareBlocks } = useAuth();
   const shareTargets = getShareTargets(currentUser, users, shareBlocks);
   const { prescriptores: prescriptoresDB, clientes: clientesCtx } = useData();
   const prescriptoresList = prescriptoresDB.map(p => p.nombre);
   const isB2B       = tipo === 'B2B' || tipo === 'CUR_B2B';
-  const isEdit      = !!initialData;
+  const isEdit      = !!initialData && !prefill;
   const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'manager';
 
   const initialAgenteGestorValue = initialData?.agente_gestor || currentUser?.username || '';
@@ -195,7 +196,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
     setForm((f) => {
       const updated = { ...f, [field]: value };
       if (field === 'estado') {
-        if (value === 'Pendiente Firma') {
+        if (value === 'Pendiente Firma' || value === 'Enviado a Back Office') {
           updated.fecha_firma = null;
           updated.fecha_formalizada = null;
         } else if (value === 'Tramitado') {

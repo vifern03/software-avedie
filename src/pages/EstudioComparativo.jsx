@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { Calculator, Upload, FileText, Printer, Download, X, AlertTriangle, Loader2, SlidersHorizontal } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { exportElementToPdf, imprimirElementoPdf, slugifyFilename } from '../lib/exportPdf';
+import { registrarComparativa } from '../lib/historialComparativas';
 import { LUZ, LUZ_SOLAR, INDEXADA_2_0TD } from '../data/tarifasB2C';
 import { TEMPO_2_0TD } from '../data/tarifasB2B';
 import { IE_RATE as IE_RATE_MOTOR, calcularAhorro, extrapolarAnual } from '../lib/energia/motor';
@@ -585,12 +586,30 @@ export default function EstudioComparativo() {
     }
   }
 
+  /* Historial de Comparativas: se guarda al descargar o imprimir. */
+  function guardarEnHistorial() {
+    registrarComparativa({
+      elementId: 'ec-informe', usuario: currentUser, factura: dropped,
+      datos: {
+        tipo: 'luz_20', tarifaAcceso: '2.0TD', producto: tarifa.label,
+        cliente: form.cliente, cups: form.cups,
+        potencias: { P1: kwPunta, P2: kwValle },
+        consumos: { P1: kwhP1, P2: kwhP2, P3: kwhP3 },
+        consumoTotal: kwhP1 + kwhP2 + kwhP3, dias,
+        importeActual: factActual, importeOferta: total, ahorro: dif,
+        ahorroPct: ahorroPctOferta * 100, ahorroAnual,
+        form: { ...form, tarifaId, mant, asesor: asesorDisplay },
+      },
+    });
+  }
+
     /* Imprimir el MISMO PDF que se descarga (no el HTML de la página). */
   async function handlePrintPdf() {
     setIsExportingPdf(true);
     setPdfError('');
     try {
       await imprimirElementoPdf('ec-informe');
+      guardarEnHistorial();
     } catch {
       setPdfError('No se pudo preparar la impresión. Prueba de nuevo o usa "Descargar".');
     } finally {
@@ -604,6 +623,7 @@ export default function EstudioComparativo() {
     try {
       const cliente = form.cliente.trim() || 'informe';
       await exportElementToPdf('ec-informe', `Comparativa_${slugifyFilename(cliente)}_${todayShort.replace(/\//g, '-')}.pdf`);
+      guardarEnHistorial();
     } catch (err) {
       console.error('[EC-LUZ] Descarga PDF:', err);
       setPdfError('No se pudo generar el PDF. Prueba de nuevo o usa "Imprimir informe" como alternativa.');
