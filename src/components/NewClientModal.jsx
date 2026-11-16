@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
-import { X, User, Building2, Phone, Zap, FileText, CheckCircle, AlertCircle, Mail, CreditCard, Upload, Pencil, Calendar, UserCheck, Briefcase, Hash, AlignLeft, BarChart2, Users, Check, ShoppingBag } from 'lucide-react';
+import { X, User, Building2, Phone, Zap, FileText, CheckCircle, AlertCircle, Mail, CreditCard, Upload, Pencil, Calendar, UserCheck, Briefcase, Hash, AlignLeft, BarChart2, Users, Check, ShoppingBag, Info } from 'lucide-react';
 import DateInput from './DateInput';
 import { useAuth } from '../context/AuthContext';
 import { useData, fetchSingleDoc } from '../context/DataContext';
 import { getShareTargets } from './ShareButton';
 import { openPendingTab, openBase64InTab } from '../lib/attachmentTab';
-import { ESTADOS_CONTRATO } from '../lib/estadosContrato';
+import { ESTADOS_CONTRATO, ESTADO_INICIAL, ESTADO_AYUDA, ESTADO_BADGE } from '../lib/estadosContrato';
 
 const tarifas  = ['2.0TD', '3.0TD', '3.1A', '6.1TD', '6.1A', '6.2', '6.3', '6.4', 'RL.1', 'RL.2', 'RL.3'];
 
@@ -120,7 +120,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
     vendido_por:       isVendidoPorKnown ? initialVendidoPorValue : '__vendido_otro__',
     descripcion:       initialData?.descripcion       || '',
     consumo_anual_est: initialData?.consumo_anual_est != null ? String(initialData.consumo_anual_est) : '',
-    estado:            initialData?.estado            || 'Pendiente Firma',
+    estado:            initialData?.estado            || ESTADO_INICIAL,
     mail:              initialData?.mail              || '',
     cuenta_bancaria:   initialData?.cuenta_bancaria   || '',
     fecha_tramitacion: initialData?.fecha_tramitacion || todayStr(),
@@ -134,6 +134,7 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
   const [vendidoPorOtro,    setVendidoPorOtro]    = useState(isVendidoPorKnown ? '' : initialVendidoPorValue);
   const [idProductoOtro,    setIdProductoOtro]    = useState(isIdProductoKnown ? '' : initialIdProductoValue);
   const [errors,       setErrors]       = useState({});
+  const [ayudaEstados, setAyudaEstados] = useState(false);
   const [saved,        setSaved]        = useState(false);
   const [cupsDbError,  setCupsDbError]  = useState(null);
 
@@ -774,12 +775,34 @@ export default function NewClientModal({ tipo, onClose, onSave, initialData, edi
               {errors.tarifa && <p className="text-red-500 text-xs mt-1">Obligatorio</p>}
             </div>
             <div>
-              <label className="block text-xs font-medium text-google-gray mb-1.5">Estado *</label>
+              <label className="block text-xs font-medium text-google-gray mb-1.5 flex items-center gap-1.5">
+                Estado *
+                <button type="button" onClick={() => setAyudaEstados(v => !v)} title="¿Qué significa cada estado?"
+                  className="text-google-blue hover:text-blue-700" aria-label="Ayuda sobre los estados">
+                  <Info size={14} />
+                </button>
+              </label>
               <select value={form.estado} onChange={(e) => set('estado', e.target.value)} className={inputClass('estado')}>
                 <option value="">Seleccionar...</option>
                 {estados.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
               {errors.estado && <p className="text-red-500 text-xs mt-1">Obligatorio</p>}
+              <p className="text-[11px] text-blue-800 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5 mt-1.5 leading-snug">
+                <span className="font-bold">Muy importante:</span> deja los contratos nuevos en «Enviado a Back Office» para que el back office los tramite.{' '}
+                <button type="button" onClick={() => setAyudaEstados(v => !v)} className="underline font-medium">
+                  {ayudaEstados ? 'Ocultar estados' : 'Ver qué significa cada estado'}
+                </button>
+              </p>
+              {ayudaEstados && (
+                <ul className="mt-1.5 space-y-1.5 text-[11px] text-google-dark bg-white border border-google-border rounded-lg px-2.5 py-2">
+                  {estados.map((s) => (
+                    <li key={s} className="leading-snug">
+                      <span className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded-full mr-1 ${ESTADO_BADGE[s]}`}>{s}</span>
+                      {ESTADO_AYUDA[s]}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
 

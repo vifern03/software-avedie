@@ -933,7 +933,7 @@ export function DataProvider({ children }) {
       creado_por:       data.creado_por      || '',
       vendido_por:      data.vendido_por     || '',
       descripcion:      data.descripcion     || '',
-      estado:           data.estado          || 'Pendiente Firma',
+      estado:           data.estado          || 'Enviado a Back Office',
       comercial:        data.agente_gestor   || currentUser?.username || 'Desconocido',
       equipo:           currentUser?.equipo  || 'Ambos',
       fecha_tramitacion: tramitacion,

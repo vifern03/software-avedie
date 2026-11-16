@@ -1,7 +1,16 @@
 // Estados de contrato de Alta B2C / B2B y sus colores. Fuente única para las tablas
 // de Altas y para el Historial de Comparativas (punto de color de las ya dadas de alta).
 
-export const ESTADOS_CONTRATO = ['Pendiente Firma', 'Enviado a Back Office', 'Tramitado', 'Formalizado'];
+// En orden de avance: el comercial sube el contrato y lo deja en "Enviado a Back Office".
+export const ESTADOS_CONTRATO = ['Enviado a Back Office', 'Pendiente Firma', 'Tramitado', 'Formalizado'];
+export const ESTADO_INICIAL = 'Enviado a Back Office';
+
+export const ESTADO_AYUDA = {
+  'Enviado a Back Office': 'El comercial ha subido el contrato con su documentación. El back office lo revisa y lo tramita. Es el estado en el que deben dejarse los contratos nuevos.',
+  'Pendiente Firma':       'El back office ha preparado el contrato y falta la firma del cliente.',
+  'Tramitado':             'Contrato firmado y tramitado con la compañía; pendiente de activación.',
+  'Formalizado':           'Contrato activado por la distribuidora.',
+};
 
 // Pastel con texto oscuro, como el resto del CRM. El rojo queda reservado para las
 // incidencias abiertas en Gestión de Pendientes.

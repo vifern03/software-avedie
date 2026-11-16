@@ -397,21 +397,21 @@ export default function AltaClientes({ tipo }) {
       {/* Counter cards — 3 estados */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="card p-5 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center flex-shrink-0">
-            <AlertCircle size={22} className="text-white" />
-          </div>
-          <div>
-            <p className="text-3xl font-bold text-google-dark">{totalPendienteFirma}</p>
-            <p className="text-sm text-google-gray">Pendiente Firma</p>
-          </div>
-        </div>
-        <div className="card p-5 flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl bg-blue-500 flex items-center justify-center flex-shrink-0">
             <Send size={22} className="text-white" />
           </div>
           <div>
             <p className="text-3xl font-bold text-google-dark">{totalBackOffice}</p>
             <p className="text-sm text-google-gray">Enviado a Back Office</p>
+          </div>
+        </div>
+        <div className="card p-5 flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-amber-500 flex items-center justify-center flex-shrink-0">
+            <AlertCircle size={22} className="text-white" />
+          </div>
+          <div>
+            <p className="text-3xl font-bold text-google-dark">{totalPendienteFirma}</p>
+            <p className="text-sm text-google-gray">Pendiente Firma</p>
           </div>
         </div>
         <div className="card p-5 flex items-center gap-4">
