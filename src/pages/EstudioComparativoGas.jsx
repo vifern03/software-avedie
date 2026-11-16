@@ -220,7 +220,17 @@ export default function EstudioComparativoGas() {
   const ahorroAnual   = extrapolarAnual(dif, dias) ?? 0;
   const dto = 0;
 
-  /* Historial de Comparativas: se guarda al descargar o imprimir. */
+
+  /* Guardado automático en el Historial: en cuanto la comparativa está calculada y lleva
+     unos segundos sin cambios. Si luego se retoca, se actualiza la misma ficha. */
+  const firmaHistorial = isReady ? JSON.stringify([form, tarifaGasId, mant, incluyeTF, dropped?.name || '', dropped?.size || 0]) : '';
+  useEffect(() => {
+    if (!firmaHistorial) return undefined;
+    const t = setTimeout(() => guardarEnHistorial(), 4000);
+    return () => clearTimeout(t);
+  }, [firmaHistorial]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Historial de Comparativas: guarda (o actualiza) la comparativa. */
   function guardarEnHistorial() {
     registrarComparativa({
       elementId: 'ec-informe-gas', usuario: currentUser, factura: dropped,

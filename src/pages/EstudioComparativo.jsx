@@ -586,7 +586,17 @@ export default function EstudioComparativo() {
     }
   }
 
-  /* Historial de Comparativas: se guarda al descargar o imprimir. */
+
+  /* Guardado automático en el Historial: en cuanto la comparativa está calculada y lleva
+     unos segundos sin cambios. Si luego se retoca, se actualiza la misma ficha. */
+  const firmaHistorial = isReady ? JSON.stringify([form, tarifaId, mant, compExcActiva, tocPct, dropped?.name || '', dropped?.size || 0]) : '';
+  useEffect(() => {
+    if (!firmaHistorial) return undefined;
+    const t = setTimeout(() => guardarEnHistorial(), 4000);
+    return () => clearTimeout(t);
+  }, [firmaHistorial]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Historial de Comparativas: guarda (o actualiza) la comparativa. */
   function guardarEnHistorial() {
     registrarComparativa({
       elementId: 'ec-informe', usuario: currentUser, factura: dropped,

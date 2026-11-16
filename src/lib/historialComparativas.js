@@ -2,9 +2,9 @@ import { supabase } from './supabase';
 import { generarPdfInforme } from './exportPdf';
 
 /* Historial de Comparativas.
- * Cada comparativa se guarda al descargarla o imprimirla (el momento en que se da por
- * hecha), con sus datos clave, el PDF del informe y la factura aportada.
- * Si se descarga y luego se imprime el mismo informe, no se duplica. */
+ * Cada comparativa se guarda sola en cuanto queda calculada (y también al descargar o
+ * imprimir), con sus datos clave, el PDF del informe y la factura aportada. Si se retoca
+ * la misma comparativa (misma factura o mismo CUPS), se actualiza la ficha: no se duplica. */
 
 export const TABLA = 'historial_comparativas';
 export const TABLA_ARCHIVOS = 'historial_comparativas_archivos';
@@ -18,7 +18,14 @@ export function veTodasLasComparativas(user) {
   return SEDES.includes(user?.equipo);
 }
 
-const guardadas = new Map(); // elementId → { clave, id }
+const guardadas = new Map(); // elementId → { clave, id, sesion }
+const colas = new Map();     // elementId → promesa en curso (evita dos inserciones a la vez)
+
+/* Identifica "la misma comparativa": la misma factura subida o, sin factura, el mismo CUPS
+   (o cliente). Si se retocan datos dentro de la misma sesión, se actualiza la ficha. */
+const sesionDe = (factura, datos) => (factura
+  ? `f:${factura.name}|${factura.size}|${factura.lastModified}`
+  : `c:${(datos.cups || '').toUpperCase().replace(/\s+/g, '') || (datos.cliente || '').trim().toUpperCase()}`);
 
 const aDataUrl = (blob) => new Promise((res, rej) => {
   const r = new FileReader();
@@ -33,11 +40,20 @@ const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
  * Guarda la comparativa (una sola vez por contenido del informe). Nunca lanza: un fallo
  * al guardar el historial no debe impedir descargar o imprimir.
  */
-export async function registrarComparativa({ elementId, usuario, factura, datos }) {
+export function registrarComparativa(args) {
+  const { elementId } = args;
+  const anterior = colas.get(elementId) || Promise.resolve();
+  const siguiente = anterior.then(() => guardar(args));
+  colas.set(elementId, siguiente.catch(() => null));
+  return siguiente;
+}
+
+async function guardar({ elementId, usuario, factura, datos }) {
   try {
     const el = document.getElementById(elementId);
     if (!el || !usuario?.username) return null;
     const clave = el.innerHTML;
+    const sesion = sesionDe(factura, datos);
     const previa = guardadas.get(elementId);
     if (previa && previa.clave === clave) return previa.id;
 
@@ -45,10 +61,7 @@ export async function registrarComparativa({ elementId, usuario, factura, datos 
     const pdf = blob ? await aDataUrl(blob) : null;
     const facturaUrl = factura ? await aDataUrl(factura) : null;
 
-    const id = Date.now();
-    const fila = {
-      id,
-      realizada_por: usuario.username,
+    const datosFila = {
       equipo: usuario.equipo || null,
       tipo: datos.tipo,
       tarifa_acceso: datos.tarifaAcceso || null,
@@ -69,11 +82,23 @@ export async function registrarComparativa({ elementId, usuario, factura, datos 
       tiene_factura: !!facturaUrl,
       factura_nombre: factura?.name || null,
     };
-    const { error } = await supabase.from(TABLA).insert([fila]);
+
+    // Misma comparativa retocada: se actualiza la ficha ya guardada.
+    if (previa && previa.sesion === sesion) {
+      const { error } = await supabase.from(TABLA).update(datosFila).eq('id', previa.id);
+      if (error) throw error;
+      const { error: e2 } = await supabase.from(TABLA_ARCHIVOS).update({ pdf_comparativa: pdf, factura: facturaUrl }).eq('comparativa_id', previa.id);
+      if (e2) console.error('[Historial comparativas] archivos:', e2);
+      guardadas.set(elementId, { clave, id: previa.id, sesion });
+      return previa.id;
+    }
+
+    const id = Date.now();
+    const { error } = await supabase.from(TABLA).insert([{ id, realizada_por: usuario.username, ...datosFila }]);
     if (error) throw error;
     const { error: e2 } = await supabase.from(TABLA_ARCHIVOS).insert([{ comparativa_id: id, pdf_comparativa: pdf, factura: facturaUrl }]);
     if (e2) console.error('[Historial comparativas] archivos:', e2);
-    guardadas.set(elementId, { clave, id });
+    guardadas.set(elementId, { clave, id, sesion });
     return id;
   } catch (err) {
     console.error('[Historial comparativas] No se pudo guardar:', err);

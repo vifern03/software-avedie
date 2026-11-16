@@ -304,7 +304,17 @@ export default function EstudioComparativoB2B() {
   }) : null;
   const incidenciasInfo = incidenciasTodas.filter(i => i.nivel === 'info');
 
-  /* Historial de Comparativas: se guarda al descargar o imprimir. */
+
+  /* Guardado automático en el Historial: en cuanto la comparativa está calculada y lleva
+     unos segundos sin cambios. Si luego se retoca, se actualiza la misma ficha. */
+  const firmaHistorial = informe ? JSON.stringify([form, nivel, productoId, modalidadId, autoconsumo, tramoSel, dropped?.name || '', dropped?.size || 0]) : '';
+  useEffect(() => {
+    if (!firmaHistorial) return undefined;
+    const t = setTimeout(() => guardarEnHistorial(), 4000);
+    return () => clearTimeout(t);
+  }, [firmaHistorial]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Historial de Comparativas: guarda (o actualiza) la comparativa. */
   function guardarEnHistorial() {
     const porPeriodo = (arr) => Object.fromEntries(arr.map((v, i) => [`P${i + 1}`, v]));
     registrarComparativa({

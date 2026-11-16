@@ -276,7 +276,7 @@ export default function HistorialComparativas() {
             <History size={22} className="text-google-blue" /> Historial de Comparativas
           </h1>
           <p className="text-sm text-google-gray mt-1">
-            Cada comparativa se guarda al descargar o imprimir su PDF.{' '}
+            Cada comparativa se guarda sola en cuanto queda calculada.{' '}
             {veTodas ? 'Ves las de todo el equipo.' : 'Ves las tuyas y las compartidas contigo; pega un CUPS completo para buscar las de otros.'}
           </p>
         </div>
@@ -378,7 +378,7 @@ export default function HistorialComparativas() {
                 <tr><td colSpan={17} className="text-center py-10 text-google-gray text-sm"><Loader2 size={18} className="inline animate-spin mr-2" />Cargando…</td></tr>
               ) : filtradas.length === 0 ? (
                 <tr><td colSpan={17} className="text-center py-10 text-google-gray text-sm">
-                  {visibles.length === 0 ? 'Todavía no hay comparativas guardadas. Se guardan al descargar o imprimir el PDF de una comparativa.' : 'No se encontraron resultados'}
+                  {visibles.length === 0 ? 'Todavía no hay comparativas guardadas. Se guardan solas en cuanto una comparativa queda calculada.' : 'No se encontraron resultados'}
                 </td></tr>
               ) : pagina.map((c) => {
                 const est = estadoDe(c);
