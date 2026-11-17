@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { GAS, GAS_EMPRESA } from '../data/tarifasGas';
 import { Calculator, Upload, FileText, Printer, Download, X, AlertTriangle, Loader2 } from 'lucide-react';
+import AvisoHistorialComparativas from '../components/AvisoHistorialComparativas';
 import { exportElementToPdf, imprimirElementoPdf, slugifyFilename } from '../lib/exportPdf';
 import { registrarComparativa } from '../lib/historialComparativas';
 import { calcularOfertaGas, calcularAhorro, extrapolarAnual, ESTADO } from '../lib/energia/motor';
@@ -439,6 +440,8 @@ export default function EstudioComparativoGas() {
 
         {/* ── COLUMNA IZQUIERDA ── */}
         <div className="space-y-4 print:hidden">
+
+          <AvisoHistorialComparativas />
 
           <p className="text-xs text-gray-400 leading-relaxed">
             * Puede introducir los valores numéricos usando comas (,) para los decimales.

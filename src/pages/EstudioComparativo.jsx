@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Calculator, Upload, FileText, Printer, Download, X, AlertTriangle, Loader2, SlidersHorizontal } from 'lucide-react';
+import AvisoHistorialComparativas from '../components/AvisoHistorialComparativas';
 import { supabase } from '../lib/supabase';
 import { exportElementToPdf, imprimirElementoPdf, slugifyFilename } from '../lib/exportPdf';
 import { registrarComparativa } from '../lib/historialComparativas';
@@ -683,6 +684,8 @@ export default function EstudioComparativo() {
 
         {/* ── COLUMNA IZQUIERDA ── */}
         <div className="space-y-4 print:hidden">
+
+          <AvisoHistorialComparativas />
 
           <p className="text-xs text-gray-400 leading-relaxed">
             * Puede introducir los valores numéricos usando comas (,) para los decimales.

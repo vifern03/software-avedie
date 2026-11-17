@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Upload, FileText, Printer, Download, X, Loader2, Factory, Info, CheckCircle2, Ban } from 'lucide-react';
+import AvisoHistorialComparativas from '../components/AvisoHistorialComparativas';
 import { exportElementToPdf, imprimirElementoPdf, slugifyFilename } from '../lib/exportPdf';
 import { registrarComparativa } from '../lib/historialComparativas';
 import { construirInforme, eurES, numES } from '../lib/energia/informe';
@@ -351,6 +352,8 @@ export default function EstudioComparativoB2B() {
 
         {/* ── COLUMNA IZQUIERDA ── */}
         <div className="space-y-4 print:hidden">
+
+          <AvisoHistorialComparativas />
 
           {informe && (
             <div className="flex gap-3 justify-end">
