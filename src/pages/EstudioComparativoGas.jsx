@@ -170,6 +170,8 @@ export default function EstudioComparativoGas() {
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [isExportingPdf, setIsExportingPdf]     = useState(false);
   const [pdfError, setPdfError]                 = useState('');
+  // Datos completos leídos de la factura por la IA: se guardan en el Historial (no se muestran).
+  const [extraccion, setExtraccion]                   = useState(null);
   // Comparativa abierta desde el Historial (lápiz): se recuperan sus datos sin leer la factura.
   const [edicion, setEdicion]                   = useState(null);
   useEffect(() => {
@@ -182,6 +184,7 @@ export default function EstudioComparativoGas() {
     if (extra.incluyeTF != null) setIncluyeTF(!!extra.incluyeTF);
     if (estado.baseFactura) setBaseFactura(estado.baseFactura);
     if (estado.ctxFactura) setCtxFactura(estado.ctxFactura);
+    if (estado.extraccion) setExtraccion(estado.extraccion);
     setEdicion(ed);
   }, []);
   const fileRef         = useRef(null);
@@ -248,7 +251,7 @@ export default function EstudioComparativoGas() {
         consumoAnual: valorNum(form.consumoAnual, 0) || null, dias,
         importeActual: factActual, importeOferta: total, ahorro: dif,
         ahorroPct: ahorroPctOferta * 100, ahorroAnual,
-        form: { ...form, tarifaGasId, mant, incluyeTF, asesor: asesorDisplay, _estado: { baseFactura, ctxFactura } },
+        form: { ...form, tarifaGasId, mant, incluyeTF, asesor: asesorDisplay, _estado: { baseFactura, ctxFactura, extraccion } },
       },
     });
   }
@@ -306,6 +309,7 @@ export default function EstudioComparativoGas() {
     const timeoutId = setTimeout(() => controller.abort(), EXTRACTION_TIMEOUT_MS);
 
     setBaseFactura(null);
+    setExtraccion(null);
     setCtxFactura(null);
     try {
       // Texto impreso del PDF (sin IA), en paralelo: fuente independiente para contrastar.
@@ -347,6 +351,7 @@ export default function EstudioComparativoGas() {
       const { textos, base } = volcarAFormulario(verif, MAPA_GAS);
       if (tramo.msg) base.incidencias.push({ campos: [], nivel: tramo.nivel === 'autocorreccion' ? 'autocorreccion' : 'info', msg: tramo.msg });
       setBaseFactura(base);
+      setExtraccion(ex);
       setCtxFactura(GAS_ESQ.contexto(ex));
 
       /* IVA */

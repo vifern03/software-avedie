@@ -373,6 +373,8 @@ export default function EstudioComparativo() {
   const [pdfError, setPdfError]             = useState('');
   // Valores verificados de la última factura (para distinguir lo que el usuario edita).
   const [baseFactura, setBaseFactura]       = useState(null);
+  // Datos completos leídos de la factura por la IA: se guardan en el Historial (no se muestran).
+  const [extraccion, setExtraccion]         = useState(null);
   // Comparativa abierta desde el Historial (lápiz): se recuperan sus datos sin leer la factura.
   const [edicion, setEdicion]               = useState(null);
   useEffect(() => {
@@ -385,6 +387,7 @@ export default function EstudioComparativo() {
     if (estado.compExcActiva != null) setCompExcActiva(estado.compExcActiva);
     if (estado.tocPctFactura != null) setTocPctFactura(estado.tocPctFactura);
     if (estado.baseFactura) setBaseFactura(estado.baseFactura);
+    if (estado.extraccion) setExtraccion(estado.extraccion);
     setEdicion(ed);
   }, []);
   const fileRef       = useRef(null);
@@ -521,6 +524,7 @@ export default function EstudioComparativo() {
     setExtractionDone(false);
     setExtractionError('');
     setBaseFactura(null);
+    setExtraccion(null);
 
     clearInterval(countdownRef.current);
     countdownRef.current = setInterval(() => {
@@ -565,6 +569,7 @@ export default function EstudioComparativo() {
       });
       const { textos, base } = volcarAFormulario(verif, MAPA_20);
       setBaseFactura(base);
+      setExtraccion(ex);
 
       let ivaValue = form.iva;
       if (ex.tipoIVA != null) {
@@ -623,7 +628,7 @@ export default function EstudioComparativo() {
         consumoTotal: kwhP1 + kwhP2 + kwhP3, dias,
         importeActual: factActual, importeOferta: total, ahorro: dif,
         ahorroPct: ahorroPctOferta * 100, ahorroAnual,
-        form: { ...form, tarifaId, mant, asesor: asesorDisplay, _estado: { compExcActiva, tocPctFactura, baseFactura } },
+        form: { ...form, tarifaId, mant, asesor: asesorDisplay, _estado: { compExcActiva, tocPctFactura, baseFactura, extraccion } },
       },
     });
   }

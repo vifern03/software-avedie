@@ -122,6 +122,8 @@ export default function EstudioComparativoB2B() {
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [pdfError, setPdfError] = useState('');
+  // Datos completos leídos de la factura por la IA: se guardan en el Historial (no se muestran).
+  const [extraccion, setExtraccion] = useState(null);
   // Comparativa abierta desde el Historial (lápiz): se recuperan sus datos sin leer la factura.
   const [edicion, setEdicion] = useState(null);
   useEffect(() => {
@@ -136,6 +138,7 @@ export default function EstudioComparativoB2B() {
     if (estado.tramoSel) setTramoSel(estado.tramoSel);
     if (estado.baseFactura) setBaseFactura(estado.baseFactura);
     if (estado.ctxFactura) setCtxFactura(estado.ctxFactura);
+    if (estado.extraccion) setExtraccion(estado.extraccion);
     setEdicion(ed);
   }, []);
   const fileRef = useRef(null);
@@ -158,6 +161,7 @@ export default function EstudioComparativoB2B() {
     setExtractionError('');
     setIncidencias([]);
     setBaseFactura(null);
+    setExtraccion(null);
     setCtxFactura(null);
     clearInterval(countdownRef.current);
     countdownRef.current = setInterval(() => setRemainingSeconds(s => Math.max(0, s - 1)), 1000);
@@ -185,6 +189,7 @@ export default function EstudioComparativoB2B() {
       });
       const { textos, base } = volcarAFormulario(verif, MAPA_B2B);
       setBaseFactura(base);
+      setExtraccion(ex);
       setCtxFactura(LUZ_B2B.contexto(ex));
 
       const ivaPct = d.importes.ivaPct;
@@ -344,7 +349,7 @@ export default function EstudioComparativoB2B() {
         importeActual: factActual, importeOferta: resultado?.total,
         ahorro: informe?.ahorroEur, ahorroPct: informe?.ahorroPct != null ? (informe.ahorroEur < 0 ? -informe.ahorroPct : informe.ahorroPct) : null,
         ahorroAnual: informe?.ahorroAnual,
-        form: { ...form, nivel, productoId, modalidadId, autoconsumo, asesor: asesorDisplay, _estado: { tramoSel, baseFactura, ctxFactura } },
+        form: { ...form, nivel, productoId, modalidadId, autoconsumo, asesor: asesorDisplay, _estado: { tramoSel, baseFactura, ctxFactura, extraccion } },
       },
     });
   }
