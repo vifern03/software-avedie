@@ -91,6 +91,7 @@ export const GAS_EMPRESA = [
     conMant: { promo: 0.114415, noPromo: 0.146686 },
     hasMant: false,
     esEmpresa: true,
+    dtoVariable: 22, // % sobre el término variable (1 año); «Actualizar tarifa» lo cambia y reescribe el texto
     descuentos: ['22% — 1 año sobre el término variable'],
     mantLabel: null,
     penalizacion: PENALIZACION_GAS,
@@ -107,6 +108,7 @@ export const GAS_EMPRESA = [
     conMant: { promo: 0.114346, noPromo: 0.146598 },
     hasMant: false,
     esEmpresa: true,
+    dtoVariable: 22, // % sobre el término variable (1 año); «Actualizar tarifa» lo cambia y reescribe el texto
     descuentos: ['22% — 1 año sobre el término variable'],
     mantLabel: null,
     penalizacion: PENALIZACION_GAS,
@@ -123,6 +125,7 @@ export const GAS_EMPRESA = [
     conMant: { promo: 0.105391, noPromo: 0.135117 },
     hasMant: false,
     esEmpresa: true,
+    dtoVariable: 22, // % sobre el término variable (1 año); «Actualizar tarifa» lo cambia y reescribe el texto
     descuentos: ['22% — 1 año sobre el término variable'],
     mantLabel: null,
     penalizacion: PENALIZACION_GAS,

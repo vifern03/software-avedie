@@ -18,7 +18,7 @@ const rutasOpen = [
   ...lista('baseEnergia', 4), ...lista('horasNoOpen', 4), ...matriz('matrix', 4, 5),
   ...porPeriodo('potenciaTerminos', 6), 'extraAnyo', ...[0, 1, 2, 3, 4].map((i) => `modalidades.${i}.dto`),
 ];
-const rutasGas = ['terFijo', 'sinMant.promo', 'sinMant.noPromo', 'conMant.promo', 'conMant.noPromo'];
+const rutasGas = ['terFijo', 'sinMant.promo', 'sinMant.noPromo', 'conMant.promo', 'conMant.noPromo', 'dtoVariable'];
 const rutasLuz = ['sinMant.promo', 'sinMant.noPromo', 'conMant.promo', 'conMant.noPromo', 'potPunta', 'potValle'];
 const rutasToc = ['sinMant.promoH', 'sinMant.restoH', 'sinMant.noPromoH', 'sinMant.noPromoR',
   'conMant.promoH', 'conMant.restoH', 'conMant.noPromoH', 'conMant.noPromoR', 'potPunta', 'potValle'];
@@ -26,7 +26,7 @@ const rutasSolar = ['energiaHorasBasic.promo', 'energiaHorasBasic.noPromo', 'ene
   'potPunta', 'potValle', 'compExcedentes', 'cuotaBateriaMes'];
 const energiaIdx = (n) => [...Array(n)].flatMap((_, i) => [`energiaA.p${i + 1}`, `energiaB.p${i + 1}`]);
 
-/** @type {Record<string,{objeto:object,nombre:string,tipo:'open'|'tempo'|'otra',rutas:string[]}>} */
+/** @type {Record<string,{objeto:object,nombre:string,tipo:'open'|'tempo'|'gas'|'otra',rutas:string[]}>} */
 export const TARIFAS = {
   open30: { objeto: OPEN_30TD, nombre: OPEN_30TD.nombre, tipo: 'open', rutas: rutasOpen },
   open61: { objeto: OPEN_61TD, nombre: OPEN_61TD.nombre, tipo: 'open', rutas: rutasOpen },
@@ -41,8 +41,19 @@ export const TARIFAS = {
   indexada61: { objeto: INDEXADA_61TD, nombre: INDEXADA_61TD.nombre, tipo: 'otra', rutas: [...energiaIdx(6), ...porPeriodo('potenciaTerminos', 6)] },
 };
 
-for (const t of GAS) TARIFAS[t.id] = { objeto: t, nombre: t.title, tipo: 'otra', rutas: rutasGas };
-for (const t of GAS_EMPRESA) TARIFAS[t.id] = { objeto: t, nombre: t.title, tipo: 'otra', rutas: rutasGas };
+for (const t of GAS) TARIFAS[t.id] = { objeto: t, nombre: t.title, tipo: 'gas', rutas: rutasGas };
+for (const t of GAS_EMPRESA) TARIFAS[t.id] = { objeto: t, nombre: t.title, tipo: 'gas', rutas: rutasGas };
+
+/** Porcentaje de descuento numérico de cada tipo; los textos que lo repiten se reescriben con él. */
+export const CAMPO_PCT = { open: 'extraAnyo', tempo: 'descuento', gas: 'dtoVariable' };
+
+/** Cambia el porcentaje «antes» por «despues» en los textos de la ficha (duración y etiquetas). */
+function actualizarTextosPct(objeto, antes, despues) {
+  const re = new RegExp(`(^|[^\\d.,])${String(antes).replace('.', '\\.')}(\\s?%)`, 'g');
+  const cambiar = (s) => (typeof s === 'string' ? s.replace(re, `$1${despues}$2`) : s);
+  if (typeof objeto.duracionDescuento === 'string') objeto.duracionDescuento = cambiar(objeto.duracionDescuento);
+  if (Array.isArray(objeto.descuentos)) objeto.descuentos = objeto.descuentos.map(cambiar);
+}
 for (const t of LUZ) TARIFAS[t.id] = { objeto: t, nombre: t.title, tipo: 'otra', rutas: t.isToc ? rutasToc : rutasLuz };
 for (const t of LUZ_SOLAR) TARIFAS[t.id] = { objeto: t, nombre: t.title, tipo: 'otra', rutas: rutasSolar };
 
@@ -94,7 +105,13 @@ export function aplicarVersion(tarifaId, version) {
     t.objeto.potenciaTerminos = t.objeto.potenciaTerminos.map((p) => ({ ...p }));
     separadas.add(t.objeto);
   }
+  const campoPct = CAMPO_PCT[t.tipo];
+  const pctAntes = campoPct ? leer(t.objeto, campoPct) : undefined;
   for (const [ruta, valor] of Object.entries(filtrarPermitidas(tarifaId, version.valores))) escribir(t.objeto, ruta, valor);
+  const pctDespues = campoPct ? leer(t.objeto, campoPct) : undefined;
+  if (typeof pctAntes === 'number' && typeof pctDespues === 'number' && pctAntes !== pctDespues) actualizarTextosPct(t.objeto, pctAntes, pctDespues);
+  // Gas sin mantenimiento: el precio «con mantenimiento» es el mismo que el «sin».
+  if (t.tipo === 'gas' && t.objeto.hasMant === false && t.objeto.sinMant) t.objeto.conMant = { ...t.objeto.sinMant };
   aplicarVigencia(t.objeto, version.valida_desde, version.valida_hasta);
   t.versionActiva = { id: version.id, version: version.version };
   return true;

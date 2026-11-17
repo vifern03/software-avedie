@@ -6,6 +6,8 @@ import { TARIFAS, filtrarPermitidas, rutasDe, valoresActuales } from './registro
 
 export const TOLERANCIA_PRECIO = 0.000002;
 export const VARIACION_AVISO = 0.30;
+/** Sube al cambiar el prompt: invalida la caché de lecturas de la pestaña. */
+export const VERSION_PROMPT = 3;
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 const DESCRIPCION = {
@@ -20,6 +22,13 @@ const DESCRIPCION = {
 - energia.promo: precio con descuento. energia.base: precio base sin descuento.
 - descuento: porcentaje de descuento (entero).
 - potencia.0 (P1) y potencia.1 (P2), con .anyo y .mes.`,
+  gas: `Tarifa de gas. Si la hoja trae una fila por grupo tarifario (RL.1, RL.2… RL.6), usa SOLO la fila de este grupo. Rutas:
+- terFijo: término fijo en €/mes.
+- sinMant.noPromo: término variable base, SIN descuento (€/kWh).
+- sinMant.promo: término variable CON el descuento ya aplicado (€/kWh), de la tabla «Precios con descuento».
+- conMant.noPromo y conMant.promo: los mismos precios pero con mantenimiento; solo si la hoja los trae.
+- dtoVariable: porcentaje de descuento sobre el término variable (entero, p. ej. 28 para «28%»).
+Una hoja que cubre varios grupos (p. ej. «Gas Estable» para RL.4, RL.5 y RL.6) ES de esta tarifa si incluye la fila de este grupo.`,
 };
 
 /** Prompt cerrado: el modelo solo puede responder con las rutas indicadas. */
@@ -47,6 +56,13 @@ export function limpiarRespuesta(tarifaId, respuesta) {
   const r = typeof respuesta === 'string' ? JSON.parse(respuesta) : (respuesta || {});
   const valores = filtrarPermitidas(tarifaId, r.valores);
   const descartadas = Object.keys(r.valores || {}).filter((k) => !(k in valores));
+  // Gas sin mantenimiento: «con mantenimiento» = «sin mantenimiento» (la hoja no lo trae).
+  const t = TARIFAS[tarifaId];
+  if (t?.tipo === 'gas' && t.objeto.hasMant === false) {
+    for (const k of ['promo', 'noPromo']) {
+      if (`sinMant.${k}` in valores && rutasDe(tarifaId).includes(`conMant.${k}`)) valores[`conMant.${k}`] = valores[`sinMant.${k}`];
+    }
+  }
   return {
     valores, descartadas, validaDesde: r.valida_desde ?? null, validaHasta: r.valida_hasta ?? null,
     tarifaDocumento: typeof r.tarifa_documento === 'string' ? r.tarifa_documento.trim() : '', esEstaTarifa: r.es_esta_tarifa === true,
@@ -59,15 +75,16 @@ const decimales = (n) => {
   return (s.split('.')[1] || '').length;
 };
 
-/** Peaje que aparece en un nombre: 3.0TD → 30TD, RL.1 → RL1. null si no hay. */
-const peajeDe = (nombre) => /\d\.\d\s?TD|RL\.?\s?\d/i.exec(nombre || '')?.[0].replace(/[\s.]/g, '').toUpperCase() ?? null;
+/** Peajes que aparecen en un nombre: 3.0TD → 30TD, RL.1 → RL1. */
+const peajesDe = (nombre) => [...(nombre || '').matchAll(/\d\.\d\s?TD|RL\.?\s?\d/gi)].map((m) => m[0].replace(/[\s.]/g, '').toUpperCase());
 
 /** Motivo por el que el documento no es de esta tarifa, o null. */
 export function documentoAjeno(tarifaId, { tarifaDocumento, esEstaTarifa }) {
   const { nombre } = TARIFAS[tarifaId];
-  const pDoc = peajeDe(tarifaDocumento);
-  const pTarifa = peajeDe(nombre);
-  if (esEstaTarifa && !(pDoc && pTarifa && pDoc !== pTarifa)) return null;
+  // Un documento puede cubrir varios peajes (Gas Estable: RL.4, RL.5 y RL.6): basta con que incluya el de la tarifa.
+  const pDoc = peajesDe(tarifaDocumento);
+  const pTarifa = peajesDe(nombre)[0];
+  if (esEstaTarifa && !(pDoc.length && pTarifa && !pDoc.includes(pTarifa))) return null;
   return `Este documento no es de la tarifa ${nombre}${tarifaDocumento ? ` (parece ser: ${tarifaDocumento})` : ''}. Sube la hoja correcta.`;
 }
 
@@ -97,8 +114,27 @@ export function validarActualizacion(tarifaId, { valores, validaDesde, validaHas
 
   const final = { ...actuales, ...valores };
 
+  const cerca = (a, b) => Math.abs(a - b) <= TOLERANCIA_PRECIO;
+  // Potencia: €/kW y mes = año / 12; €/kW y día = año / 365 (redondeados a 6 decimales).
+  const potencias = t.tipo === 'open' ? 'potenciaTerminos' : t.tipo === 'tempo' ? 'potencia' : null;
+  if (potencias) {
+    for (let i = 0; final[`${potencias}.${i}.anyo`] != null; i++) {
+      const anyo = final[`${potencias}.${i}.anyo`];
+      const mes = final[`${potencias}.${i}.mes`];
+      const dia = final[`${potencias}.${i}.dia`];
+      if (mes != null && !cerca(mes, anyo / 12)) errores.push(`Potencia P${i + 1}: ${mes} €/kW·mes no cuadra con ${anyo} / 12.`);
+      if (dia != null && !cerca(dia, anyo / 365)) errores.push(`Potencia P${i + 1}: ${dia} €/kW·día no cuadra con ${anyo} / 365.`);
+    }
+  }
+
   if (t.tipo === 'open') {
     const promo = final.extraAnyo / 100;
+    for (let f = 0; f < 4; f++) {
+      const esperadoNoOpen = final[`baseEnergia.${f}`] * (1 - promo);
+      if (!cerca(final[`horasNoOpen.${f}`], esperadoNoOpen)) {
+        errores.push(`Tramo ${f + 1}, Horas No Open: ${final[`horasNoOpen.${f}`]} no cuadra con base × (1 − promo) = ${esperadoNoOpen.toFixed(6)}.`);
+      }
+    }
     for (let f = 0; f < 4; f++) {
       const base = final[`baseEnergia.${f}`];
       for (let c = 0; c < 5; c++) {
@@ -114,7 +150,16 @@ export function validarActualizacion(tarifaId, { valores, validaDesde, validaHas
     if (Math.abs(final['energia.promo'] - esperado) > TOLERANCIA_PRECIO) {
       errores.push(`${final['energia.promo']} no cuadra con base × (1 − promo) = ${esperado.toFixed(6)}.`);
     }
-  } else {
+  } else if (t.tipo === 'gas' && typeof final.dtoVariable === 'number') {
+    for (const m of ['sinMant', 'conMant']) {
+      const base = final[`${m}.noPromo`];
+      const promo = final[`${m}.promo`];
+      if (base == null || promo == null) continue;
+      const esperado = base * (1 - final.dtoVariable / 100);
+      if (!cerca(promo, esperado)) errores.push(`${m}.promo: ${promo} no cuadra con base × (1 − ${final.dtoVariable} %) = ${esperado.toFixed(6)}.`);
+    }
+  }
+  if (t.tipo === 'gas' || t.tipo === 'otra') {
     for (const [ruta, v] of Object.entries(valores)) {
       const a = actuales[ruta];
       if (a > 0 && Math.abs(v - a) / a > VARIACION_AVISO) avisos[ruta] = `Variación de más del ${VARIACION_AVISO * 100} % respecto a la versión actual.`;

@@ -3,7 +3,7 @@ import { AlertTriangle, ArrowRight, FileUp, Loader2, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { extraerFactura } from '../../lib/energia/geminiCliente';
 import { TARIFAS, aplicarVersion, valoresActuales } from '../../lib/tarifas/registro';
-import { calcularCambios, limpiarRespuesta, promptTarifa, validarActualizacion } from '../../lib/tarifas/actualizador';
+import { VERSION_PROMPT, calcularCambios, limpiarRespuesta, promptTarifa, validarActualizacion } from '../../lib/tarifas/actualizador';
 import { archivos, rpc, subirPdfs } from '../../lib/documentacionB2B/api';
 
 const ESPERA_IA_MS = 45000;
@@ -30,7 +30,7 @@ export default function ActualizarTarifaModal({ tarifaId, onClose, onGuardada })
     setFase('leyendo');
     try {
       const { datos } = await extraerFactura(file, {
-        prompt: promptTarifa(tarifaId), version: `tarifa-${tarifaId}-2`, parse: JSON.parse, esperaMs: ESPERA_IA_MS,
+        prompt: promptTarifa(tarifaId), version: `tarifa-${tarifaId}-${VERSION_PROMPT}`, parse: JSON.parse, esperaMs: ESPERA_IA_MS,
       });
       const limpio = limpiarRespuesta(tarifaId, datos);
       const actuales = valoresActuales(tarifaId);

@@ -41,7 +41,10 @@ const TOC_PCT_CLAVE = 'toc_pct_promo';
 const tocPrecioMedio = (p, pctPromo) => pctPromo * p.promoH + (1 - pctPromo) * p.restoH;
 const [SOLAR_BASIC, SOLAR_PLUS, SOLAR_BATERIA] = LUZ_SOLAR;
 
-const TARIFAS = [
+/* Se construye en cada render (no al cargar el módulo): los precios salen de los objetos de
+   src/data, que la versión activa de tarifas_versiones actualiza al arrancar la app o al
+   pulsar «Actualizar tarifa». Una copia hecha al importar se quedaría con los precios viejos. */
+const construirTarifas = () => [
   { id: 'conecta', label: 'Conecta Luz (2.0TD)', shortLabel: 'Conecta Luz', tag: 'Residencial', tagClass: 'bg-sky-100 text-sky-700',
     sinMant: LUZ_CONECTA.sinMant.promo, conMant: LUZ_CONECTA.conMant.promo, potPunta: LUZ_CONECTA.potPunta, potValle: LUZ_CONECTA.potValle,
     validez: LUZ_CONECTA.validez, contratacion: LUZ_CONECTA.contratacion },
@@ -397,6 +400,7 @@ export default function EstudioComparativo() {
   /* ════════════ CÁLCULOS ════════════ */
 
   const asesorDisplay = form.asesor === '__otro__' ? (form.asesorLibre || '') : form.asesor;
+  const TARIFAS   = construirTarifas();
   const tarifa    = TARIFAS.find(t => t.id === tarifaId);
   const tocPct    = tocPctFactura ?? tocPctGeneral;
   const precioEn  = tarifa.isToc

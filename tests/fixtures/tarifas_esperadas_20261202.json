@@ -1,0 +1,184 @@
+{
+  "carpeta": "C:/Users/victor/Downloads",
+  "desde": "2026-11-17",
+  "hasta": "2026-12-02",
+  "tarifas": {
+    "open30": {
+      "pdf": "20261202 3.0TD_OPEN_16_V1.pdf",
+      "valores": {
+        "baseEnergia.0": 0.302223,
+        "baseEnergia.1": 0.302223,
+        "baseEnergia.2": 0.301723,
+        "baseEnergia.3": 0.301723,
+        "horasNoOpen.0": 0.253867,
+        "horasNoOpen.1": 0.253867,
+        "horasNoOpen.2": 0.253447,
+        "horasNoOpen.3": 0.253447,
+        "matrix.0.0": 0.208534,
+        "matrix.0.1": 0.193423,
+        "matrix.0.2": 0.178312,
+        "matrix.0.3": 0.117867,
+        "matrix.0.4": 0.087645,
+        "matrix.1.0": 0.208534,
+        "matrix.1.1": 0.193423,
+        "matrix.1.2": 0.178312,
+        "matrix.1.3": 0.117867,
+        "matrix.1.4": 0.087645,
+        "matrix.2.0": 0.208189,
+        "matrix.2.1": 0.193103,
+        "matrix.2.2": 0.178017,
+        "matrix.2.3": 0.117672,
+        "matrix.2.4": 0.0875,
+        "matrix.3.0": 0.208189,
+        "matrix.3.1": 0.193103,
+        "matrix.3.2": 0.178017,
+        "matrix.3.3": 0.117672,
+        "matrix.3.4": 0.0875,
+        "potenciaTerminos.0.anyo": 21.876927,
+        "potenciaTerminos.0.mes": 1.823077,
+        "potenciaTerminos.0.dia": 0.059937,
+        "potenciaTerminos.1.anyo": 12.117621,
+        "potenciaTerminos.1.mes": 1.009802,
+        "potenciaTerminos.1.dia": 0.033199,
+        "potenciaTerminos.2.anyo": 5.981534,
+        "potenciaTerminos.2.mes": 0.498461,
+        "potenciaTerminos.2.dia": 0.016388,
+        "potenciaTerminos.3.anyo": 5.386333,
+        "potenciaTerminos.3.mes": 0.448861,
+        "potenciaTerminos.3.dia": 0.014757,
+        "potenciaTerminos.4.anyo": 4.013851,
+        "potenciaTerminos.4.mes": 0.334488,
+        "potenciaTerminos.4.dia": 0.010997,
+        "potenciaTerminos.5.anyo": 2.942287,
+        "potenciaTerminos.5.mes": 0.245191,
+        "potenciaTerminos.5.dia": 0.008061,
+        "extraAnyo": 16,
+        "modalidades.0.dto": 15,
+        "modalidades.1.dto": 20,
+        "modalidades.2.dto": 25,
+        "modalidades.3.dto": 45,
+        "modalidades.4.dto": 55
+      },
+      "textos": {
+        "duracionDescuento": "16% adicional durante 1 año; el documento no fija plazo para el descuento de modalidad"
+      }
+    },
+    "open61": {
+      "pdf": "20261202 6.1TD_OPEN_16_V1.pdf",
+      "valores": {
+        "baseEnergia.0": 0.25943,
+        "baseEnergia.1": 0.25943,
+        "baseEnergia.2": 0.25593,
+        "baseEnergia.3": 0.25593,
+        "horasNoOpen.0": 0.217922,
+        "horasNoOpen.1": 0.217922,
+        "horasNoOpen.2": 0.214982,
+        "horasNoOpen.3": 0.214982,
+        "matrix.0.0": 0.179007,
+        "matrix.0.1": 0.166035,
+        "matrix.0.2": 0.153064,
+        "matrix.0.3": 0.101178,
+        "matrix.0.4": 0.127121,
+        "matrix.1.0": 0.179007,
+        "matrix.1.1": 0.166035,
+        "matrix.1.2": 0.153064,
+        "matrix.1.3": 0.101178,
+        "matrix.1.4": 0.127121,
+        "matrix.2.0": 0.176592,
+        "matrix.2.1": 0.163795,
+        "matrix.2.2": 0.150999,
+        "matrix.2.3": 0.099813,
+        "matrix.2.4": 0.125406,
+        "matrix.3.0": 0.176592,
+        "matrix.3.1": 0.163795,
+        "matrix.3.2": 0.150999,
+        "matrix.3.3": 0.099813,
+        "matrix.3.4": 0.125406,
+        "potenciaTerminos.0.anyo": 31.095368,
+        "potenciaTerminos.0.mes": 2.591281,
+        "potenciaTerminos.0.dia": 0.085193,
+        "potenciaTerminos.1.anyo": 17.014709,
+        "potenciaTerminos.1.mes": 1.417892,
+        "potenciaTerminos.1.dia": 0.046616,
+        "potenciaTerminos.2.anyo": 8.301881,
+        "potenciaTerminos.2.mes": 0.691823,
+        "potenciaTerminos.2.dia": 0.022745,
+        "potenciaTerminos.3.anyo": 6.893829,
+        "potenciaTerminos.3.mes": 0.574486,
+        "potenciaTerminos.3.dia": 0.018887,
+        "potenciaTerminos.4.anyo": 3.625113,
+        "potenciaTerminos.4.mes": 0.302093,
+        "potenciaTerminos.4.dia": 0.009932,
+        "potenciaTerminos.5.anyo": 2.504181,
+        "potenciaTerminos.5.mes": 0.208682,
+        "potenciaTerminos.5.dia": 0.006861,
+        "extraAnyo": 16,
+        "modalidades.0.dto": 15,
+        "modalidades.1.dto": 20,
+        "modalidades.2.dto": 25,
+        "modalidades.3.dto": 45,
+        "modalidades.4.dto": 35
+      },
+      "textos": {
+        "duracionDescuento": "16% adicional durante 1 año; el documento no fija plazo para el descuento de modalidad"
+      }
+    },
+    "tempo": {
+      "pdf": "20261202 2.0TD_TEMPO24H_22_V1.pdf",
+      "valores": {
+        "energia.promo": 0.188199,
+        "energia.base": 0.241281,
+        "descuento": 22,
+        "potencia.0.anyo": 44.704416,
+        "potencia.0.mes": 3.725368,
+        "potencia.1.anyo": 17.725428,
+        "potencia.1.mes": 1.477119
+      },
+      "textos": {
+        "duracionDescuento": "22% en el término de energía durante el primer año"
+      }
+    },
+    "rl4": {
+      "pdf": "20261202 RL4_RL5_RL6_GAS ESTABLE_28_V1.pdf",
+      "valores": {
+        "terFijo": 43.131,
+        "sinMant.promo": 0.105614,
+        "sinMant.noPromo": 0.146686,
+        "conMant.promo": 0.105614,
+        "conMant.noPromo": 0.146686,
+        "dtoVariable": 28
+      },
+      "textos": {
+        "descuentos.0": "28% — 1 año sobre el término variable"
+      }
+    },
+    "rl5": {
+      "pdf": "20261202 RL4_RL5_RL6_GAS ESTABLE_28_V1.pdf",
+      "valores": {
+        "terFijo": 241.695,
+        "sinMant.promo": 0.105551,
+        "sinMant.noPromo": 0.146598,
+        "conMant.promo": 0.105551,
+        "conMant.noPromo": 0.146598,
+        "dtoVariable": 28
+      },
+      "textos": {
+        "descuentos.0": "28% — 1 año sobre el término variable"
+      }
+    },
+    "rl6": {
+      "pdf": "20261202 RL4_RL5_RL6_GAS ESTABLE_28_V1.pdf",
+      "valores": {
+        "terFijo": 1164.609,
+        "sinMant.promo": 0.097284,
+        "sinMant.noPromo": 0.135117,
+        "conMant.promo": 0.097284,
+        "conMant.noPromo": 0.135117,
+        "dtoVariable": 28
+      },
+      "textos": {
+        "descuentos.0": "28% — 1 año sobre el término variable"
+      }
+    }
+  }
+}
