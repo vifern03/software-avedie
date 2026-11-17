@@ -57,10 +57,6 @@ async function guardar({ elementId, usuario, factura, datos }) {
     const previa = guardadas.get(elementId);
     if (previa && previa.clave === clave) return previa.id;
 
-    const blob = await generarPdfInforme(elementId); // misma caché que la descarga
-    const pdf = blob ? await aDataUrl(blob) : null;
-    const facturaUrl = factura ? await aDataUrl(factura) : null;
-
     const datosFila = {
       equipo: usuario.equipo || null,
       tipo: datos.tipo,
@@ -79,17 +75,33 @@ async function guardar({ elementId, usuario, factura, datos }) {
       ahorro_pct: num(datos.ahorroPct),
       ahorro_anual: num(datos.ahorroAnual),
       datos: datos.form || null,
-      tiene_factura: !!facturaUrl,
+      tiene_factura: !!factura,
       factura_nombre: factura?.name || null,
     };
 
-    // Misma comparativa retocada: se actualiza la ficha ya guardada.
-    if (previa && previa.sesion === sesion) {
+    const propiaDeEstaSesion = previa && previa.sesion === sesion && previa.propia;
+
+    // Control de duplicados: si ya hay en el historial un estudio igual (mismo CUPS,
+    // importe, días, consumo y oferta), no se guarda otra vez.
+    if (!propiaDeEstaSesion) {
+      const dup = await buscarDuplicado(datosFila);
+      if (dup) {
+        guardadas.set(elementId, { clave, id: dup, sesion, propia: false });
+        return dup;
+      }
+    }
+
+    const blob = await generarPdfInforme(elementId); // misma caché que la descarga
+    const pdf = blob ? await aDataUrl(blob) : null;
+    const facturaUrl = factura ? await aDataUrl(factura) : null;
+
+    // Misma comparativa retocada: se actualiza la ficha que guardó esta sesión.
+    if (propiaDeEstaSesion) {
       const { error } = await supabase.from(TABLA).update(datosFila).eq('id', previa.id);
       if (error) throw error;
       const { error: e2 } = await supabase.from(TABLA_ARCHIVOS).update({ pdf_comparativa: pdf, factura: facturaUrl }).eq('comparativa_id', previa.id);
       if (e2) console.error('[Historial comparativas] archivos:', e2);
-      guardadas.set(elementId, { clave, id: previa.id, sesion });
+      guardadas.set(elementId, { clave, id: previa.id, sesion, propia: true });
       return previa.id;
     }
 
@@ -98,12 +110,33 @@ async function guardar({ elementId, usuario, factura, datos }) {
     if (error) throw error;
     const { error: e2 } = await supabase.from(TABLA_ARCHIVOS).insert([{ comparativa_id: id, pdf_comparativa: pdf, factura: facturaUrl }]);
     if (e2) console.error('[Historial comparativas] archivos:', e2);
-    guardadas.set(elementId, { clave, id, sesion });
+    guardadas.set(elementId, { clave, id, sesion, propia: true });
     return id;
   } catch (err) {
     console.error('[Historial comparativas] No se pudo guardar:', err);
     return null;
   }
+}
+
+const igual = (a, b, tol) => (a == null && b == null) || (a != null && b != null && Math.abs(Number(a) - Number(b)) <= tol);
+
+/** Mismo estudio = mismo CUPS, importe de factura, días, consumo, peaje y oferta comparada. */
+export function esMismoEstudio(a, b) {
+  return igual(a.importe_actual, b.importe_actual, 0.01)
+    && igual(a.dias, b.dias, 0)
+    && igual(a.consumo_total_kwh, b.consumo_total_kwh, 0.5)
+    && (a.tarifa_acceso || '') === (b.tarifa_acceso || '')
+    && (a.producto || '') === (b.producto || '');
+}
+
+/** Id de un estudio ya guardado igual a este, o null. Sin CUPS no se puede cuadrar. */
+async function buscarDuplicado(fila) {
+  if (!fila.cups) return null;
+  const { data, error } = await supabase.from(TABLA)
+    .select('id, importe_actual, dias, consumo_total_kwh, tarifa_acceso, producto')
+    .eq('cups', fila.cups);
+  if (error) { console.error('[Historial comparativas] duplicados:', error); return null; }
+  return (data || []).find((c) => esMismoEstudio(c, fila))?.id ?? null;
 }
 
 /** Descarga un archivo de la comparativa ('pdf_comparativa' | 'factura'). */

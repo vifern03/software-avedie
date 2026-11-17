@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Search, X, Eye, FileText, Loader2, RefreshCw, History, UserPlus, Building2, Info } from 'lucide-react';
+import { Search, X, Eye, FileText, Loader2, RefreshCw, History, UserPlus, Building2, Info, ChevronDown, ChevronRight, CornerDownRight, UserCheck } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -130,7 +130,7 @@ function FileEye({ id, campo, disponible, titulo, Icon }) {
 
 export default function HistorialComparativas() {
   const { currentUser, users } = useAuth();
-  const { addCliente, registroPendientes } = useData();
+  const { addCliente, registroPendientes, clientesCupsTodos } = useData();
   const veTodas = veTodasLasComparativas(currentUser);
   const miNombre = currentUser?.displayName || currentUser?.username;
 
@@ -149,6 +149,8 @@ export default function HistorialComparativas() {
   const [dateFilter, setDateFilter] = useState('');
   const [page, setPage] = useState(1);
   const [alta, setAlta] = useState(null); // { comparativa, tipo }
+  const [abiertos, setAbiertos] = useState(() => new Set()); // CUPS con el desplegable abierto
+  const alternar = (k) => setAbiertos(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
 
   const nombreDe = useMemo(() => Object.fromEntries(users.map(u => [u.username, u.displayName || u.username])), [users]);
   const incidencias = useMemo(() => mapaIncidenciasAbiertas(registroPendientes), [registroPendientes]);
@@ -239,8 +241,20 @@ export default function HistorialComparativas() {
     return true;
   });
 
-  const totalPages = Math.ceil(filtradas.length / ITEMS_PER_PAGE);
-  const pagina = filtradas.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+  // Un grupo por CUPS: la comparativa más reciente en la fila principal y los demás
+  // estudios de ese CUPS en un desplegable (no como clientes aparte).
+  const grupos = [];
+  {
+    const m = new Map();
+    for (const c of filtradas) {
+      const k = normalizarCups(c.cups) || `id:${c.id}`;
+      let g = m.get(k);
+      if (!g) { g = { clave: k, items: [] }; m.set(k, g); grupos.push(g); }
+      g.items.push(c);
+    }
+  }
+  const totalPages = Math.ceil(grupos.length / ITEMS_PER_PAGE);
+  const pagina = grupos.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
   const compartir = async (id, compartidoCon, sharedBy) => {
     const arr = Array.isArray(compartidoCon) ? compartidoCon : [];
@@ -343,6 +357,7 @@ export default function HistorialComparativas() {
         <div className="px-5 py-4 border-b border-google-border flex items-center justify-between gap-3 flex-wrap">
           <h2 className="text-sm font-semibold text-google-dark">Comparativas realizadas</h2>
           <div className="flex items-center gap-3 flex-wrap text-[11px] text-google-gray">
+            <span className="font-semibold text-google-dark">Estado del alta:</span>
             {ESTADOS_CONTRATO.map(e => (
               <span key={e} className="flex items-center gap-1"><span className={`w-2.5 h-2.5 rounded-full ${ESTADO_DOT[e]}`} />{e}</span>
             ))}
@@ -355,6 +370,7 @@ export default function HistorialComparativas() {
             <thead>
               <tr>
                 <th className="table-header">Alta</th>
+                <th className="table-header">Dar de alta</th>
                 <th className="table-header">Fecha</th>
                 <th className="table-header">Realizada por</th>
                 <th className="table-header">Cliente</th>
@@ -367,7 +383,6 @@ export default function HistorialComparativas() {
                 <th className="table-header">Factura actual</th>
                 <th className="table-header">Oferta Endesa</th>
                 <th className="table-header">Ahorro</th>
-                <th className="table-header">Dar de alta</th>
                 <th className="table-header text-center">Compartir</th>
                 <th className="table-header text-center">Comparativa</th>
                 <th className="table-header text-center">Factura</th>
@@ -380,13 +395,16 @@ export default function HistorialComparativas() {
                 <tr><td colSpan={17} className="text-center py-10 text-google-gray text-sm">
                   {visibles.length === 0 ? 'Todavía no hay comparativas guardadas. Se guardan solas en cuanto una comparativa queda calculada.' : 'No se encontraron resultados'}
                 </td></tr>
-              ) : pagina.map((c) => {
+              ) : pagina.flatMap((g) => {
+                const abierto = abiertos.has(g.clave);
+                return (abierto ? g.items : g.items.slice(0, 1)).map((c, i) => {
+                const sub = i > 0;
                 const est = estadoDe(c);
                 const ajena = c.realizada_por !== currentUser?.username;
                 const compartidaConmigo = (c.compartido_con || []).includes(miNombre) && ajena;
                 return (
-                  <tr key={c.id} className={`transition-colors ${compartidaConmigo ? 'bg-green-50 hover:bg-green-100' : 'hover:bg-google-bg'}`}>
-                    <td className="table-cell">
+                  <tr key={c.id} className={`transition-colors ${sub ? 'bg-slate-50 hover:bg-slate-100' : compartidaConmigo ? 'bg-green-50 hover:bg-green-100' : 'hover:bg-google-bg'}`}>
+                    <td className={`table-cell ${sub ? 'border-l-4 border-blue-200' : ''}`}>
                       {est ? (
                         <span className="flex items-center gap-1.5 whitespace-nowrap" title={est.incidencia ? `Incidencia abierta en Gestión de Pendientes · estado del contrato: ${est.estado}` : `Dada de alta (${c.alta_tipo || ''}) · ${est.texto}`}>
                           <span className={`w-3 h-3 rounded-full flex-shrink-0 ${est.dot}`} />
@@ -396,29 +414,6 @@ export default function HistorialComparativas() {
                         <span className="flex items-center gap-1.5" title="Contrato dado de alta (no accesible o eliminado)"><span className="w-3 h-3 rounded-full bg-gray-300" /></span>
                       ) : (
                         <span className="text-gray-300 text-xs">—</span>
-                      )}
-                    </td>
-                    <td className="table-cell tabular-nums text-xs text-google-gray whitespace-nowrap">{fechaHora(c.created_at)}</td>
-                    <td className="table-cell text-xs whitespace-nowrap">
-                      <span className="font-semibold text-green-700">{nombreDe[c.realizada_por] || c.realizada_por}</span>
-                      {compartidaConmigo && c.shared_by && <span className="block text-[10px] text-google-gray">Compartida por {nombreDe[c.shared_by] || c.shared_by}</span>}
-                    </td>
-                    <td className="table-cell font-medium text-google-dark whitespace-nowrap max-w-[220px] truncate" title={c.cliente || ''}>{c.cliente || '—'}</td>
-                    <td className="table-cell text-google-gray font-mono text-xs whitespace-nowrap">{c.cups || '—'}</td>
-                    <td className="table-cell">
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded ${c.tipo === 'gas' ? 'bg-orange-50 text-orange-700' : 'bg-blue-50 text-google-blue'}`}>{c.tarifa_acceso || TIPO_LABEL[c.tipo]}</span>
-                    </td>
-                    <td className="table-cell text-xs text-google-gray max-w-[200px] truncate" title={c.producto || ''}>{c.producto || '—'}</td>
-                    <td className="table-cell text-xs text-google-gray whitespace-nowrap max-w-[220px] truncate" title={potenciasTexto(c.potencias)}>{potenciasTexto(c.potencias)}</td>
-                    <td className="table-cell text-xs text-google-gray tabular-nums whitespace-nowrap">{kwh(c.consumo_total_kwh)}</td>
-                    <td className="table-cell text-xs text-google-gray tabular-nums">{c.dias ?? '—'}</td>
-                    <td className="table-cell text-xs tabular-nums whitespace-nowrap">{eur(c.importe_actual)}</td>
-                    <td className="table-cell text-xs tabular-nums whitespace-nowrap">{eur(c.importe_oferta)}</td>
-                    <td className="table-cell text-xs tabular-nums whitespace-nowrap">
-                      {c.ahorro == null ? '—' : (
-                        <span className={Number(c.ahorro) >= 0 ? 'text-green-700 font-semibold' : 'text-red-600 font-semibold'}>
-                          {eur(c.ahorro)}{c.ahorro_pct != null && <span className="font-normal text-google-gray"> ({Number(c.ahorro_pct).toLocaleString('es-ES', { maximumFractionDigits: 1 })} %)</span>}
-                        </span>
                       )}
                     </td>
                     <td className="table-cell">
@@ -437,6 +432,46 @@ export default function HistorialComparativas() {
                         </div>
                       )}
                     </td>
+                    <td className="table-cell tabular-nums text-xs text-google-gray whitespace-nowrap">{fechaHora(c.created_at)}</td>
+                    <td className="table-cell text-xs whitespace-nowrap">
+                      <span className="font-semibold text-green-700">{nombreDe[c.realizada_por] || c.realizada_por}</span>
+                      {compartidaConmigo && c.shared_by && <span className="block text-[10px] text-google-gray">Compartida por {nombreDe[c.shared_by] || c.shared_by}</span>}
+                    </td>
+                    <td className="table-cell font-medium text-google-dark whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        {sub && <CornerDownRight size={13} className="text-blue-300 flex-shrink-0" />}
+                        <span className={`max-w-[220px] truncate ${sub ? 'text-google-gray font-normal' : ''}`} title={c.cliente || ''}>{c.cliente || '—'}</span>
+                        {!sub && g.items.length > 1 && (
+                          <button onClick={() => alternar(g.clave)} title={abierto ? 'Ocultar los otros estudios de este CUPS' : 'Ver los otros estudios de este CUPS'}
+                            className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full border border-blue-200 bg-blue-50 text-blue-700 text-[10px] font-semibold hover:bg-blue-100 flex-shrink-0">
+                            {abierto ? <ChevronDown size={11} /> : <ChevronRight size={11} />} +{g.items.length - 1} {g.items.length === 2 ? 'estudio' : 'estudios'}
+                          </button>
+                        )}
+                        {!sub && !c.cliente_id && c.cups && clientesCupsTodos?.has(normalizarCups(c.cups)) && (
+                          <span title="Este CUPS ya está dado de alta en el CRM"
+                            className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold flex-shrink-0">
+                            <UserCheck size={11} /> Ya es cliente
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="table-cell text-google-gray font-mono text-xs whitespace-nowrap">{c.cups || '—'}</td>
+                    <td className="table-cell">
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded ${c.tipo === 'gas' ? 'bg-orange-50 text-orange-700' : 'bg-blue-50 text-google-blue'}`}>{c.tarifa_acceso || TIPO_LABEL[c.tipo]}</span>
+                    </td>
+                    <td className="table-cell text-xs text-google-gray max-w-[200px] truncate" title={c.producto || ''}>{c.producto || '—'}</td>
+                    <td className="table-cell text-xs text-google-gray whitespace-nowrap max-w-[220px] truncate" title={potenciasTexto(c.potencias)}>{potenciasTexto(c.potencias)}</td>
+                    <td className="table-cell text-xs text-google-gray tabular-nums whitespace-nowrap">{kwh(c.consumo_total_kwh)}</td>
+                    <td className="table-cell text-xs text-google-gray tabular-nums">{c.dias ?? '—'}</td>
+                    <td className="table-cell text-xs tabular-nums whitespace-nowrap">{eur(c.importe_actual)}</td>
+                    <td className="table-cell text-xs tabular-nums whitespace-nowrap">{eur(c.importe_oferta)}</td>
+                    <td className="table-cell text-xs tabular-nums whitespace-nowrap">
+                      {c.ahorro == null ? '—' : (
+                        <span className={Number(c.ahorro) >= 0 ? 'text-green-700 font-semibold' : 'text-red-600 font-semibold'}>
+                          {eur(c.ahorro)}{c.ahorro_pct != null && <span className="font-normal text-google-gray"> ({Number(c.ahorro_pct).toLocaleString('es-ES', { maximumFractionDigits: 1 })} %)</span>}
+                        </span>
+                      )}
+                    </td>
                     <td className="table-cell text-center">
                       <div className="inline-flex"><ShareButton cliente={{ ...c, comercial: c.realizada_por }} onUpdate={compartir} /></div>
                     </td>
@@ -444,6 +479,7 @@ export default function HistorialComparativas() {
                     <td className="table-cell text-center"><FileEye id={c.id} campo="factura" disponible={c.tiene_factura} titulo={`Ver la factura${c.factura_nombre ? ` (${c.factura_nombre})` : ''}`} Icon={FileText} /></td>
                   </tr>
                 );
+                });
               })}
             </tbody>
           </table>
@@ -452,7 +488,8 @@ export default function HistorialComparativas() {
         <div className="px-5 py-3 border-t border-google-border bg-google-bg">
           <p className="text-xs text-google-gray">
             Mostrando <span className="font-medium text-google-dark">{pagina.length}</span> de{' '}
-            <span className="font-medium text-google-dark">{filtradas.length}</span> comparativas
+            <span className="font-medium text-google-dark">{grupos.length}</span> CUPS
+            {' '}(<span className="font-medium text-google-dark">{filtradas.length}</span> {filtradas.length === 1 ? 'estudio' : 'estudios'})
           </p>
         </div>
       </div>
