@@ -1,4 +1,4 @@
-import { FileClock, UserPlus, Pencil } from 'lucide-react';
+import { FileClock, UserPlus, Pencil, ArrowBigRight } from 'lucide-react';
 
 /** Aviso compacto en las comparativas: se guardan solas y desde el Historial se puede dar de alta. */
 export default function AvisoHistorialComparativas() {
@@ -19,9 +19,12 @@ export default function AvisoHistorialComparativas() {
             <span className="inline-flex items-center gap-0.5 font-semibold text-indigo-700"><UserPlus size={11} />Alta</span>{' '}
             para crear el contrato en el CRM con los datos ya rellenos. Menos escribir, menos errores.
           </p>
-          <p className="mt-1 text-[10px] text-gray-400 leading-snug">
-            Se guarda la última tarifa que dejes seleccionada; si cambias de tarifa, se actualiza esa misma comparativa.
-          </p>
+          <div className="mt-2 flex items-center gap-1.5">
+            <ArrowBigRight size={26} className="flex-shrink-0 text-amber-500 fill-amber-400" />
+            <p className="text-xs font-medium text-black leading-snug">
+              Se guarda la <span className="font-bold">última tarifa que dejes seleccionada</span>; si cambias de tarifa, se actualiza esa misma comparativa.
+            </p>
+          </div>
         </div>
       </div>
     </div>
