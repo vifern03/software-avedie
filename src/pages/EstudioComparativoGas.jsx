@@ -222,15 +222,6 @@ export default function EstudioComparativoGas() {
   const dto = 0;
 
 
-  /* Guardado automático en el Historial: en cuanto la comparativa está calculada y lleva
-     unos segundos sin cambios. Si luego se retoca, se actualiza la misma ficha. */
-  const firmaHistorial = isReady ? JSON.stringify([form, tarifaGasId, mant, incluyeTF, dropped?.name || '', dropped?.size || 0]) : '';
-  useEffect(() => {
-    if (!firmaHistorial) return undefined;
-    const t = setTimeout(() => guardarEnHistorial(), 4000);
-    return () => clearTimeout(t);
-  }, [firmaHistorial]); // eslint-disable-line react-hooks/exhaustive-deps
-
   /* Historial de Comparativas: guarda (o actualiza) la comparativa. */
   function guardarEnHistorial() {
     registrarComparativa({
@@ -255,6 +246,16 @@ export default function EstudioComparativoGas() {
     ...(TARIFAS_GAS_BLOQUEADAS.has(tarifa.id) ? [{ campos: [], msg: `${tarifa.title} no está disponible para comparativas por ahora (solo RL.1, RL.2 y RL.3).` }] : []),
   ];
   const isReady = !COMPARATIVA_BLOQUEADA && datosMinimos && gasOk && !bloqueos.length;
+
+  /* Guardado automático en el Historial: en cuanto la comparativa está calculada y lleva
+     unos segundos sin cambios. Si luego se retoca, se actualiza la misma ficha. */
+  const firmaHistorial = isReady ? JSON.stringify([form, tarifaGasId, mant, incluyeTF, dropped?.name || '', dropped?.size || 0]) : '';
+  useEffect(() => {
+    if (!firmaHistorial) return undefined;
+    const t = setTimeout(() => guardarEnHistorial(), 4000);
+    return () => clearTimeout(t);
+  }, [firmaHistorial]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   /* ════════════ PRINT TITLE ════════════ */
 
