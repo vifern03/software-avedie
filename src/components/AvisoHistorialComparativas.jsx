@@ -1,4 +1,4 @@
-import { FileClock, UserPlus } from 'lucide-react';
+import { FileClock, UserPlus, Pencil } from 'lucide-react';
 
 /** Aviso compacto en las comparativas: se guardan solas y desde el Historial se puede dar de alta. */
 export default function AvisoHistorialComparativas() {
@@ -19,8 +19,29 @@ export default function AvisoHistorialComparativas() {
             <span className="inline-flex items-center gap-0.5 font-semibold text-indigo-700"><UserPlus size={11} />Alta</span>{' '}
             para crear el contrato en el CRM con los datos ya rellenos. Menos escribir, menos errores.
           </p>
+          <p className="mt-1 text-[10px] text-gray-400 leading-snug">
+            Se guarda la última tarifa que dejes seleccionada; si cambias de tarifa, se actualiza esa misma comparativa.
+          </p>
         </div>
       </div>
+    </div>
+  );
+}
+
+const fechaCorta = (iso) => (iso ? new Date(iso).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '');
+
+/** Franja que indica que se está editando una comparativa abierta desde el Historial. */
+export function AvisoEdicion({ ed }) {
+  if (!ed) return null;
+  return (
+    <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+      <Pencil size={14} className="mt-0.5 flex-shrink-0 text-amber-600" />
+      <p className="leading-relaxed">
+        <span className="font-semibold">Editando la comparativa del {fechaCorta(ed.created_at)}</span>
+        {ed.propia
+          ? '. Los cambios (tarifa, datos…) se guardan en esa misma ficha del Historial.'
+          : '. La original no se modifica: si cambias algo, se guarda como otro estudio a tu nombre en el mismo CUPS.'}
+      </p>
     </div>
   );
 }

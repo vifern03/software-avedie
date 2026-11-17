@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Search, X, Eye, FileText, Loader2, RefreshCw, History, UserPlus, Building2, Info, ChevronDown, ChevronRight, CornerDownRight, UserCheck } from 'lucide-react';
+import { Search, X, Eye, FileText, Loader2, RefreshCw, History, UserPlus, Building2, Info, ChevronDown, ChevronRight, CornerDownRight, UserCheck, Pencil } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
@@ -8,7 +8,7 @@ import ShareButton from '../components/ShareButton';
 import Pagination from '../components/Pagination';
 import DateInput from '../components/DateInput';
 import { openPendingTab, openBase64InTab } from '../lib/attachmentTab';
-import { TABLA, veTodasLasComparativas, obtenerArchivoComparativa, normalizarCups, esCupsCompleto } from '../lib/historialComparativas';
+import { TABLA, veTodasLasComparativas, obtenerArchivoComparativa, normalizarCups, esCupsCompleto, prepararEdicion } from '../lib/historialComparativas';
 import { ESTADO_DOT, ESTADOS_CONTRATO, INCIDENCIA_DOT, mapaIncidenciasAbiertas } from '../lib/estadosContrato';
 
 /* Historial de Comparativas: todas las comparativas descargadas o impresas.
@@ -128,7 +128,7 @@ function FileEye({ id, campo, disponible, titulo, Icon }) {
   );
 }
 
-export default function HistorialComparativas() {
+export default function HistorialComparativas({ onNavigate }) {
   const { currentUser, users } = useAuth();
   const { addCliente, registroPendientes, clientesCupsTodos } = useData();
   const veTodas = veTodasLasComparativas(currentUser);
@@ -251,6 +251,19 @@ export default function HistorialComparativas() {
       let g = m.get(k);
       if (!g) { g = { clave: k, items: [] }; m.set(k, g); grupos.push(g); }
       g.items.push(c);
+    }
+    // Dentro de cada CUPS, los estudios se agrupan por factura (mismo importe, días y consumo):
+    // una factura de otro mes es otro bloque; otra oferta sobre la misma factura, el mismo bloque.
+    for (const g of grupos) {
+      const bloques = new Map();
+      for (const c of g.items) {
+        const k = `${Math.round(Number(c.importe_actual) * 100) || 0}|${c.dias ?? ''}|${Math.round(Number(c.consumo_total_kwh)) || 0}`;
+        if (!bloques.has(k)) bloques.set(k, []);
+        bloques.get(k).push(c);
+      }
+      g.bloques = [...bloques.values()];
+      g.items = g.bloques.flat();
+      g.inicioBloque = new Map(g.bloques.map((b, n) => [b[0].id, { n: n + 1, b }]));
     }
   }
   const totalPages = Math.ceil(grupos.length / ITEMS_PER_PAGE);
@@ -397,12 +410,24 @@ export default function HistorialComparativas() {
                 </td></tr>
               ) : pagina.flatMap((g) => {
                 const abierto = abiertos.has(g.clave);
-                return (abierto ? g.items : g.items.slice(0, 1)).map((c, i) => {
+                return (abierto ? g.items : g.items.slice(0, 1)).flatMap((c, i) => {
                 const sub = i > 0;
+                const bloque = abierto && g.bloques.length > 1 ? g.inicioBloque.get(c.id) : null;
+                const cabecera = bloque && (
+                  <tr key={`f-${c.id}`}>
+                    <td colSpan={17} className="bg-blue-50/70 border-l-4 border-blue-300 px-4 py-1.5 text-[11px] text-blue-800 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1.5">
+                        <FileText size={12} className="text-blue-500" />
+                        <span className="font-semibold">Factura {bloque.n}</span>
+                        <span className="text-blue-700/80">· {c.dias ?? '—'} días · {eur(c.importe_actual)} · {kwh(c.consumo_total_kwh)}{c.factura_nombre ? ` · ${c.factura_nombre}` : ''} · {bloque.b.length} {bloque.b.length === 1 ? 'oferta' : 'ofertas'}</span>
+                      </span>
+                    </td>
+                  </tr>
+                );
                 const est = estadoDe(c);
                 const ajena = c.realizada_por !== currentUser?.username;
                 const compartidaConmigo = (c.compartido_con || []).includes(miNombre) && ajena;
-                return (
+                return [cabecera, (
                   <tr key={c.id} className={`transition-colors ${sub ? 'bg-slate-50 hover:bg-slate-100' : compartidaConmigo ? 'bg-green-50 hover:bg-green-100' : 'hover:bg-google-bg'}`}>
                     <td className={`table-cell ${sub ? 'border-l-4 border-blue-200' : ''}`}>
                       {est ? (
@@ -441,12 +466,6 @@ export default function HistorialComparativas() {
                       <div className="flex items-center gap-1.5">
                         {sub && <CornerDownRight size={13} className="text-blue-300 flex-shrink-0" />}
                         <span className={`max-w-[220px] truncate ${sub ? 'text-google-gray font-normal' : ''}`} title={c.cliente || ''}>{c.cliente || '—'}</span>
-                        {!sub && g.items.length > 1 && (
-                          <button onClick={() => alternar(g.clave)} title={abierto ? 'Ocultar los otros estudios de este CUPS' : 'Ver los otros estudios de este CUPS'}
-                            className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full border border-blue-200 bg-blue-50 text-blue-700 text-[10px] font-semibold hover:bg-blue-100 flex-shrink-0">
-                            {abierto ? <ChevronDown size={11} /> : <ChevronRight size={11} />} +{g.items.length - 1} {g.items.length === 2 ? 'estudio' : 'estudios'}
-                          </button>
-                        )}
                         {!sub && !c.cliente_id && c.cups && clientesCupsTodos?.has(normalizarCups(c.cups)) && (
                           <span title="Este CUPS ya está dado de alta en el CRM"
                             className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold flex-shrink-0">
@@ -455,7 +474,17 @@ export default function HistorialComparativas() {
                         )}
                       </div>
                     </td>
-                    <td className="table-cell text-google-gray font-mono text-xs whitespace-nowrap">{c.cups || '—'}</td>
+                    <td className="table-cell text-google-gray font-mono text-xs whitespace-nowrap">
+                      {c.cups || '—'}
+                      {!sub && g.items.length > 1 && (
+                        <button onClick={() => alternar(g.clave)} title={abierto ? 'Ocultar los otros estudios de este CUPS' : 'Ver los otros estudios de este CUPS'}
+                          className="mt-0.5 flex items-center gap-0.5 font-sans text-[11px] font-semibold text-blue-600 hover:text-blue-800 hover:underline">
+                          {abierto ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                          {abierto ? 'Ocultar ' : '+'}{g.items.length - 1} {g.items.length === 2 ? 'estudio' : 'estudios'}
+                          {g.bloques.length > 1 && <span className="font-normal text-google-gray">· {g.bloques.length} facturas</span>}
+                        </button>
+                      )}
+                    </td>
                     <td className="table-cell">
                       <span className={`text-xs font-medium px-2 py-0.5 rounded ${c.tipo === 'gas' ? 'bg-orange-50 text-orange-700' : 'bg-blue-50 text-google-blue'}`}>{c.tarifa_acceso || TIPO_LABEL[c.tipo]}</span>
                     </td>
@@ -475,10 +504,21 @@ export default function HistorialComparativas() {
                     <td className="table-cell text-center">
                       <div className="inline-flex"><ShareButton cliente={{ ...c, comercial: c.realizada_por }} onUpdate={compartir} /></div>
                     </td>
-                    <td className="table-cell text-center"><FileEye id={c.id} campo="pdf_comparativa" disponible titulo="Ver la comparativa (PDF)" /></td>
+                    <td className="table-cell text-center">
+                      <div className="inline-flex items-center gap-0.5">
+                        <FileEye id={c.id} campo="pdf_comparativa" disponible titulo="Ver la comparativa (PDF)" />
+                        {onNavigate && (
+                          <button onClick={() => { prepararEdicion(c, currentUser); onNavigate('tarifas'); }}
+                            title={ajena ? 'Abrir en Comparativas para cambiar tarifa o datos (se guardará como otro estudio a tu nombre)' : 'Abrir en Comparativas para cambiar tarifa o datos'}
+                            className="p-1 rounded hover:bg-amber-50 transition-colors">
+                            <Pencil size={14} className="text-amber-600" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
                     <td className="table-cell text-center"><FileEye id={c.id} campo="factura" disponible={c.tiene_factura} titulo={`Ver la factura${c.factura_nombre ? ` (${c.factura_nombre})` : ''}`} Icon={FileText} /></td>
                   </tr>
-                );
+                )].filter(Boolean);
                 });
               })}
             </tbody>

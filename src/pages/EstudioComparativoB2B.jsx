@@ -1,9 +1,9 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Upload, FileText, Printer, Download, X, Loader2, Factory, Info, CheckCircle2, Ban } from 'lucide-react';
-import AvisoHistorialComparativas from '../components/AvisoHistorialComparativas';
+import AvisoHistorialComparativas, { AvisoEdicion } from '../components/AvisoHistorialComparativas';
 import { exportElementToPdf, imprimirElementoPdf, slugifyFilename } from '../lib/exportPdf';
-import { registrarComparativa } from '../lib/historialComparativas';
+import { registrarComparativa, tomarEdicion, formularioGuardado } from '../lib/historialComparativas';
 import { construirInforme, eurES, numES } from '../lib/energia/informe';
 import { OPEN_30TD, OPEN_61TD, SIMPLY_30TD, SIMPLY_61TD, INDEXADA_30TD, INDEXADA_61TD } from '../data/tarifasB2B';
 import { calcularOfertaLuz, ESTADO, tramosPorPotencia } from '../lib/energia/motor';
@@ -122,6 +122,22 @@ export default function EstudioComparativoB2B() {
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [pdfError, setPdfError] = useState('');
+  // Comparativa abierta desde el Historial (lápiz): se recuperan sus datos sin leer la factura.
+  const [edicion, setEdicion] = useState(null);
+  useEffect(() => {
+    const ed = tomarEdicion('luz_b2b', 'ecb2b-informe');
+    if (!ed) return;
+    const { form: f, extra, estado } = formularioGuardado(ed.datos, INIT);
+    setForm(f);
+    if (extra.nivel) setNivel(extra.nivel);
+    if (extra.productoId) setProductoId(extra.productoId);
+    if (extra.modalidadId) setModalidadId(extra.modalidadId);
+    setAutoconsumo(!!extra.autoconsumo);
+    if (estado.tramoSel) setTramoSel(estado.tramoSel);
+    if (estado.baseFactura) setBaseFactura(estado.baseFactura);
+    if (estado.ctxFactura) setCtxFactura(estado.ctxFactura);
+    setEdicion(ed);
+  }, []);
   const fileRef = useRef(null);
   const countdownRef = useRef(null);
 
@@ -328,7 +344,7 @@ export default function EstudioComparativoB2B() {
         importeActual: factActual, importeOferta: resultado?.total,
         ahorro: informe?.ahorroEur, ahorroPct: informe?.ahorroPct != null ? (informe.ahorroEur < 0 ? -informe.ahorroPct : informe.ahorroPct) : null,
         ahorroAnual: informe?.ahorroAnual,
-        form: { ...form, nivel, productoId, modalidadId, autoconsumo, asesor: asesorDisplay },
+        form: { ...form, nivel, productoId, modalidadId, autoconsumo, asesor: asesorDisplay, _estado: { tramoSel, baseFactura, ctxFactura } },
       },
     });
   }
@@ -354,6 +370,7 @@ export default function EstudioComparativoB2B() {
         <div className="space-y-4 print:hidden">
 
           <AvisoHistorialComparativas />
+          <AvisoEdicion ed={edicion} />
 
           {informe && (
             <div className="flex gap-3 justify-end">

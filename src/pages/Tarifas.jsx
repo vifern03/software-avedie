@@ -7,6 +7,7 @@ import EstudioComparativoGas from './EstudioComparativoGas';
 import EstudioComparativoB2B from './EstudioComparativoB2B';
 import { GAS, GAS_EMPRESA } from '../data/tarifasGas';
 import { OPEN_30TD, OPEN_61TD, SIMPLY_30TD, SIMPLY_61TD, TEMPO_2_0TD as TEMPO, INDEXADA_30TD, INDEXADA_61TD } from '../data/tarifasB2B';
+import { tipoEdicionPendiente } from '../lib/historialComparativas';
 import { BONO_SOCIAL, BONO_SOCIAL_SIN_IMPUESTOS, LUZ, LUZ_SOLAR, INDEXADA_2_0TD } from '../data/tarifasB2C';
 
 /* Todos los datos de tarifas viven en src/data/ (fuente única compartida con
@@ -964,7 +965,8 @@ function IndexadaSection({ datos, titulo, subtitulo }) {
 /* ── Componente principal ───────────────────────────────────────────────────── */
 
 export default function Tarifas() {
-  const [tab,    setTab]    = useState('luz');
+  // Si se llega desde el lápiz del Historial, se abre directamente la comparativa que toca.
+  const [tab,    setTab]    = useState(() => ({ luz_20: 'estudio', luz_b2b: 'estudio-b2b', gas: 'estudio-gas' })[tipoEdicionPendiente()] || 'luz');
   const [b2bSub, setB2bSub] = useState('tempo');
   const [, setVersionTarifas] = useState(0);
 

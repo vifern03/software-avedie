@@ -1,10 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Calculator, Upload, FileText, Printer, Download, X, AlertTriangle, Loader2, SlidersHorizontal } from 'lucide-react';
-import AvisoHistorialComparativas from '../components/AvisoHistorialComparativas';
+import AvisoHistorialComparativas, { AvisoEdicion } from '../components/AvisoHistorialComparativas';
 import { supabase } from '../lib/supabase';
 import { exportElementToPdf, imprimirElementoPdf, slugifyFilename } from '../lib/exportPdf';
-import { registrarComparativa } from '../lib/historialComparativas';
+import { registrarComparativa, tomarEdicion, formularioGuardado } from '../lib/historialComparativas';
 import { LUZ, LUZ_SOLAR, INDEXADA_2_0TD } from '../data/tarifasB2C';
 import { TEMPO_2_0TD } from '../data/tarifasB2B';
 import { IE_RATE as IE_RATE_MOTOR, calcularAhorro, extrapolarAnual } from '../lib/energia/motor';
@@ -373,6 +373,20 @@ export default function EstudioComparativo() {
   const [pdfError, setPdfError]             = useState('');
   // Valores verificados de la última factura (para distinguir lo que el usuario edita).
   const [baseFactura, setBaseFactura]       = useState(null);
+  // Comparativa abierta desde el Historial (lápiz): se recuperan sus datos sin leer la factura.
+  const [edicion, setEdicion]               = useState(null);
+  useEffect(() => {
+    const ed = tomarEdicion('luz_20', 'ec-informe');
+    if (!ed) return;
+    const { form: f, extra, estado } = formularioGuardado(ed.datos, INIT);
+    setForm(f);
+    if (extra.tarifaId) setTarifaId(extra.tarifaId);
+    setMant(!!extra.mant);
+    if (estado.compExcActiva != null) setCompExcActiva(estado.compExcActiva);
+    if (estado.tocPctFactura != null) setTocPctFactura(estado.tocPctFactura);
+    if (estado.baseFactura) setBaseFactura(estado.baseFactura);
+    setEdicion(ed);
+  }, []);
   const fileRef       = useRef(null);
   const originalTitle = useRef(document.title);
   const countdownRef  = useRef(null);
@@ -609,7 +623,7 @@ export default function EstudioComparativo() {
         consumoTotal: kwhP1 + kwhP2 + kwhP3, dias,
         importeActual: factActual, importeOferta: total, ahorro: dif,
         ahorroPct: ahorroPctOferta * 100, ahorroAnual,
-        form: { ...form, tarifaId, mant, asesor: asesorDisplay },
+        form: { ...form, tarifaId, mant, asesor: asesorDisplay, _estado: { compExcActiva, tocPctFactura, baseFactura } },
       },
     });
   }
@@ -686,6 +700,7 @@ export default function EstudioComparativo() {
         <div className="space-y-4 print:hidden">
 
           <AvisoHistorialComparativas />
+          <AvisoEdicion ed={edicion} />
 
           <p className="text-xs text-gray-400 leading-relaxed">
             * Puede introducir los valores numéricos usando comas (,) para los decimales.

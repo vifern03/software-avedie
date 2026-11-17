@@ -2,9 +2,9 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { GAS, GAS_EMPRESA } from '../data/tarifasGas';
 import { Calculator, Upload, FileText, Printer, Download, X, AlertTriangle, Loader2 } from 'lucide-react';
-import AvisoHistorialComparativas from '../components/AvisoHistorialComparativas';
+import AvisoHistorialComparativas, { AvisoEdicion } from '../components/AvisoHistorialComparativas';
 import { exportElementToPdf, imprimirElementoPdf, slugifyFilename } from '../lib/exportPdf';
-import { registrarComparativa } from '../lib/historialComparativas';
+import { registrarComparativa, tomarEdicion, formularioGuardado } from '../lib/historialComparativas';
 import { calcularOfertaGas, calcularAhorro, extrapolarAnual, ESTADO } from '../lib/energia/motor';
 import { IEH_GAS_EUR_KWH } from '../data/tarifasGas';
 import { aCampo, valorNum, cantidadES, formatoES } from '../lib/energia/numeros';
@@ -170,6 +170,20 @@ export default function EstudioComparativoGas() {
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const [isExportingPdf, setIsExportingPdf]     = useState(false);
   const [pdfError, setPdfError]                 = useState('');
+  // Comparativa abierta desde el Historial (lápiz): se recuperan sus datos sin leer la factura.
+  const [edicion, setEdicion]                   = useState(null);
+  useEffect(() => {
+    const ed = tomarEdicion('gas', 'ec-informe-gas');
+    if (!ed) return;
+    const { form: f, extra, estado } = formularioGuardado(ed.datos, INIT);
+    setForm(f);
+    if (extra.tarifaGasId) setTarifaGasId(extra.tarifaGasId);
+    setMant(!!extra.mant);
+    if (extra.incluyeTF != null) setIncluyeTF(!!extra.incluyeTF);
+    if (estado.baseFactura) setBaseFactura(estado.baseFactura);
+    if (estado.ctxFactura) setCtxFactura(estado.ctxFactura);
+    setEdicion(ed);
+  }, []);
   const fileRef         = useRef(null);
   const originalTitle   = useRef(document.title);
   const countdownRef    = useRef(null);
@@ -234,7 +248,7 @@ export default function EstudioComparativoGas() {
         consumoAnual: valorNum(form.consumoAnual, 0) || null, dias,
         importeActual: factActual, importeOferta: total, ahorro: dif,
         ahorroPct: ahorroPctOferta * 100, ahorroAnual,
-        form: { ...form, tarifaGasId, mant, incluyeTF, asesor: asesorDisplay },
+        form: { ...form, tarifaGasId, mant, incluyeTF, asesor: asesorDisplay, _estado: { baseFactura, ctxFactura } },
       },
     });
   }
@@ -443,6 +457,7 @@ export default function EstudioComparativoGas() {
         <div className="space-y-4 print:hidden">
 
           <AvisoHistorialComparativas />
+          <AvisoEdicion ed={edicion} />
 
           <p className="text-xs text-gray-400 leading-relaxed">
             * Puede introducir los valores numéricos usando comas (,) para los decimales.

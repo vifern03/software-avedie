@@ -133,7 +133,7 @@ export default function App() {
       case 'visitas_pymes': return <RegistroVisitasPymes />;
       case 'llamadas':  return <RegistroLlamadas />;
       case 'tarifas':   return <Tarifas />;
-      case 'historial_comparativas': return <Suspense fallback={<LoadingScreen />}><HistorialComparativas /></Suspense>;
+      case 'historial_comparativas': return <Suspense fallback={<LoadingScreen />}><HistorialComparativas onNavigate={handleNavigate} /></Suspense>;
       case 'fichajes':  return <ControlHorario />;
       case 'tasks':     return <Tasks onNavigate={handleNavigate} />;
       case 'reportes':  return <ReportesSoftware />;
